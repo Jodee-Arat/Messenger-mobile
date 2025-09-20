@@ -1,0 +1,3 @@
+mutation RemoveFile($fileId: String!, $chatId: String!) {
+  removeFile(fileId: $fileId, chatId: $chatId)
+}

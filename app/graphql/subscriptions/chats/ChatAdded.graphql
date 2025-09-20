@@ -1,0 +1,23 @@
+subscription ChatAdded($userId: String!, $groupId: String!) {
+  chatAdded(userId: $userId, groupId: $groupId) {
+    id
+    chatName
+    avatarUrl
+    draftMessages {
+      files {
+        fileName
+      }
+      text
+    }
+    lastMessage {
+      text
+      user {
+        username
+      }
+      files {
+        fileName
+      }
+    }
+    lastMessageAt
+  }
+}

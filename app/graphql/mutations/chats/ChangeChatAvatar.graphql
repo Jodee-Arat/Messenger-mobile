@@ -1,0 +1,3 @@
+mutation ChangeChatAvatar($avatar: Upload!, $chatId: String!) {
+  changeChatAvatar(avatar: $avatar, chatId: $chatId)
+}

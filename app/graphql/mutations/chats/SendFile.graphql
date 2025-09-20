@@ -1,0 +1,6 @@
+mutation SendFile($chatId: String!, $file: Upload!, $messageId: String!) {
+  sendFile(chatId: $chatId, file: $file, messageId: $messageId) {
+    chatDraftMessageId
+    fileId
+  }
+}

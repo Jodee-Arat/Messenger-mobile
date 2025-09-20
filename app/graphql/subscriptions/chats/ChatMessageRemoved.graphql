@@ -1,0 +1,5 @@
+subscription ChatMessageRemoved($chatId: String!, $userId: String!) {
+  chatMessageRemoved(chatId: $chatId, userId: $userId) {
+    id
+  }
+}

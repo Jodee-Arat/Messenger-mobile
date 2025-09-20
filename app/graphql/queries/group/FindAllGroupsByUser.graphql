@@ -1,0 +1,7 @@
+query FindAllGroupsByUser($filters: FiltersInput!) {
+  findAllGroupsByUser(filters: $filters) {
+    id
+    groupName
+    avatarUrl
+  }
+}

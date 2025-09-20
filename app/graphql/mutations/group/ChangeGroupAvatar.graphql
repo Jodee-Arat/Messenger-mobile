@@ -1,0 +1,3 @@
+mutation ChangeGroupAvatar($avatar: Upload!, $groupId: String!) {
+  changeGroupAvatar(avatar: $avatar, groupId: $groupId)
+}

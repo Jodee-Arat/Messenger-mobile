@@ -1,0 +1,23 @@
+query FindAllChatsByGroup($filters: FiltersInput!, $groupId: String!) {
+  findAllChatsByGroup(filters: $filters, groupId: $groupId) {
+    chatName
+    avatarUrl
+    id
+    lastMessage {
+      text
+      user {
+        username
+      }
+      files {
+        fileName
+      }
+    }
+    draftMessages {
+      text
+      files {
+        fileName
+      }
+    }
+    lastMessageAt
+  }
+}

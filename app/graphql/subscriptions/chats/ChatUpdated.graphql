@@ -1,0 +1,23 @@
+subscription ChatUpdated($userId: String!) {
+  chatUpdated(userId: $userId) {
+    id
+    chatName
+    avatarUrl
+    draftMessages {
+      files {
+        fileName
+      }
+      text
+    }
+    lastMessage {
+      text
+      user {
+        username
+      }
+      files {
+        fileName
+      }
+    }
+    lastMessageAt
+  }
+}

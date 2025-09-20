@@ -1,0 +1,3 @@
+mutation ChangeGroupInfo($data: ChangeGroupInfoInput!, $groupId: String!) {
+  changeGroupInfo(data: $data, groupId: $groupId)
+}

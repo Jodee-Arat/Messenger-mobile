@@ -1,0 +1,23 @@
+query FindAllChatsByUser($filters: FiltersInput!) {
+  findAllChatsByUser(filters: $filters) {
+    chatName
+    avatarUrl
+    id
+    lastMessage {
+      text
+      user {
+        username
+      }
+      files {
+        fileName
+      }
+    }
+    draftMessages {
+      text
+      files {
+        fileName
+      }
+    }
+    lastMessageAt
+  }
+}

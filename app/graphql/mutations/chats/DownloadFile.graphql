@@ -1,0 +1,6 @@
+mutation DownloadFile($fileId: String!, $chatId: String!) {
+  downloadFile(fileId: $fileId, chatId: $chatId) {
+    filename
+    fileUrl
+  }
+}

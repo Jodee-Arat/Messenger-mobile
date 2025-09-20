@@ -1,0 +1,5 @@
+subscription GroupDeleted($userId: String!) {
+  groupDeleted(userId: $userId) {
+    id
+  }
+}

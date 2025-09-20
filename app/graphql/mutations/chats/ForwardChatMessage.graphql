@@ -1,0 +1,3 @@
+mutation ForwardChatMessage($chatId: String!, $data: SendChatMessageInput!) {
+  forwardChatMessage(chatId: $chatId, data: $data)
+}

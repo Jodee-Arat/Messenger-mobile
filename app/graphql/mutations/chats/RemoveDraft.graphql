@@ -1,0 +1,3 @@
+mutation RemoveDraft($chatId: String!) {
+  removeDraft(chatId: $chatId)
+}

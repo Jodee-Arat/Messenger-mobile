@@ -1,0 +1,7 @@
+subscription GroupAdded($userId: String!) {
+  groupAdded(userId: $userId) {
+    id
+    groupName
+    avatarUrl
+  }
+}

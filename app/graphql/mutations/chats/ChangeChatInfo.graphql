@@ -1,0 +1,3 @@
+mutation ChangeChatInfo($data: ChangeChatInfoInput!, $chatId: String!) {
+  changeChatInfo(data: $data, chatId: $chatId)
+}

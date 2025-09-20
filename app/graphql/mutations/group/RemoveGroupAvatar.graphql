@@ -1,0 +1,3 @@
+mutation RemoveGroupAvatar($groupId: String!) {
+  removeGroupAvatar(groupId: $groupId)
+}

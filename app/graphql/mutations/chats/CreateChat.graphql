@@ -1,0 +1,7 @@
+mutation createChat($data: CreateChatInput!, $groupId: String!) {
+  createChat(data: $data, groupId: $groupId) {
+    chatName
+    avatarUrl
+    id
+  }
+}

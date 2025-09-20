@@ -1,0 +1,3 @@
+mutation RemoveMessages($chatId: String!, $data: RemoveMessagesInput!) {
+  removeMessages(chatId: $chatId, data: $data)
+}
