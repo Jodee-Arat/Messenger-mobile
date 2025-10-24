@@ -1,24 +1,33 @@
 import cn from 'clsx'
-import { FC, PropsWithChildren } from 'react'
-import { ScrollView, View } from 'react-native'
+import { FC, PropsWithChildren, ReactNode } from 'react'
+import { View } from 'react-native'
 
 interface ILayout {
 	className?: string
+	centered?: boolean
+	children: ReactNode
 }
 
-const Layout: FC<PropsWithChildren<ILayout>> = ({ children, className }) => {
+const Layout: FC<PropsWithChildren<ILayout>> = ({
+	children,
+	className,
+	centered = false
+}) => {
 	return (
-		<View className={cn('flex-1 w-full bg-card-dark', className)}>
-			<ScrollView
-				contentContainerStyle={{
-					flexGrow: 1,
-					paddingHorizontal: 16,
-					paddingTop: 48
-				}}
-				showsVerticalScrollIndicator={false}
-			>
-				{children}
-			</ScrollView>
+		<View
+			className={cn('flex-1 w-full bg-card-dark', className)}
+			style={
+				centered
+					? {
+							justifyContent: 'center',
+							alignItems: 'center',
+							paddingHorizontal: 16,
+							paddingTop: 48
+						}
+					: { paddingHorizontal: 16, paddingTop: 48 }
+			}
+		>
+			{children}
 		</View>
 	)
 }

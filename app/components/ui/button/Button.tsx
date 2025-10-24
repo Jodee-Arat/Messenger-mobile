@@ -35,6 +35,7 @@ export interface ButtonProps extends VariantProps<typeof buttonVariants> {
 	onPress?: () => void
 	disabled?: boolean
 	className?: string
+	isText?: boolean
 }
 
 const Button: FC<ButtonProps> = ({
@@ -43,22 +44,33 @@ const Button: FC<ButtonProps> = ({
 	size,
 	onPress,
 	disabled,
-	className
+	className,
+	isText = true
 }) => {
 	return (
 		<Pressable
 			onPress={onPress}
 			disabled={disabled}
-			className={cn(buttonVariants({ variant, size, className }))}
+			className={cn(
+				buttonVariants({ variant, size }),
+				className,
+				disabled && 'opacity-40'
+			)}
 		>
-			<Text
-				className={cn(
-					'text-center',
-					variant === 'link' ? 'text-primary underline' : 'text-white'
-				)}
-			>
-				{children}
-			</Text>
+			{isText ? (
+				<Text
+					className={cn(
+						'text-center',
+						variant === 'link'
+							? 'text-primary underline'
+							: 'text-white'
+					)}
+				>
+					{children}
+				</Text>
+			) : (
+				children
+			)}
 		</Pressable>
 	)
 }

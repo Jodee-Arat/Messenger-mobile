@@ -55,7 +55,7 @@ const Navigation: FC = () => {
 					))}
 				</Stack.Navigator>
 			</NavigationContainer>
-			{isAuthenticated && navRef.isReady() && (
+			{isAuthenticated && navRef.isReady() && currentRoute !== 'Chat' && (
 				<BottomMenu nav={navRef.navigate} currentRoute={currentRoute} />
 			)}
 		</>

@@ -4,5 +4,7 @@ mutation LoginUser($data: LoginInput!) {
 		user {
 			id
 		}
+		accessToken
+		refreshToken
 	}
 }

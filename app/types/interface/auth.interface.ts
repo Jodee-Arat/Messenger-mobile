@@ -1,7 +1,10 @@
-import { IUser } from '@/types/user.interface'
+import { FindAllUsersQuery } from '@/graphql/generated/output'
 
-export interface IAuthFormData
-	extends Pick<IUser, 'login' | 'password' | 'email'> {}
+export interface IAuthFormData {
+	login: string
+	password: string
+	email: string
+}
 
 export enum EnumSecureStore {
 	ACCESS_TOKEN = 'accessToken',
@@ -9,7 +12,7 @@ export enum EnumSecureStore {
 }
 
 export enum EnumAsyncStorage {
-	USER = 'user'
+	USER_ID = 'userId'
 }
 
 export interface ITokens {
@@ -18,5 +21,5 @@ export interface ITokens {
 }
 
 export interface IAuthResponse extends ITokens {
-	user: IUser
+	user: FindAllUsersQuery['findAllUsers'][0]
 }

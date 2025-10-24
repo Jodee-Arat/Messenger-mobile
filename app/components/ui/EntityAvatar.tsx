@@ -42,7 +42,10 @@ const EntityAvatar = memo(({ size, name, avatarUrl }: EntityAvatarProps) => {
 					/>
 				) : (
 					<Text
-						className={cn(size === 'xl' ? 'text-4xl' : 'text-base')}
+						className={cn(
+							size === 'xl' ? 'text-4xl' : 'text-base',
+							'pb-1'
+						)}
 					>
 						{firstLetter}
 					</Text>

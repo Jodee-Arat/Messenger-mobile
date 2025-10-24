@@ -3,7 +3,7 @@ import { Control } from 'react-hook-form'
 
 import Field from '@/components/ui/field/Field'
 
-import { IAuthFormData } from '@/types/auth.interface'
+import { IAuthFormData } from '@/types/interface/auth.interface'
 
 import { validEmail } from './email.regex'
 

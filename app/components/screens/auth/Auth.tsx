@@ -1,4 +1,6 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { CommonActions } from '@react-navigation/native'
+import * as SecureStore from 'expo-secure-store'
 import { useEffect, useState } from 'react'
 import { SubmitHandler, useForm } from 'react-hook-form'
 import { Pressable, Text, View } from 'react-native'
@@ -11,7 +13,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 import { useUser } from '@/hooks/useUser'
 
-import { IAuthFormData } from '@/types/auth.interface'
+import { IAuthFormData } from '@/types/interface/auth.interface'
 
 import AuthFields from './AuthFields'
 import {
@@ -47,7 +49,17 @@ const Auth = () => {
 	})
 
 	const [login, { loading: isLoadingLogin }] = useLoginUserMutation({
-		onCompleted(data) {
+		onCompleted: async data => {
+			const accessToken = data.loginUser.accessToken
+			const refreshToken = data.loginUser.refreshToken
+
+			if (accessToken) {
+				await AsyncStorage.setItem('jwt-token', accessToken)
+			}
+			if (refreshToken) {
+				await SecureStore.setItemAsync('refresh-token', refreshToken)
+			}
+
 			auth()
 			setUserId(data.loginUser.user?.id ?? '')
 			form.reset()
@@ -71,16 +83,14 @@ const Auth = () => {
 
 	const [create, { loading: isLoadingCreateUserWEmail }] =
 		useCreateUserWEmailMutation({
-			onCompleted(data) {
-				auth()
-				setUserId(data.createUserWEmail?.id ?? '')
+			onCompleted() {
 				form.reset()
-				navigation.navigate('Home')
 				Toast.show({
 					type: 'success',
 					text1: 'Registration successful',
 					text2: 'Welcome aboard!'
 				})
+				setIsReg(false)
 			},
 			onError(error) {
 				console.log(error)

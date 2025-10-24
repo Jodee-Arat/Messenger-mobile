@@ -1,6 +1,7 @@
-'use client'
-
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useEffect } from 'react'
+
+import { resetToAuth } from '@/navigation/navigate'
 
 import { useAuth } from './useAuth'
 import { useUser } from './useUser'
@@ -8,17 +9,14 @@ import { useFindProfileQuery } from '@/graphql/generated/output'
 
 export function useCurrentUser() {
 	const { isAuthenticated, exit } = useAuth()
-	const { userId } = useUser()
 
 	const { data, loading, refetch, error } = useFindProfileQuery({
-		skip: !isAuthenticated
+		skip: !isAuthenticated,
+		fetchPolicy: 'network-only'
 	})
-
-	useEffect(() => {
-		if (error) {
-			exit()
-		}
-	}, [isAuthenticated, exit, userId])
+	if (error) {
+		resetToAuth()
+	}
 
 	return {
 		user: data?.findProfile,

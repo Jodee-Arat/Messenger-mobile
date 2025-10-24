@@ -27,7 +27,9 @@ export type AttachFileModel = {
 
 export type AuthModel = {
   __typename?: 'AuthModel';
+  accessToken?: Maybe<Scalars['String']['output']>;
   message?: Maybe<Scalars['String']['output']>;
+  refreshToken?: Maybe<Scalars['String']['output']>;
   user?: Maybe<UserModel>;
 };
 
@@ -243,7 +245,7 @@ export type Mutation = {
   clearSessionCookie: Scalars['Boolean']['output'];
   createChat: ChatModel;
   createGroup: GroupModel;
-  createUserWEmail: UserModel;
+  createUserWEmail: Scalars['Boolean']['output'];
   deleteChat: Scalars['Boolean']['output'];
   deleteGroup: Scalars['Boolean']['output'];
   downloadFile: FileDownloadData;
@@ -252,6 +254,7 @@ export type Mutation = {
   logoutUser: Scalars['Boolean']['output'];
   pinChat: Scalars['Boolean']['output'];
   pinMessage: Scalars['Boolean']['output'];
+  refreshToken: Scalars['String']['output'];
   removeChatAvatar: Scalars['Boolean']['output'];
   removeDraft: Scalars['Boolean']['output'];
   removeFile: Scalars['Boolean']['output'];
@@ -351,6 +354,11 @@ export type MutationPinChatArgs = {
 export type MutationPinMessageArgs = {
   chatId: Scalars['String']['input'];
   messageId: Scalars['String']['input'];
+};
+
+
+export type MutationRefreshTokenArgs = {
+  data: Scalars['String']['input'];
 };
 
 
@@ -574,14 +582,14 @@ export type CreateUserWEmailMutationVariables = Exact<{
 }>;
 
 
-export type CreateUserWEmailMutation = { __typename?: 'Mutation', createUserWEmail: { __typename?: 'UserModel', id: string } };
+export type CreateUserWEmailMutation = { __typename?: 'Mutation', createUserWEmail: boolean };
 
 export type LoginUserMutationVariables = Exact<{
   data: LoginInput;
 }>;
 
 
-export type LoginUserMutation = { __typename?: 'Mutation', loginUser: { __typename?: 'AuthModel', message?: string | null, user?: { __typename?: 'UserModel', id: string } | null } };
+export type LoginUserMutation = { __typename?: 'Mutation', loginUser: { __typename?: 'AuthModel', message?: string | null, accessToken?: string | null, refreshToken?: string | null, user?: { __typename?: 'UserModel', id: string } | null } };
 
 export type LogoutUserMutationVariables = Exact<{ [key: string]: never; }>;
 
@@ -610,7 +618,7 @@ export type CreateChatMutationVariables = Exact<{
 }>;
 
 
-export type CreateChatMutation = { __typename?: 'Mutation', createChat: { __typename?: 'ChatModel', chatName?: string | null, avatarUrl?: string | null, id: string } };
+export type CreateChatMutation = { __typename?: 'Mutation', createChat: { __typename?: 'ChatModel', chatName?: string | null, avatarUrl?: string | null, id: string, updatedAt: any } };
 
 export type DeleteChatMutationVariables = Exact<{
   chatId: Scalars['String']['input'];
@@ -782,14 +790,14 @@ export type FindAllChatsByGroupQueryVariables = Exact<{
 }>;
 
 
-export type FindAllChatsByGroupQuery = { __typename?: 'Query', findAllChatsByGroup: Array<{ __typename?: 'ChatModel', chatName?: string | null, avatarUrl?: string | null, id: string, lastMessageAt?: any | null, lastMessage?: { __typename?: 'ChatMessageModel', text?: string | null, user: { __typename?: 'UserModel', username: string }, files?: Array<{ __typename?: 'FileMessageModel', fileName: string }> | null } | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string }> }> | null }> };
+export type FindAllChatsByGroupQuery = { __typename?: 'Query', findAllChatsByGroup: Array<{ __typename?: 'ChatModel', chatName?: string | null, avatarUrl?: string | null, updatedAt: any, id: string, lastMessageAt?: any | null, members: Array<{ __typename?: 'ChatMemberModel', user: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null } }>, lastMessage?: { __typename?: 'ChatMessageModel', text?: string | null, user: { __typename?: 'UserModel', username: string }, files?: Array<{ __typename?: 'FileMessageModel', fileName: string }> | null } | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string }> }> | null }> };
 
 export type FindAllChatsByUserQueryVariables = Exact<{
   filters: FiltersInput;
 }>;
 
 
-export type FindAllChatsByUserQuery = { __typename?: 'Query', findAllChatsByUser: Array<{ __typename?: 'ChatModel', chatName?: string | null, avatarUrl?: string | null, id: string, lastMessageAt?: any | null, lastMessage?: { __typename?: 'ChatMessageModel', text?: string | null, user: { __typename?: 'UserModel', username: string }, files?: Array<{ __typename?: 'FileMessageModel', fileName: string }> | null } | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string }> }> | null }> };
+export type FindAllChatsByUserQuery = { __typename?: 'Query', findAllChatsByUser: Array<{ __typename?: 'ChatModel', chatName?: string | null, avatarUrl?: string | null, id: string, updatedAt: any, lastMessageAt?: any | null, members: Array<{ __typename?: 'ChatMemberModel', user: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null } }>, lastMessage?: { __typename?: 'ChatMessageModel', text?: string | null, user: { __typename?: 'UserModel', username: string }, files?: Array<{ __typename?: 'FileMessageModel', fileName: string }> | null } | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string }> }> | null }> };
 
 export type FindAllMessagesByChatQueryVariables = Exact<{
   chatId: Scalars['String']['input'];
@@ -804,7 +812,7 @@ export type FindChatByChatIdQueryVariables = Exact<{
 }>;
 
 
-export type FindChatByChatIdQuery = { __typename?: 'Query', findChatByChatId: { __typename?: 'ChatModel', chatName?: string | null, avatarUrl?: string | null, description?: string | null, pinnedMessage?: { __typename?: 'ChatMessageModel', isEdited: boolean, id: string, chat: { __typename?: 'ChatModel', id: string }, user: { __typename?: 'UserModel', id: string, username: string }, repliedToLinks?: Array<{ __typename?: 'ChatMessageReplyModel', id: string, repliedTo?: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', username: string, id: string } } | null } | null> | null } | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', editId?: string | null, id: string, text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }>, repliedToLinks: Array<{ __typename?: 'chatDraftMessageReplyModel', id: string, repliedTo: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', username: string, id: string } } }> }> | null } };
+export type FindChatByChatIdQuery = { __typename?: 'Query', findChatByChatId: { __typename?: 'ChatModel', chatName?: string | null, avatarUrl?: string | null, updatedAt: any, description?: string | null, pinnedMessage?: { __typename?: 'ChatMessageModel', isEdited: boolean, id: string, chat: { __typename?: 'ChatModel', id: string }, user: { __typename?: 'UserModel', id: string, username: string }, repliedToLinks?: Array<{ __typename?: 'ChatMessageReplyModel', id: string, repliedTo?: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', username: string, id: string } } | null } | null> | null } | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', editId?: string | null, id: string, text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }>, repliedToLinks: Array<{ __typename?: 'chatDraftMessageReplyModel', id: string, repliedTo: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', username: string, id: string } } }> }> | null } };
 
 export type FindAllGroupsByUserQueryVariables = Exact<{
   filters: FiltersInput;
@@ -836,7 +844,7 @@ export type ChatAddedSubscriptionVariables = Exact<{
 }>;
 
 
-export type ChatAddedSubscription = { __typename?: 'Subscription', chatAdded: { __typename?: 'ChatModel', id: string, chatName?: string | null, avatarUrl?: string | null, lastMessageAt?: any | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string }> }> | null, lastMessage?: { __typename?: 'ChatMessageModel', text?: string | null, user: { __typename?: 'UserModel', username: string }, files?: Array<{ __typename?: 'FileMessageModel', fileName: string }> | null } | null } };
+export type ChatAddedSubscription = { __typename?: 'Subscription', chatAdded: { __typename?: 'ChatModel', id: string, chatName?: string | null, updatedAt: any, avatarUrl?: string | null, lastMessageAt?: any | null, members: Array<{ __typename?: 'ChatMemberModel', user: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null } }>, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string }> }> | null, lastMessage?: { __typename?: 'ChatMessageModel', text?: string | null, user: { __typename?: 'UserModel', username: string }, files?: Array<{ __typename?: 'FileMessageModel', fileName: string }> | null } | null } };
 
 export type ChatDeletedSubscriptionVariables = Exact<{
   groupId: Scalars['String']['input'];
@@ -867,7 +875,7 @@ export type ChatUpdatedSubscriptionVariables = Exact<{
 }>;
 
 
-export type ChatUpdatedSubscription = { __typename?: 'Subscription', chatUpdated: { __typename?: 'ChatModel', id: string, chatName?: string | null, avatarUrl?: string | null, lastMessageAt?: any | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string }> }> | null, lastMessage?: { __typename?: 'ChatMessageModel', text?: string | null, user: { __typename?: 'UserModel', username: string }, files?: Array<{ __typename?: 'FileMessageModel', fileName: string }> | null } | null } };
+export type ChatUpdatedSubscription = { __typename?: 'Subscription', chatUpdated: { __typename?: 'ChatModel', id: string, chatName?: string | null, avatarUrl?: string | null, updatedAt: any, lastMessageAt?: any | null, members: Array<{ __typename?: 'ChatMemberModel', user: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null } }>, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string }> }> | null, lastMessage?: { __typename?: 'ChatMessageModel', text?: string | null, user: { __typename?: 'UserModel', username: string }, files?: Array<{ __typename?: 'FileMessageModel', fileName: string }> | null } | null } };
 
 export type GroupAddedSubscriptionVariables = Exact<{
   userId: Scalars['String']['input'];
@@ -886,9 +894,7 @@ export type GroupDeletedSubscription = { __typename?: 'Subscription', groupDelet
 
 export const CreateUserWEmailDocument = gql`
     mutation CreateUserWEmail($data: CreateUserWEmailInput!) {
-  createUserWEmail(data: $data) {
-    id
-  }
+  createUserWEmail(data: $data)
 }
     `;
 export type CreateUserWEmailMutationFn = Apollo.MutationFunction<CreateUserWEmailMutation, CreateUserWEmailMutationVariables>;
@@ -924,6 +930,8 @@ export const LoginUserDocument = gql`
     user {
       id
     }
+    accessToken
+    refreshToken
   }
 }
     `;
@@ -1053,6 +1061,7 @@ export const CreateChatDocument = gql`
     chatName
     avatarUrl
     id
+    updatedAt
   }
 }
     `;
@@ -1798,7 +1807,15 @@ export const FindAllChatsByGroupDocument = gql`
   findAllChatsByGroup(filters: $filters, groupId: $groupId) {
     chatName
     avatarUrl
+    updatedAt
     id
+    members {
+      user {
+        id
+        username
+        avatarUrl
+      }
+    }
     lastMessage {
       text
       user {
@@ -1858,6 +1875,14 @@ export const FindAllChatsByUserDocument = gql`
     chatName
     avatarUrl
     id
+    updatedAt
+    members {
+      user {
+        id
+        username
+        avatarUrl
+      }
+    }
     lastMessage {
       text
       user {
@@ -1990,6 +2015,7 @@ export const FindChatByChatIdDocument = gql`
   findChatByChatId(chatId: $chatId) {
     chatName
     avatarUrl
+    updatedAt
     description
     pinnedMessage {
       isEdited
@@ -2265,7 +2291,15 @@ export const ChatAddedDocument = gql`
   chatAdded(userId: $userId, groupId: $groupId) {
     id
     chatName
+    updatedAt
     avatarUrl
+    members {
+      user {
+        id
+        username
+        avatarUrl
+      }
+    }
     draftMessages {
       files {
         fileName
@@ -2442,6 +2476,14 @@ export const ChatUpdatedDocument = gql`
     id
     chatName
     avatarUrl
+    updatedAt
+    members {
+      user {
+        id
+        username
+        avatarUrl
+      }
+    }
     draftMessages {
       files {
         fileName

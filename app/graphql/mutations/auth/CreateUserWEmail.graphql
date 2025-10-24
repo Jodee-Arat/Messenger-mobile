@@ -1,5 +1,3 @@
 mutation CreateUserWEmail($data: CreateUserWEmailInput!) {
-	createUserWEmail(data: $data) {
-		id
-	}
+	createUserWEmail(data: $data)
 }

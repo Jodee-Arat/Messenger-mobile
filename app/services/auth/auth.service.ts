@@ -1,28 +1,23 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import {
+	CommonActions,
+	useNavigationContainerRef
+} from '@react-navigation/native'
 
-import { EnumAsyncStorage, IAuthResponse } from '@/types/auth.interface'
+import { EnumAsyncStorage } from '@/types/interface/auth.interface'
 
 import { deleteTokensStorage, saveToStorage } from '@/services/auth/auth.helper'
 
-import { getAuthUrl } from '@/config/api.config'
+export const handleLogout = async () => {
+	await deleteTokensStorage()
+	await AsyncStorage.removeItem(EnumAsyncStorage.USER_ID)
 
-import { request } from '../api/request.api'
+	const navRef = useNavigationContainerRef()
 
-export const AuthService = {
-	async main(variant: 'reg' | 'login', email: string, password: string) {
-		const response = await request<IAuthResponse>({
-			url: getAuthUrl(`/${variant === 'reg' ? 'register' : 'login'}`),
-			method: 'POST',
-			data: { email, password }
+	navRef.dispatch(
+		CommonActions.reset({
+			index: 0,
+			routes: [{ name: 'Auth' }]
 		})
-
-		if (response.accessToken) await saveToStorage(response)
-
-		return response
-	},
-
-	async logout() {
-		await deleteTokensStorage()
-		await AsyncStorage.removeItem(EnumAsyncStorage.USER)
-	}
+	)
 }

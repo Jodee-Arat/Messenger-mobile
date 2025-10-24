@@ -1,5 +1,6 @@
-import { FC } from 'react'
-import { View } from 'react-native'
+import { CommonActions } from '@react-navigation/native'
+import { FC, useEffect } from 'react'
+import { Text, View } from 'react-native'
 
 import Layout from '@/components/layout/Layout'
 import EntityAvatar from '@/components/ui/EntityAvatar'
@@ -9,30 +10,64 @@ import { Button } from '@/components/ui/button/Button'
 
 import { useAuth } from '@/hooks/useAuth'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
+import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 
 const Profile: FC = () => {
 	const { exit } = useAuth()
+	const navigation = useTypedNavigation()
+	const { user, isLoadingProfile } = useCurrentUser()
 
-	const { user, isLoadingProfile, refetch } = useCurrentUser()
-	console.log(user, isLoadingProfile)
+	const handleLogout = () => {
+		exit()
+		navigation.dispatch(
+			CommonActions.reset({
+				index: 0,
+				routes: [{ name: 'Auth' }]
+			})
+		)
+	}
 
-	return isLoadingProfile || !user ? (
-		<Loader />
-	) : (
+	const handleEditProfile = () => {
+		navigation.navigate('UserSettings')
+	}
+
+	useEffect(() => {
+		if (!isLoadingProfile && !user) {
+			handleLogout()
+		}
+	}, [isLoadingProfile, user, navigation])
+
+	if (isLoadingProfile || !user) {
+		return <Loader />
+	}
+
+	return (
 		<Layout>
-			<Heading isCenter>Profile</Heading>
-
-			<View className='my-6 items-center justify-center'>
+			<View className='items-center justify-center my-6'>
 				<EntityAvatar
 					name={user.username}
 					size='xl'
 					avatarUrl={user.avatarUrl}
 				/>
+				<Heading>{user.username}</Heading>
+				{user.bio && (
+					<Text className='mt-2 text-center text-base text-foreground-dark'>
+						{user.bio}
+					</Text>
+				)}
 			</View>
 
-			<Button onPress={() => exit()} className='mt-5'>
-				Logout
-			</Button>
+			<View className='mt-5 w-full'>
+				<Button
+					onPress={handleEditProfile}
+					className='mb-4 bg-blue-500'
+				>
+					<Text className='text-white'>Редактировать профиль</Text>
+				</Button>
+				<Button onPress={handleLogout} className='bg-red-500'>
+					<Text className='text-white'>Выйти</Text>
+				</Button>
+			</View>
 		</Layout>
 	)
 }

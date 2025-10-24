@@ -6,7 +6,9 @@ import {
 	EnumSecureStore,
 	IAuthResponse,
 	ITokens
-} from '@/types/auth.interface'
+} from '@/types/interface/auth.interface'
+
+import { FindAllUsersQuery } from '@/graphql/generated/output'
 
 export const getAccessToken = async () => {
 	const accessToken = await getItemAsync(EnumSecureStore.ACCESS_TOKEN)
@@ -23,13 +25,15 @@ export const deleteTokensStorage = async () => {
 	await deleteItemAsync(EnumSecureStore.REFRESH_TOKEN)
 }
 
-export const getUserFromStorage = async () => {
+export const getUserIdFromStorage = async (): Promise<
+	FindAllUsersQuery['findAllUsers'][0]['id']
+> => {
 	try {
 		return JSON.parse(
-			(await AsyncStorage.getItem(EnumAsyncStorage.USER)) || '{}'
+			(await AsyncStorage.getItem(EnumAsyncStorage.USER_ID)) || '{}'
 		)
 	} catch (e) {
-		return null
+		return ''
 	}
 }
 
@@ -37,8 +41,8 @@ export const saveToStorage = async (data: IAuthResponse) => {
 	await saveTokensStorage(data)
 	try {
 		await AsyncStorage.setItem(
-			EnumAsyncStorage.USER,
-			JSON.stringify(data.user)
+			EnumAsyncStorage.USER_ID,
+			JSON.stringify(data.user.id)
 		)
 	} catch (e) {}
 }

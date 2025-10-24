@@ -1,4 +1,7 @@
+import * as DocumentPicker from 'expo-document-picker'
+import { ReactNativeFile } from 'extract-files'
 import { useEffect, useState } from 'react'
+import Toast from 'react-native-toast-message'
 
 import {
 	useFindChatByChatIdQuery,
@@ -128,50 +131,78 @@ export const useChat = (chatId: string) => {
 		setForwardedMessages(forwardedMessages ?? [])
 	}
 
-	const handleFileSend = async (file: File) => {
-		if (files.length >= 7) {
-			return
-		}
+	const pickAndSendFile = async () => {
+		try {
+			const res = await DocumentPicker.getDocumentAsync({
+				type: '*/*',
+				copyToCacheDirectory: true,
+				multiple: false
+			})
 
-		if (files.some(fileState => fileState.name === file.name)) {
-			return
-		}
-
-		setFiles(prevFiles => [
-			...prevFiles,
-			{ name: file.name, size: file.size.toString(), id: '' }
-		])
-
-		send({
-			variables: {
-				chatId,
-				file,
-				messageId: messageId ?? 'null'
+			// новый формат: { assets: [ { uri, name, size, mimeType, ... } ] }
+			// или старый: fallback через any
+			let asset = undefined as any
+			if (
+				'assets' in res &&
+				Array.isArray(res.assets) &&
+				res.assets.length > 0
+			) {
+				asset = res.assets[0]
+			} else {
+				const anyRes = res as any
+				if (anyRes && (anyRes.uri || anyRes.name)) {
+					asset = {
+						uri: anyRes.uri,
+						name: anyRes.name ?? 'unknown',
+						size: anyRes.size ?? undefined,
+						mimeType:
+							anyRes.mimeType ??
+							anyRes.type ??
+							'application/octet-stream'
+					}
+				}
 			}
-		})
-	}
 
-	const drop = async (e: React.DragEvent<HTMLDivElement>) => {
-		const file = e.dataTransfer.files[0]
-
-		if (files.length < 7) {
-			if (files.some(fileState => fileState.name === file.name)) {
+			if (!asset) {
+				// пользователь отменил или что-то не выбрал
 				return
 			}
 
-			setFiles(prevFiles => [
-				...prevFiles,
-				{ name: file.name, size: file.size.toString(), id: '' }
-			])
+			// Проверки лимитов/дубликатов
+			const name = asset.name ?? 'unknown'
+			const sizeStr = asset.size ? String(asset.size) : '0'
+			if (files.length >= 7) {
+				Toast.show({ type: 'error', text1: 'Maximum files reached' })
+				return
+			}
+			if (files.some(f => f.name === name)) {
+				Toast.show({ type: 'info', text1: 'File already selected' })
+				return
+			}
 
-			send({
+			// Добавляем временно в UI
+			setFiles(prev => [...prev, { name, size: sizeStr, id: '' }])
+
+			// Создаём ReactNativeFile — apollo-upload-client понимает этот объект
+			const reactFile = new ReactNativeFile({
+				uri: asset.uri,
+				name,
+				type: asset.mimeType ?? 'application/octet-stream'
+			})
+
+			// Вызываем GraphQL мутацию sendFile(chatId, file, messageId?)
+			await send({
 				variables: {
 					chatId,
-					file,
+					file: reactFile,
 					messageId: messageId ?? 'null'
 				}
 			})
-		} else {
+
+			// в onCompleted мутации обнови UI (заполни id, удалить tmp-элемент и т.д.)
+		} catch (err: any) {
+			console.error('pickAndSend error', err)
+			Toast.show({ type: 'error', text1: 'Failed to pick/send file' })
 		}
 	}
 
@@ -181,7 +212,6 @@ export const useChat = (chatId: string) => {
 		isLoadingSendFile,
 		handleDelete,
 		handleClearMessageId,
-		drop,
 		forwardedMessages,
 		setForwardedMessages,
 		handleAddForwardedMessage,
@@ -196,6 +226,6 @@ export const useChat = (chatId: string) => {
 		filesEdited,
 		pinnedMessage,
 		setPinnedMessage,
-		handleFileSend
+		pickAndSendFile
 	}
 }

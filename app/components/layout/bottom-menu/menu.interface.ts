@@ -1,4 +1,4 @@
-import { TypeFeatherIconNames } from '@/types/icon.interface'
+import { TypeFeatherIconNames } from '@/types/interface/icon.interface'
 
 import { TypeRootStackParamList } from '@/navigation/navigation.types'
 

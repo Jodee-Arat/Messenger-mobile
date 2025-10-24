@@ -1,7 +1,10 @@
 import axios from 'axios'
 import { getItemAsync } from 'expo-secure-store'
 
-import { EnumSecureStore, IAuthResponse } from '@/types/auth.interface'
+import {
+	EnumSecureStore,
+	IAuthResponse
+} from '@/types/interface/auth.interface'
 
 import { saveToStorage } from '@/services/auth/auth.helper'
 

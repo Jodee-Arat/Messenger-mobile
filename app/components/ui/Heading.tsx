@@ -15,7 +15,7 @@ const Heading: FC<PropsWithChildren<IHeading>> = ({
 	return (
 		<Text
 			className={cn(
-				'text-black font-medium text-xl',
+				'text-foreground-dark font-medium text-xl mt-6',
 				isCenter && 'text-center',
 				className
 			)}
