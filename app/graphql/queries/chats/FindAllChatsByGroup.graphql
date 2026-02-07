@@ -3,7 +3,10 @@ query FindAllChatsByGroup($filters: FiltersInput!, $groupId: String!) {
 		chatName
 		avatarUrl
 		updatedAt
+		isSecret
 		id
+		isGroup
+		groupId
 		members {
 			user {
 				id

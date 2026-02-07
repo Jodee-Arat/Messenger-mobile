@@ -12,30 +12,26 @@ import { useAuth } from '@/hooks/useAuth'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 
+import { handleLogout } from '@/services/auth/auth.service'
+
+import { useLogoutUserMutation } from '@/graphql/generated/output'
+
 const Profile: FC = () => {
-	const { exit } = useAuth()
+	// const { exit } = useAuth()
 	const navigation = useTypedNavigation()
 	const { user, isLoadingProfile } = useCurrentUser()
-
-	const handleLogout = () => {
-		exit()
-		navigation.dispatch(
-			CommonActions.reset({
-				index: 0,
-				routes: [{ name: 'Auth' }]
-			})
-		)
-	}
 
 	const handleEditProfile = () => {
 		navigation.navigate('UserSettings')
 	}
-
-	useEffect(() => {
-		if (!isLoadingProfile && !user) {
-			handleLogout()
+	const [logoutUser, { loading: isLoggingOut }] = useLogoutUserMutation({
+		onCompleted: async () => {
+			await handleLogout()
+		},
+		onError: error => {
+			console.error('Logout error:', error)
 		}
-	}, [isLoadingProfile, user, navigation])
+	})
 
 	if (isLoadingProfile || !user) {
 		return <Loader />
@@ -64,7 +60,7 @@ const Profile: FC = () => {
 				>
 					<Text className='text-white'>Редактировать профиль</Text>
 				</Button>
-				<Button onPress={handleLogout} className='bg-red-500'>
+				<Button onPress={logoutUser} className='bg-red-500'>
 					<Text className='text-white'>Выйти</Text>
 				</Button>
 			</View>

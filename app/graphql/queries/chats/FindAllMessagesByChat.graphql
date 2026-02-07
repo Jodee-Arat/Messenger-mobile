@@ -1,39 +1,40 @@
 query FindAllMessagesByChat($chatId: String!, $filters: FiltersInput!) {
-  findAllMessagesByChat(chatId: $chatId, filters: $filters) {
-    id
-    isEdited
-    text
-    files {
-      fileName
-      fileFormat
-      fileSize
-      id
-    }
-    repliedToLinks {
-      id
-      repliedTo {
-        id
-        text
-        files {
-          fileName
-          fileFormat
-          fileSize
-          id
-        }
-        user {
-          avatarUrl
-          username
-          id
-        }
-      }
-    }
-    chat {
-      chatName
-    }
-    user {
-      avatarUrl
-      id
-      username
-    }
-  }
+	findAllMessagesByChat(chatId: $chatId, filters: $filters) {
+		id
+		isEdited
+		text
+		createdAt
+		files {
+			fileName
+			fileFormat
+			fileSize
+			id
+		}
+		repliedToLinks {
+			id
+			repliedTo {
+				id
+				text
+				files {
+					fileName
+					fileFormat
+					fileSize
+					id
+				}
+				user {
+					avatarUrl
+					username
+					id
+				}
+			}
+		}
+		chat {
+			chatName
+		}
+		user {
+			avatarUrl
+			id
+			username
+		}
+	}
 }

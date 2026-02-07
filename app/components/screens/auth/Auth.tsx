@@ -13,13 +13,21 @@ import { useAuth } from '@/hooks/useAuth'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 import { useUser } from '@/hooks/useUser'
 
-import { IAuthFormData } from '@/types/interface/auth.interface'
+import {
+	EnumAsyncStorage,
+	EnumSecureStore,
+	IAuthFormData
+} from '@/types/interface/auth.interface'
+
+import { upsertMyPreKeyJSON } from '@/utils/secret-chat/secretChat'
 
 import AuthFields from './AuthFields'
 import {
 	useCreateUserWEmailMutation,
-	useLoginUserMutation
+	useLoginUserMutation,
+	useSendPreKeyMutation
 } from '@/graphql/generated/output'
+import { generatePreKey } from '@/libs/e2ee/gost'
 
 const Auth = () => {
 	const [isReg, setIsReg] = useState(false)
@@ -54,13 +62,33 @@ const Auth = () => {
 			const refreshToken = data.loginUser.refreshToken
 
 			if (accessToken) {
-				await AsyncStorage.setItem('jwt-token', accessToken)
+				await AsyncStorage.setItem(
+					EnumAsyncStorage.ACCESS_TOKEN,
+					accessToken
+				)
 			}
 			if (refreshToken) {
-				await SecureStore.setItemAsync('refresh-token', refreshToken)
+				await SecureStore.setItemAsync(
+					EnumSecureStore.REFRESH_TOKEN,
+					refreshToken
+				)
 			}
 
 			auth()
+			const { toServer, toStore } = await generatePreKey()
+			AsyncStorage.setItem(
+				EnumAsyncStorage.MY_PRE_KEYS,
+				JSON.stringify(toStore)
+			)
+
+			upsertMyPreKeyJSON({ toServer, toStore })
+			sendPreKey({
+				variables: {
+					data: {
+						...toServer
+					}
+				}
+			})
 			setUserId(data.loginUser.user?.id ?? '')
 			form.reset()
 			navigation.navigate('Home')
@@ -81,14 +109,42 @@ const Auth = () => {
 		}
 	})
 
+	const [sendPreKey, { loading: isLoadingSendPreKey }] =
+		useSendPreKeyMutation({
+			onCompleted() {
+				console.log('Create PreKey')
+			},
+			onError(error) {
+				console.log('1', error)
+				Toast.show({
+					type: 'error',
+					text2: error.message || 'Something went wrong'
+				})
+			}
+		})
+
 	const [create, { loading: isLoadingCreateUserWEmail }] =
 		useCreateUserWEmailMutation({
-			onCompleted() {
+			onCompleted: async () => {
 				form.reset()
 				Toast.show({
 					type: 'success',
 					text1: 'Registration successful',
 					text2: 'Welcome aboard!'
+				})
+				const { toServer, toStore } = await generatePreKey()
+				AsyncStorage.setItem(
+					EnumAsyncStorage.MY_PRE_KEYS,
+					JSON.stringify(toStore)
+				)
+
+				upsertMyPreKeyJSON({ toServer, toStore }) // вот тут мб с типом toStore есть проблема, надо запустить и проверить а также доделать эту функцию саму
+				sendPreKey({
+					variables: {
+						data: {
+							...toServer
+						}
+					}
 				})
 				setIsReg(false)
 			},
@@ -102,7 +158,7 @@ const Auth = () => {
 			}
 		})
 
-	const onSubmit: SubmitHandler<IAuthFormData> = data => {
+	const onSubmit: SubmitHandler<IAuthFormData> = async data => {
 		if (isReg) {
 			create({
 				variables: {
@@ -143,7 +199,9 @@ const Auth = () => {
 						/>
 
 						<Button size='sm' onPress={form.handleSubmit(onSubmit)}>
-							{isLoadingCreateUserWEmail || isLoadingLogin ? (
+							{isLoadingCreateUserWEmail ||
+							isLoadingSendPreKey ||
+							isLoadingLogin ? (
 								<Loader />
 							) : isReg ? (
 								'Sign Up'

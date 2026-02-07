@@ -1,5 +1,6 @@
 subscription ChatDeleted($groupId: String!, $userId: String!) {
-  chatDeleted(groupId: $groupId, userId: $userId) {
-    id
-  }
+	chatDeleted(groupId: $groupId, userId: $userId) {
+		id
+		isSecret
+	}
 }

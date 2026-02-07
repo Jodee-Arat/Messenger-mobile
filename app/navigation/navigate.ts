@@ -17,14 +17,10 @@ export function navigate<RouteName extends keyof TypeRootStackParamList>(
 	}
 }
 
-// Пример reset
 export function resetToAuth() {
-	if (navigationRef.isReady()) {
+	if (navigationRef.isReady() && navigationRef.current) {
 		navigationRef.dispatch(
-			CommonActions.reset({
-				index: 0,
-				routes: [{ name: 'Auth' }]
-			})
+			CommonActions.reset({ index: 0, routes: [{ name: 'Auth' }] })
 		)
 	}
 }

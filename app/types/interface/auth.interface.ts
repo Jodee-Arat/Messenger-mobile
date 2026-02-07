@@ -7,12 +7,13 @@ export interface IAuthFormData {
 }
 
 export enum EnumSecureStore {
-	ACCESS_TOKEN = 'accessToken',
 	REFRESH_TOKEN = 'refreshToken'
 }
 
 export enum EnumAsyncStorage {
-	USER_ID = 'userId'
+	ACCESS_TOKEN = 'accessToken',
+	USER_ID = 'userId',
+	MY_PRE_KEYS = 'myPreKeys'
 }
 
 export interface ITokens {

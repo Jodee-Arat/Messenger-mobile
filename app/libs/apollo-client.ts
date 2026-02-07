@@ -16,6 +16,11 @@ import { createUploadLink } from 'apollo-upload-client'
 import * as SecureStore from 'expo-secure-store'
 import { jwtDecode } from 'jwt-decode'
 
+import {
+	EnumAsyncStorage,
+	EnumSecureStore
+} from '@/types/interface/auth.interface'
+
 import { handleLogout } from '@/services/auth/auth.service'
 
 import { SERVER_URL, WEBSOCKET_URL } from './constants/url.constant'
@@ -54,7 +59,7 @@ async function doRefresh(refreshToken: string): Promise<string | null> {
  */
 export async function getAccessToken(): Promise<string | null> {
 	try {
-		const token = await AsyncStorage.getItem('jwt-token')
+		const token = await AsyncStorage.getItem(EnumAsyncStorage.ACCESS_TOKEN)
 		if (!token) return null
 
 		let decoded: any = null
@@ -62,7 +67,7 @@ export async function getAccessToken(): Promise<string | null> {
 			decoded = jwtDecode(token)
 		} catch {
 			// Невалидный JWT — удаляем
-			await AsyncStorage.removeItem('jwt-token')
+			await AsyncStorage.removeItem(EnumAsyncStorage.ACCESS_TOKEN)
 			return null
 		}
 
@@ -77,7 +82,9 @@ export async function getAccessToken(): Promise<string | null> {
 			return await refreshPromise
 		}
 
-		const refreshToken = await SecureStore.getItemAsync('refresh-token')
+		const refreshToken = await SecureStore.getItemAsync(
+			EnumSecureStore.REFRESH_TOKEN
+		)
 		if (!refreshToken) {
 			await handleLogout()
 			return null
@@ -90,7 +97,10 @@ export async function getAccessToken(): Promise<string | null> {
 					await handleLogout()
 					return null
 				}
-				await AsyncStorage.setItem('jwt-token', newToken)
+				await AsyncStorage.setItem(
+					EnumAsyncStorage.ACCESS_TOKEN,
+					newToken
+				)
 				return newToken
 			} catch (e) {
 				await handleLogout()
@@ -176,7 +186,6 @@ const authLink = new ApolloLink((operation: Operation, forward) => {
 				if (!token) {
 					// нет токена — выходим
 					await handleLogout()
-					observer.error(new Error('No valid access token'))
 					return
 				}
 

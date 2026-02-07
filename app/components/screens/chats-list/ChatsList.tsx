@@ -9,16 +9,17 @@ import {
 } from 'react-native'
 import Toast from 'react-native-toast-message'
 
-import Layout from '@/components/layout/Layout'
 import Loader from '@/components/ui/Loader'
+import { Button } from '@/components/ui/button/Button'
 
-import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 import { useUser } from '@/hooks/useUser'
 
 import {
+	createSecretChat,
 	deleteSecretChat,
-	loadAllSecretChats
+	loadAllSecretChats,
+	updateSecretChatUpdatedAt
 } from '@/utils/secret-chat/secretChat'
 
 import ChatDropdownTrigger from './ChatDropdownTrigger'
@@ -42,7 +43,6 @@ const ChatsList: FC = () => {
 		FindAllChatsByGroupQuery['findAllChatsByGroup']
 	>([])
 	const route = useRoute()
-	const navigation = useTypedNavigation()
 	const { groupId, groupName } = route.params as RouteParams
 
 	const { userId } = useUser()
@@ -65,7 +65,7 @@ const ChatsList: FC = () => {
 		variables: { userId, groupId },
 		skip: !(userId && groupId)
 	})
-
+	// это надо переписать и добавить на сервер в secret update
 	const { data: updateChatData } = useChatUpdatedSubscription({
 		variables: { userId },
 		skip: !(userId && groupId)
@@ -89,57 +89,59 @@ const ChatsList: FC = () => {
 		})
 
 	const handleDeleteChat = (chatId: string) => {
-		const fetchChats = async () => {
-			const secretChats = await loadAllSecretChats()
-			if (secretChats.find(chat => chat.id === chatId)) {
-				deleteSecretChat(groupId, chatId)
-			} else {
-				deleteChat({
-					variables: {
-						chatId
-					}
-				})
+		deleteChat({
+			variables: {
+				chatId
 			}
-
-			setAllChats(prevAllChats =>
-				prevAllChats.filter(chat => chat.id !== chatId)
-			)
-		}
-		fetchChats()
+		})
 	}
 
 	useEffect(() => {
-		const fetchChats = async () => {
-			const secretChats = await loadAllSecretChats()
+		if (!allChatsData || !allChatsData.findAllChatsByGroup) return
 
-			if (!allChatsData?.findAllChatsByGroup) {
-				setAllChats(secretChats || [])
-				return
-			}
-
-			const allChatsStart = [
-				...allChatsData.findAllChatsByGroup,
-				...(secretChats || [])
-			]
-
-			const sortAllChatsStart = allChatsStart.sort(
-				(a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)
-			)
-
-			setAllChats(sortAllChatsStart)
-		}
-
-		fetchChats()
+		setAllChats(allChatsData.findAllChatsByGroup)
 	}, [allChatsData])
 
 	useEffect(() => {
 		if (!newChatData || !newChatData.chatAdded) return
 
-		setAllChats(prevChats => [newChatData.chatAdded, ...prevChats])
+		const addNewChat = async () => {
+			try {
+				if (newChatData.chatAdded.isSecret) {
+					await createSecretChat(newChatData.chatAdded)
+				}
+
+				setAllChats(prevChats => [newChatData.chatAdded, ...prevChats])
+			} catch (error) {
+				Toast.show({
+					type: 'error',
+					text1: 'Failed to create chat',
+					text2: String(error || '') || 'Something went wrong'
+				})
+			}
+		}
+
+		addNewChat()
 	}, [newChatData])
 
 	useEffect(() => {
 		if (!deletedChatData || !deletedChatData.chatDeleted) return
+
+		const deleteChat = async () => {
+			try {
+				await deleteSecretChat(groupId, deletedChatData.chatDeleted.id)
+			} catch (error) {
+				Toast.show({
+					type: 'error',
+					text1: 'Failed to delete chat',
+					text2: String(error || '') || 'Something went wrong'
+				})
+			}
+		}
+
+		if (deletedChatData.chatDeleted.isSecret) {
+			deleteChat()
+		}
 
 		setAllChats(prevChats =>
 			prevChats.filter(chat => chat.id !== deletedChatData.chatDeleted.id)
@@ -148,6 +150,23 @@ const ChatsList: FC = () => {
 
 	useEffect(() => {
 		if (!updateChatData || !updateChatData.chatUpdated) return
+		const updateChat = async () => {
+			try {
+				await updateSecretChatUpdatedAt(
+					groupId,
+					updateChatData.chatUpdated.id
+				)
+			} catch (error) {
+				Toast.show({
+					type: 'error',
+					text1: 'Failed to update chat',
+					text2: String(error || '') || 'Something went wrong'
+				})
+			}
+		}
+		if (updateChatData.chatUpdated.isSecret) {
+			updateChat()
+		}
 
 		setAllChats(prevChats => [updateChatData.chatUpdated, ...prevChats])
 	}, [updateChatData])
@@ -164,6 +183,7 @@ const ChatsList: FC = () => {
 			<ScrollView className='py-5' showsVerticalScrollIndicator={false}>
 				{allChats.map((chat, index) => (
 					<ChatDropdownTrigger
+						groupId={groupId}
 						chat={chat}
 						key={index}
 						deleteChat={handleDeleteChat}
@@ -175,6 +195,9 @@ const ChatsList: FC = () => {
 						groupId={groupId}
 					/>
 				)}
+				<Button onPress={async () => await loadAllSecretChats(groupId)}>
+					loadAll
+				</Button>
 			</ScrollView>
 		</View>
 	)

@@ -7,87 +7,80 @@ import { Button } from '@/components/ui/button/Button'
 import { ForwardedMessageType } from '@/types/forward/forwarded-message.type'
 import { MessageType } from '@/types/message.type'
 
-import ChatMessageItem from './ChatMessageItem'
-import {
-	usePinMessageMutation,
-	useRemoveMessagesMutation
-} from '@/graphql/generated/output'
+import ChatMessageItem from '../../default/list/ChatMessageItem'
 
-interface ChatMessageDropdownProp {
+interface SecretChatMessageDropdownProp {
 	messageInfo: MessageType
-	setPinnedMessage: (message: MessageType | null) => void
+	setPinnedMessage?: (message: MessageType | null) => void
 	userId: string
-	chatId: string
 	messageId: string
+	chatId: string
 	messageIds: string[]
-	handleAddForwardedMessage: (messages: MessageType[]) => void
+	handleAddForwardedMessage?: (messages: MessageType[]) => void
 	handleChooseMessage: (messageId: string) => void
 	handleClearMessagesId: () => void
-	startEdit: (
+	startEdit?: (
 		message: MessageType,
 		forwardedMessages?: ForwardedMessageType[]
 	) => void
+	onDelete: (id: string[]) => Promise<void>
+	isSelected: boolean // 🔹 Новый проп
 }
 
-const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
+const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
+	setPinnedMessage = () => {},
 	chatId,
-	setPinnedMessage,
-	startEdit,
-	handleAddForwardedMessage,
+	startEdit = () => {},
+	handleAddForwardedMessage = () => {},
 	handleClearMessagesId,
 	handleChooseMessage,
 	messageId,
 	messageIds,
 	messageInfo,
-	userId
+	userId,
+	onDelete,
+	isSelected // 🔹 Получаем новый проп
 }) => {
 	const [modalVisible, setModalVisible] = useState(false)
+	const [isDeleting, setIsDeleting] = useState(false)
 
-	const [removeMessage] = useRemoveMessagesMutation({
-		onCompleted() {
+	/** Удалить сообщение */
+	const handleRemoveMessage = useCallback(async () => {
+		try {
+			setIsDeleting(true)
+			await onDelete(messageIds)
 			Toast.show({
 				type: 'success',
-				text1: 'Messages deleted successfully.'
+				text1: 'Сообщение удалено'
 			})
-		},
-		onError(err) {
+		} catch (err: any) {
 			Toast.show({
 				type: 'error',
-				text1: 'Failed to delete messages',
-				text2: err.message
+				text1: 'Ошибка при удалении сообщения',
+				text2: err.message || 'Попробуйте снова'
 			})
+		} finally {
+			setIsDeleting(false)
+			setModalVisible(false)
 		}
-	})
+	}, [onDelete, messageIds])
 
-	const [pinMessage] = usePinMessageMutation({
-		onCompleted() {
-			setPinnedMessage(messageInfo)
-			Toast.show({
-				type: 'success',
-				text1: 'Message pinned successfully.'
-			})
-		},
-		onError(err) {
-			Toast.show({
-				type: 'error',
-				text1: 'Failed to pin message',
-				text2: err.message
-			})
-		}
-	})
-
-	const handleRemoveMessage = useCallback(() => {
-		removeMessage({
-			variables: { chatId, data: { messageIds: [messageId] } }
-		})
-		setModalVisible(false)
-	}, [chatId, removeMessage])
-
+	/** Добавить как ответ / переслать */
 	const handleAddMessage = useCallback(() => {
 		handleAddForwardedMessage([messageInfo])
 		handleClearMessagesId()
 		setModalVisible(false)
-	}, [chatId])
+	}, [messageInfo, handleAddForwardedMessage, handleClearMessagesId])
+
+	/** Закрепить сообщение */
+	const handlePinMessage = useCallback(() => {
+		setPinnedMessage(messageInfo)
+		Toast.show({
+			type: 'success',
+			text1: 'Сообщение закреплено'
+		})
+		setModalVisible(false)
+	}, [messageInfo, setPinnedMessage])
 
 	return (
 		<>
@@ -95,16 +88,24 @@ const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
 				onLongPress={() => setModalVisible(true)}
 				delayLongPress={300}
 			>
-				<ChatMessageItem
-					chatId={chatId}
-					handleChooseMessage={handleChooseMessage}
-					messageId={messageId}
-					messageIds={messageIds}
-					messageInfo={messageInfo}
-					userId={userId}
-				/>
+				<View
+					className={`rounded-xl ${
+						isSelected ? 'bg-blue-100 dark:bg-blue-900/40' : ''
+					}`}
+				>
+					<ChatMessageItem
+						chatId={chatId}
+						handleChooseMessage={handleChooseMessage}
+						messageId={messageId}
+						messageIds={messageIds}
+						messageInfo={messageInfo}
+						userId={userId}
+						isSelected={isSelected} // 🔹 передаём вниз
+					/>
+				</View>
 			</Pressable>
 
+			{/* Модалка действий */}
 			<Modal
 				transparent
 				visible={modalVisible}
@@ -127,25 +128,20 @@ const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
 									setModalVisible(false)
 								}}
 							>
-								Выбрать
+								{isSelected ? 'Отменить выбор' : 'Выбрать'}
 							</Button>
+
+							<Button onPress={handleAddMessage}>Ответить</Button>
 
 							<Button
 								onPress={() => {
-									handleAddMessage()
-								}}
-							>
-								Ответить
-							</Button>
-
-							<Button
-								onPress={() => {
-									if (messageInfo.text)
+									if (messageInfo.text) {
 										Toast.show({
 											type: 'info',
-											text1: 'Copied text',
+											text1: 'Скопировано',
 											text2: messageInfo.text
 										})
+									}
 									setModalVisible(false)
 								}}
 							>
@@ -171,25 +167,16 @@ const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
 								Редактировать
 							</Button>
 
-							<Button
-								onPress={() => {
-									pinMessage({
-										variables: {
-											chatId,
-											messageId: messageInfo.id
-										}
-									})
-									setModalVisible(false)
-								}}
-							>
+							<Button onPress={handlePinMessage}>
 								Закрепить
 							</Button>
 
 							<Button
 								variant='destructive'
 								onPress={handleRemoveMessage}
+								disabled={isDeleting}
 							>
-								Удалить
+								{isDeleting ? 'Удаление...' : 'Удалить'}
 							</Button>
 
 							<Button
@@ -206,4 +193,4 @@ const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
 	)
 }
 
-export default ChatMessageDropdownTrigger
+export default SecretChatMessageDropdownTrigger

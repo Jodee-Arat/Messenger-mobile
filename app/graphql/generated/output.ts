@@ -30,6 +30,7 @@ export type AuthModel = {
   accessToken?: Maybe<Scalars['String']['output']>;
   message?: Maybe<Scalars['String']['output']>;
   refreshToken?: Maybe<Scalars['String']['output']>;
+  sessionId?: Maybe<Scalars['String']['output']>;
   user?: Maybe<UserModel>;
 };
 
@@ -130,6 +131,7 @@ export type ChatModel = {
   id: Scalars['ID']['output'];
   isDeleted: Scalars['Boolean']['output'];
   isGroup: Scalars['Boolean']['output'];
+  isSecret: Scalars['Boolean']['output'];
   lastMessage?: Maybe<ChatMessageModel>;
   lastMessageAt?: Maybe<Scalars['DateTime']['output']>;
   lastMessageId?: Maybe<Scalars['String']['output']>;
@@ -141,6 +143,7 @@ export type ChatModel = {
 
 export type CreateChatInput = {
   chatName: Scalars['String']['input'];
+  isSecret?: InputMaybe<Scalars['Boolean']['input']>;
   userIds: Array<Scalars['String']['input']>;
 };
 
@@ -264,6 +267,9 @@ export type Mutation = {
   sendChatDraftMessage: Scalars['Boolean']['output'];
   sendChatMessage: Scalars['Boolean']['output'];
   sendFile: AttachFileModel;
+  sendPreKey: Scalars['Boolean']['output'];
+  sendSecretMessage: Scalars['Boolean']['output'];
+  sendSharedSecretKey: Scalars['Boolean']['output'];
   unPinChat: Scalars['Boolean']['output'];
   unPinMessage: Scalars['Boolean']['output'];
 };
@@ -408,6 +414,21 @@ export type MutationSendFileArgs = {
 };
 
 
+export type MutationSendPreKeyArgs = {
+  data: PreKeyInput;
+};
+
+
+export type MutationSendSecretMessageArgs = {
+  data: SendSecretMessageInput;
+};
+
+
+export type MutationSendSharedSecretKeyArgs = {
+  data: SharedSecretKeyInput;
+};
+
+
 export type MutationUnPinChatArgs = {
   chatId: Scalars['String']['input'];
 };
@@ -415,6 +436,26 @@ export type MutationUnPinChatArgs = {
 
 export type MutationUnPinMessageArgs = {
   chatId: Scalars['String']['input'];
+};
+
+export type PreKeyInput = {
+  ikPub: Scalars['String']['input'];
+  opkPubs: Array<Scalars['String']['input']>;
+  spkPub: Scalars['String']['input'];
+  spkSig: Scalars['String']['input'];
+};
+
+export type PreKeyModel = {
+  __typename?: 'PreKeyModel';
+  createdAt: Scalars['DateTime']['output'];
+  id: Scalars['ID']['output'];
+  ikPub: Scalars['String']['output'];
+  indexOpkPub: Scalars['Float']['output'];
+  opkPubs: Array<Scalars['String']['output']>;
+  spkPub: Scalars['String']['output'];
+  spkSig: Scalars['String']['output'];
+  updatedAt: Scalars['DateTime']['output'];
+  userId: Scalars['String']['output'];
 };
 
 export type Query = {
@@ -431,6 +472,9 @@ export type Query = {
   findGroupByGroupId: GroupModel;
   findProfile: UserModel;
   findSessionsByUser: Array<SessionModel>;
+  getPreKeys: Array<PreKeyModel>;
+  getSecretMessage: QueueSecretMessageModel;
+  getSharedSecretKey: Array<QueueSharedSecretKeyModel>;
 };
 
 
@@ -475,6 +519,58 @@ export type QueryFindGroupByGroupIdArgs = {
   groupId: Scalars['String']['input'];
 };
 
+
+export type QueryGetPreKeysArgs = {
+  chatId: Scalars['String']['input'];
+};
+
+
+export type QueryGetSecretMessageArgs = {
+  chatId: Scalars['String']['input'];
+};
+
+
+export type QueryGetSharedSecretKeyArgs = {
+  chatId: Scalars['String']['input'];
+};
+
+export type QueueSecretMessageModel = {
+  __typename?: 'QueueSecretMessageModel';
+  chatId: Scalars['String']['output'];
+  createdAt: Scalars['DateTime']['output'];
+  ekPub?: Maybe<Scalars['String']['output']>;
+  encryptedMessage: Scalars['String']['output'];
+  fromUserId: Scalars['String']['output'];
+  groupId: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  ikPub?: Maybe<Scalars['String']['output']>;
+  iv: Scalars['String']['output'];
+  sig: Scalars['String']['output'];
+  toUserIds: Array<Scalars['String']['output']>;
+  ukm?: Maybe<Scalars['String']['output']>;
+  updatedAt: Scalars['DateTime']['output'];
+  usedOpk?: Maybe<Scalars['String']['output']>;
+  whoCheckedIds: Array<Scalars['String']['output']>;
+};
+
+export type QueueSharedSecretKeyModel = {
+  __typename?: 'QueueSharedSecretKeyModel';
+  chatId: Scalars['String']['output'];
+  createdAt: Scalars['DateTime']['output'];
+  ekPub: Scalars['String']['output'];
+  encryptedKey: Scalars['String']['output'];
+  fromUserId: Scalars['String']['output'];
+  groupId: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  ikPub: Scalars['String']['output'];
+  iv: Scalars['String']['output'];
+  sig: Scalars['String']['output'];
+  toUserId: Scalars['String']['output'];
+  ukm: Scalars['String']['output'];
+  updatedAt: Scalars['DateTime']['output'];
+  usedOpk?: Maybe<Scalars['String']['output']>;
+};
+
 export type RemoveMessagesInput = {
   messageIds: Array<Scalars['String']['input']>;
 };
@@ -485,6 +581,16 @@ export type SendChatMessageInput = {
   forwardedMessageIds?: InputMaybe<Array<Scalars['String']['input']>>;
   targetChatsId?: InputMaybe<Array<Scalars['String']['input']>>;
   text?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type SendSecretMessageInput = {
+  chatId: Scalars['String']['input'];
+  encryptedMessage: Scalars['String']['input'];
+  groupId: Scalars['String']['input'];
+  iv: Scalars['String']['input'];
+  sig: Scalars['String']['input'];
+  toUserIds: Array<Scalars['String']['input']>;
+  ukm?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type SessionMetadataModel = {
@@ -502,8 +608,23 @@ export type SessionModel = {
   userId: Scalars['String']['output'];
 };
 
+export type SharedSecretKeyInput = {
+  chatId: Scalars['String']['input'];
+  ekPub: Scalars['String']['input'];
+  encryptedKey: Scalars['String']['input'];
+  groupId: Scalars['String']['input'];
+  ikPub: Scalars['String']['input'];
+  iv: Scalars['String']['input'];
+  sig: Scalars['String']['input'];
+  toUserId: Scalars['String']['input'];
+  ukm: Scalars['String']['input'];
+  usedOpk?: InputMaybe<Scalars['String']['input']>;
+};
+
 export type Subscription = {
   __typename?: 'Subscription';
+  addSecretMessage: QueueSecretMessageModel;
+  addSharedSecretKey: QueueSharedSecretKeyModel;
   chatAdded: ChatModel;
   chatDeleted: ChatModel;
   chatMessageAdded: ChatMessageModel;
@@ -511,6 +632,16 @@ export type Subscription = {
   chatUpdated: ChatModel;
   groupAdded: GroupModel;
   groupDeleted: GroupModel;
+};
+
+
+export type SubscriptionAddSecretMessageArgs = {
+  userId: Scalars['String']['input'];
+};
+
+
+export type SubscriptionAddSharedSecretKeyArgs = {
+  userId: Scalars['String']['input'];
 };
 
 
@@ -589,7 +720,7 @@ export type LoginUserMutationVariables = Exact<{
 }>;
 
 
-export type LoginUserMutation = { __typename?: 'Mutation', loginUser: { __typename?: 'AuthModel', message?: string | null, accessToken?: string | null, refreshToken?: string | null, user?: { __typename?: 'UserModel', id: string } | null } };
+export type LoginUserMutation = { __typename?: 'Mutation', loginUser: { __typename?: 'AuthModel', message?: string | null, accessToken?: string | null, refreshToken?: string | null, sessionId?: string | null, user?: { __typename?: 'UserModel', id: string } | null } };
 
 export type LogoutUserMutationVariables = Exact<{ [key: string]: never; }>;
 
@@ -618,7 +749,7 @@ export type CreateChatMutationVariables = Exact<{
 }>;
 
 
-export type CreateChatMutation = { __typename?: 'Mutation', createChat: { __typename?: 'ChatModel', chatName?: string | null, avatarUrl?: string | null, id: string, updatedAt: any } };
+export type CreateChatMutation = { __typename?: 'Mutation', createChat: { __typename?: 'ChatModel', chatName?: string | null, avatarUrl?: string | null, id: string, updatedAt: any, isSecret: boolean } };
 
 export type DeleteChatMutationVariables = Exact<{
   chatId: Scalars['String']['input'];
@@ -758,6 +889,27 @@ export type RemoveGroupAvatarMutationVariables = Exact<{
 
 export type RemoveGroupAvatarMutation = { __typename?: 'Mutation', removeGroupAvatar: boolean };
 
+export type SendPreKeyMutationVariables = Exact<{
+  data: PreKeyInput;
+}>;
+
+
+export type SendPreKeyMutation = { __typename?: 'Mutation', sendPreKey: boolean };
+
+export type SendSecretMessageMutationVariables = Exact<{
+  data: SendSecretMessageInput;
+}>;
+
+
+export type SendSecretMessageMutation = { __typename?: 'Mutation', sendSecretMessage: boolean };
+
+export type SendSharedSecretKeyMutationVariables = Exact<{
+  data: SharedSecretKeyInput;
+}>;
+
+
+export type SendSharedSecretKeyMutation = { __typename?: 'Mutation', sendSharedSecretKey: boolean };
+
 export type ChangeProfileAvatarMutationVariables = Exact<{
   avatar: Scalars['Upload']['input'];
 }>;
@@ -790,14 +942,14 @@ export type FindAllChatsByGroupQueryVariables = Exact<{
 }>;
 
 
-export type FindAllChatsByGroupQuery = { __typename?: 'Query', findAllChatsByGroup: Array<{ __typename?: 'ChatModel', chatName?: string | null, avatarUrl?: string | null, updatedAt: any, id: string, lastMessageAt?: any | null, members: Array<{ __typename?: 'ChatMemberModel', user: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null } }>, lastMessage?: { __typename?: 'ChatMessageModel', text?: string | null, user: { __typename?: 'UserModel', username: string }, files?: Array<{ __typename?: 'FileMessageModel', fileName: string }> | null } | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string }> }> | null }> };
+export type FindAllChatsByGroupQuery = { __typename?: 'Query', findAllChatsByGroup: Array<{ __typename?: 'ChatModel', chatName?: string | null, avatarUrl?: string | null, updatedAt: any, isSecret: boolean, id: string, isGroup: boolean, groupId?: string | null, lastMessageAt?: any | null, members: Array<{ __typename?: 'ChatMemberModel', user: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null } }>, lastMessage?: { __typename?: 'ChatMessageModel', text?: string | null, user: { __typename?: 'UserModel', username: string }, files?: Array<{ __typename?: 'FileMessageModel', fileName: string }> | null } | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string }> }> | null }> };
 
 export type FindAllChatsByUserQueryVariables = Exact<{
   filters: FiltersInput;
 }>;
 
 
-export type FindAllChatsByUserQuery = { __typename?: 'Query', findAllChatsByUser: Array<{ __typename?: 'ChatModel', chatName?: string | null, avatarUrl?: string | null, id: string, updatedAt: any, lastMessageAt?: any | null, members: Array<{ __typename?: 'ChatMemberModel', user: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null } }>, lastMessage?: { __typename?: 'ChatMessageModel', text?: string | null, user: { __typename?: 'UserModel', username: string }, files?: Array<{ __typename?: 'FileMessageModel', fileName: string }> | null } | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string }> }> | null }> };
+export type FindAllChatsByUserQuery = { __typename?: 'Query', findAllChatsByUser: Array<{ __typename?: 'ChatModel', chatName?: string | null, avatarUrl?: string | null, updatedAt: any, isSecret: boolean, id: string, isGroup: boolean, groupId?: string | null, lastMessageAt?: any | null, members: Array<{ __typename?: 'ChatMemberModel', user: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null } }>, lastMessage?: { __typename?: 'ChatMessageModel', text?: string | null, user: { __typename?: 'UserModel', username: string }, files?: Array<{ __typename?: 'FileMessageModel', fileName: string }> | null } | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string }> }> | null }> };
 
 export type FindAllMessagesByChatQueryVariables = Exact<{
   chatId: Scalars['String']['input'];
@@ -805,14 +957,14 @@ export type FindAllMessagesByChatQueryVariables = Exact<{
 }>;
 
 
-export type FindAllMessagesByChatQuery = { __typename?: 'Query', findAllMessagesByChat: Array<{ __typename?: 'ChatMessageModel', id: string, isEdited: boolean, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, repliedToLinks?: Array<{ __typename?: 'ChatMessageReplyModel', id: string, repliedTo?: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', avatarUrl?: string | null, username: string, id: string } } | null } | null> | null, chat: { __typename?: 'ChatModel', chatName?: string | null }, user: { __typename?: 'UserModel', avatarUrl?: string | null, id: string, username: string } }> };
+export type FindAllMessagesByChatQuery = { __typename?: 'Query', findAllMessagesByChat: Array<{ __typename?: 'ChatMessageModel', id: string, isEdited: boolean, text?: string | null, createdAt: any, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, repliedToLinks?: Array<{ __typename?: 'ChatMessageReplyModel', id: string, repliedTo?: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', avatarUrl?: string | null, username: string, id: string } } | null } | null> | null, chat: { __typename?: 'ChatModel', chatName?: string | null }, user: { __typename?: 'UserModel', avatarUrl?: string | null, id: string, username: string } }> };
 
 export type FindChatByChatIdQueryVariables = Exact<{
   chatId: Scalars['String']['input'];
 }>;
 
 
-export type FindChatByChatIdQuery = { __typename?: 'Query', findChatByChatId: { __typename?: 'ChatModel', chatName?: string | null, avatarUrl?: string | null, updatedAt: any, description?: string | null, pinnedMessage?: { __typename?: 'ChatMessageModel', isEdited: boolean, id: string, chat: { __typename?: 'ChatModel', id: string }, user: { __typename?: 'UserModel', id: string, username: string }, repliedToLinks?: Array<{ __typename?: 'ChatMessageReplyModel', id: string, repliedTo?: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', username: string, id: string } } | null } | null> | null } | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', editId?: string | null, id: string, text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }>, repliedToLinks: Array<{ __typename?: 'chatDraftMessageReplyModel', id: string, repliedTo: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', username: string, id: string } } }> }> | null } };
+export type FindChatByChatIdQuery = { __typename?: 'Query', findChatByChatId: { __typename?: 'ChatModel', chatName?: string | null, avatarUrl?: string | null, updatedAt: any, isSecret: boolean, description?: string | null, pinnedMessage?: { __typename?: 'ChatMessageModel', isEdited: boolean, id: string, chat: { __typename?: 'ChatModel', id: string }, user: { __typename?: 'UserModel', id: string, username: string }, repliedToLinks?: Array<{ __typename?: 'ChatMessageReplyModel', id: string, repliedTo?: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', username: string, id: string } } | null } | null> | null } | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', editId?: string | null, id: string, text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }>, repliedToLinks: Array<{ __typename?: 'chatDraftMessageReplyModel', id: string, repliedTo: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', username: string, id: string } } }> }> | null } };
 
 export type FindAllGroupsByUserQueryVariables = Exact<{
   filters: FiltersInput;
@@ -827,6 +979,27 @@ export type FindGroupByGroupIdQueryVariables = Exact<{
 
 
 export type FindGroupByGroupIdQuery = { __typename?: 'Query', findGroupByGroupId: { __typename?: 'GroupModel', id: string, groupName: string, avatarUrl?: string | null, description?: string | null, members: Array<{ __typename?: 'GroupMemberModel', user: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null } }> } };
+
+export type GetPreKeysQueryVariables = Exact<{
+  chatId: Scalars['String']['input'];
+}>;
+
+
+export type GetPreKeysQuery = { __typename?: 'Query', getPreKeys: Array<{ __typename?: 'PreKeyModel', ikPub: string, spkPub: string, spkSig: string, opkPubs: Array<string>, indexOpkPub: number, userId: string }> };
+
+export type GetSecretMessageQueryVariables = Exact<{
+  chatId: Scalars['String']['input'];
+}>;
+
+
+export type GetSecretMessageQuery = { __typename?: 'Query', getSecretMessage: { __typename?: 'QueueSecretMessageModel', chatId: string, fromUserId: string, usedOpk?: string | null, ukm?: string | null, ekPub?: string | null, iv: string, encryptedMessage: string, sig: string } };
+
+export type GetSharedSecretKeyQueryVariables = Exact<{
+  chatId: Scalars['String']['input'];
+}>;
+
+
+export type GetSharedSecretKeyQuery = { __typename?: 'Query', getSharedSecretKey: Array<{ __typename?: 'QueueSharedSecretKeyModel', chatId: string, fromUserId: string, toUserId: string, ekPub: string, usedOpk?: string | null, ukm: string, iv: string, encryptedKey: string, sig: string }> };
 
 export type FindAllUsersQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -844,7 +1017,7 @@ export type ChatAddedSubscriptionVariables = Exact<{
 }>;
 
 
-export type ChatAddedSubscription = { __typename?: 'Subscription', chatAdded: { __typename?: 'ChatModel', id: string, chatName?: string | null, updatedAt: any, avatarUrl?: string | null, lastMessageAt?: any | null, members: Array<{ __typename?: 'ChatMemberModel', user: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null } }>, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string }> }> | null, lastMessage?: { __typename?: 'ChatMessageModel', text?: string | null, user: { __typename?: 'UserModel', username: string }, files?: Array<{ __typename?: 'FileMessageModel', fileName: string }> | null } | null } };
+export type ChatAddedSubscription = { __typename?: 'Subscription', chatAdded: { __typename?: 'ChatModel', chatName?: string | null, avatarUrl?: string | null, updatedAt: any, isSecret: boolean, id: string, isGroup: boolean, groupId?: string | null, lastMessageAt?: any | null, members: Array<{ __typename?: 'ChatMemberModel', user: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null } }>, lastMessage?: { __typename?: 'ChatMessageModel', text?: string | null, user: { __typename?: 'UserModel', username: string }, files?: Array<{ __typename?: 'FileMessageModel', fileName: string }> | null } | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string }> }> | null } };
 
 export type ChatDeletedSubscriptionVariables = Exact<{
   groupId: Scalars['String']['input'];
@@ -852,7 +1025,7 @@ export type ChatDeletedSubscriptionVariables = Exact<{
 }>;
 
 
-export type ChatDeletedSubscription = { __typename?: 'Subscription', chatDeleted: { __typename?: 'ChatModel', id: string } };
+export type ChatDeletedSubscription = { __typename?: 'Subscription', chatDeleted: { __typename?: 'ChatModel', id: string, isSecret: boolean } };
 
 export type ChatMessageAddedSubscriptionVariables = Exact<{
   chatId: Scalars['String']['input'];
@@ -860,7 +1033,7 @@ export type ChatMessageAddedSubscriptionVariables = Exact<{
 }>;
 
 
-export type ChatMessageAddedSubscription = { __typename?: 'Subscription', chatMessageAdded: { __typename?: 'ChatMessageModel', id: string, text?: string | null, isEdited: boolean, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, repliedToLinks?: Array<{ __typename?: 'ChatMessageReplyModel', id: string, repliedTo?: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', avatarUrl?: string | null, username: string, id: string } } | null } | null> | null, chat: { __typename?: 'ChatModel', chatName?: string | null }, user: { __typename?: 'UserModel', avatarUrl?: string | null, username: string, id: string } } };
+export type ChatMessageAddedSubscription = { __typename?: 'Subscription', chatMessageAdded: { __typename?: 'ChatMessageModel', id: string, text?: string | null, isEdited: boolean, createdAt: any, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, repliedToLinks?: Array<{ __typename?: 'ChatMessageReplyModel', id: string, repliedTo?: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', avatarUrl?: string | null, username: string, id: string } } | null } | null> | null, chat: { __typename?: 'ChatModel', chatName?: string | null }, user: { __typename?: 'UserModel', avatarUrl?: string | null, username: string, id: string } } };
 
 export type ChatMessageRemovedSubscriptionVariables = Exact<{
   chatId: Scalars['String']['input'];
@@ -875,7 +1048,7 @@ export type ChatUpdatedSubscriptionVariables = Exact<{
 }>;
 
 
-export type ChatUpdatedSubscription = { __typename?: 'Subscription', chatUpdated: { __typename?: 'ChatModel', id: string, chatName?: string | null, avatarUrl?: string | null, updatedAt: any, lastMessageAt?: any | null, members: Array<{ __typename?: 'ChatMemberModel', user: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null } }>, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string }> }> | null, lastMessage?: { __typename?: 'ChatMessageModel', text?: string | null, user: { __typename?: 'UserModel', username: string }, files?: Array<{ __typename?: 'FileMessageModel', fileName: string }> | null } | null } };
+export type ChatUpdatedSubscription = { __typename?: 'Subscription', chatUpdated: { __typename?: 'ChatModel', chatName?: string | null, avatarUrl?: string | null, updatedAt: any, isSecret: boolean, id: string, isGroup: boolean, groupId?: string | null, lastMessageAt?: any | null, members: Array<{ __typename?: 'ChatMemberModel', user: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null } }>, lastMessage?: { __typename?: 'ChatMessageModel', text?: string | null, user: { __typename?: 'UserModel', username: string }, files?: Array<{ __typename?: 'FileMessageModel', fileName: string }> | null } | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string }> }> | null } };
 
 export type GroupAddedSubscriptionVariables = Exact<{
   userId: Scalars['String']['input'];
@@ -890,6 +1063,20 @@ export type GroupDeletedSubscriptionVariables = Exact<{
 
 
 export type GroupDeletedSubscription = { __typename?: 'Subscription', groupDeleted: { __typename?: 'GroupModel', id: string } };
+
+export type AddSecretMessageSubscriptionVariables = Exact<{
+  userId: Scalars['String']['input'];
+}>;
+
+
+export type AddSecretMessageSubscription = { __typename?: 'Subscription', addSecretMessage: { __typename?: 'QueueSecretMessageModel', chatId: string, fromUserId: string, ukm?: string | null, iv: string, encryptedMessage: string, sig: string } };
+
+export type AddSharedSecretKeySubscriptionVariables = Exact<{
+  userId: Scalars['String']['input'];
+}>;
+
+
+export type AddSharedSecretKeySubscription = { __typename?: 'Subscription', addSharedSecretKey: { __typename?: 'QueueSharedSecretKeyModel', chatId: string, fromUserId: string, toUserId: string, ekPub: string, usedOpk?: string | null, ukm: string, iv: string, encryptedKey: string, sig: string } };
 
 
 export const CreateUserWEmailDocument = gql`
@@ -932,6 +1119,7 @@ export const LoginUserDocument = gql`
     }
     accessToken
     refreshToken
+    sessionId
   }
 }
     `;
@@ -1062,6 +1250,7 @@ export const CreateChatDocument = gql`
     avatarUrl
     id
     updatedAt
+    isSecret
   }
 }
     `;
@@ -1672,6 +1861,99 @@ export function useRemoveGroupAvatarMutation(baseOptions?: Apollo.MutationHookOp
 export type RemoveGroupAvatarMutationHookResult = ReturnType<typeof useRemoveGroupAvatarMutation>;
 export type RemoveGroupAvatarMutationResult = Apollo.MutationResult<RemoveGroupAvatarMutation>;
 export type RemoveGroupAvatarMutationOptions = Apollo.BaseMutationOptions<RemoveGroupAvatarMutation, RemoveGroupAvatarMutationVariables>;
+export const SendPreKeyDocument = gql`
+    mutation SendPreKey($data: PreKeyInput!) {
+  sendPreKey(data: $data)
+}
+    `;
+export type SendPreKeyMutationFn = Apollo.MutationFunction<SendPreKeyMutation, SendPreKeyMutationVariables>;
+
+/**
+ * __useSendPreKeyMutation__
+ *
+ * To run a mutation, you first call `useSendPreKeyMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useSendPreKeyMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [sendPreKeyMutation, { data, loading, error }] = useSendPreKeyMutation({
+ *   variables: {
+ *      data: // value for 'data'
+ *   },
+ * });
+ */
+export function useSendPreKeyMutation(baseOptions?: Apollo.MutationHookOptions<SendPreKeyMutation, SendPreKeyMutationVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useMutation<SendPreKeyMutation, SendPreKeyMutationVariables>(SendPreKeyDocument, options);
+      }
+export type SendPreKeyMutationHookResult = ReturnType<typeof useSendPreKeyMutation>;
+export type SendPreKeyMutationResult = Apollo.MutationResult<SendPreKeyMutation>;
+export type SendPreKeyMutationOptions = Apollo.BaseMutationOptions<SendPreKeyMutation, SendPreKeyMutationVariables>;
+export const SendSecretMessageDocument = gql`
+    mutation SendSecretMessage($data: SendSecretMessageInput!) {
+  sendSecretMessage(data: $data)
+}
+    `;
+export type SendSecretMessageMutationFn = Apollo.MutationFunction<SendSecretMessageMutation, SendSecretMessageMutationVariables>;
+
+/**
+ * __useSendSecretMessageMutation__
+ *
+ * To run a mutation, you first call `useSendSecretMessageMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useSendSecretMessageMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [sendSecretMessageMutation, { data, loading, error }] = useSendSecretMessageMutation({
+ *   variables: {
+ *      data: // value for 'data'
+ *   },
+ * });
+ */
+export function useSendSecretMessageMutation(baseOptions?: Apollo.MutationHookOptions<SendSecretMessageMutation, SendSecretMessageMutationVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useMutation<SendSecretMessageMutation, SendSecretMessageMutationVariables>(SendSecretMessageDocument, options);
+      }
+export type SendSecretMessageMutationHookResult = ReturnType<typeof useSendSecretMessageMutation>;
+export type SendSecretMessageMutationResult = Apollo.MutationResult<SendSecretMessageMutation>;
+export type SendSecretMessageMutationOptions = Apollo.BaseMutationOptions<SendSecretMessageMutation, SendSecretMessageMutationVariables>;
+export const SendSharedSecretKeyDocument = gql`
+    mutation SendSharedSecretKey($data: SharedSecretKeyInput!) {
+  sendSharedSecretKey(data: $data)
+}
+    `;
+export type SendSharedSecretKeyMutationFn = Apollo.MutationFunction<SendSharedSecretKeyMutation, SendSharedSecretKeyMutationVariables>;
+
+/**
+ * __useSendSharedSecretKeyMutation__
+ *
+ * To run a mutation, you first call `useSendSharedSecretKeyMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useSendSharedSecretKeyMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [sendSharedSecretKeyMutation, { data, loading, error }] = useSendSharedSecretKeyMutation({
+ *   variables: {
+ *      data: // value for 'data'
+ *   },
+ * });
+ */
+export function useSendSharedSecretKeyMutation(baseOptions?: Apollo.MutationHookOptions<SendSharedSecretKeyMutation, SendSharedSecretKeyMutationVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useMutation<SendSharedSecretKeyMutation, SendSharedSecretKeyMutationVariables>(SendSharedSecretKeyDocument, options);
+      }
+export type SendSharedSecretKeyMutationHookResult = ReturnType<typeof useSendSharedSecretKeyMutation>;
+export type SendSharedSecretKeyMutationResult = Apollo.MutationResult<SendSharedSecretKeyMutation>;
+export type SendSharedSecretKeyMutationOptions = Apollo.BaseMutationOptions<SendSharedSecretKeyMutation, SendSharedSecretKeyMutationVariables>;
 export const ChangeProfileAvatarDocument = gql`
     mutation ChangeProfileAvatar($avatar: Upload!) {
   changeProfileAvatar(avatar: $avatar)
@@ -1808,7 +2090,10 @@ export const FindAllChatsByGroupDocument = gql`
     chatName
     avatarUrl
     updatedAt
+    isSecret
     id
+    isGroup
+    groupId
     members {
       user {
         id
@@ -1874,8 +2159,11 @@ export const FindAllChatsByUserDocument = gql`
   findAllChatsByUser(filters: $filters) {
     chatName
     avatarUrl
-    id
     updatedAt
+    isSecret
+    id
+    isGroup
+    groupId
     members {
       user {
         id
@@ -1941,6 +2229,7 @@ export const FindAllMessagesByChatDocument = gql`
     id
     isEdited
     text
+    createdAt
     files {
       fileName
       fileFormat
@@ -2016,6 +2305,7 @@ export const FindChatByChatIdDocument = gql`
     chatName
     avatarUrl
     updatedAt
+    isSecret
     description
     pinnedMessage {
       isEdited
@@ -2201,6 +2491,146 @@ export type FindGroupByGroupIdQueryHookResult = ReturnType<typeof useFindGroupBy
 export type FindGroupByGroupIdLazyQueryHookResult = ReturnType<typeof useFindGroupByGroupIdLazyQuery>;
 export type FindGroupByGroupIdSuspenseQueryHookResult = ReturnType<typeof useFindGroupByGroupIdSuspenseQuery>;
 export type FindGroupByGroupIdQueryResult = Apollo.QueryResult<FindGroupByGroupIdQuery, FindGroupByGroupIdQueryVariables>;
+export const GetPreKeysDocument = gql`
+    query GetPreKeys($chatId: String!) {
+  getPreKeys(chatId: $chatId) {
+    ikPub
+    spkPub
+    spkSig
+    opkPubs
+    indexOpkPub
+    userId
+  }
+}
+    `;
+
+/**
+ * __useGetPreKeysQuery__
+ *
+ * To run a query within a React component, call `useGetPreKeysQuery` and pass it any options that fit your needs.
+ * When your component renders, `useGetPreKeysQuery` returns an object from Apollo Client that contains loading, error, and data properties
+ * you can use to render your UI.
+ *
+ * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
+ *
+ * @example
+ * const { data, loading, error } = useGetPreKeysQuery({
+ *   variables: {
+ *      chatId: // value for 'chatId'
+ *   },
+ * });
+ */
+export function useGetPreKeysQuery(baseOptions: Apollo.QueryHookOptions<GetPreKeysQuery, GetPreKeysQueryVariables> & ({ variables: GetPreKeysQueryVariables; skip?: boolean; } | { skip: boolean; }) ) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useQuery<GetPreKeysQuery, GetPreKeysQueryVariables>(GetPreKeysDocument, options);
+      }
+export function useGetPreKeysLazyQuery(baseOptions?: Apollo.LazyQueryHookOptions<GetPreKeysQuery, GetPreKeysQueryVariables>) {
+          const options = {...defaultOptions, ...baseOptions}
+          return Apollo.useLazyQuery<GetPreKeysQuery, GetPreKeysQueryVariables>(GetPreKeysDocument, options);
+        }
+export function useGetPreKeysSuspenseQuery(baseOptions?: Apollo.SkipToken | Apollo.SuspenseQueryHookOptions<GetPreKeysQuery, GetPreKeysQueryVariables>) {
+          const options = baseOptions === Apollo.skipToken ? baseOptions : {...defaultOptions, ...baseOptions}
+          return Apollo.useSuspenseQuery<GetPreKeysQuery, GetPreKeysQueryVariables>(GetPreKeysDocument, options);
+        }
+export type GetPreKeysQueryHookResult = ReturnType<typeof useGetPreKeysQuery>;
+export type GetPreKeysLazyQueryHookResult = ReturnType<typeof useGetPreKeysLazyQuery>;
+export type GetPreKeysSuspenseQueryHookResult = ReturnType<typeof useGetPreKeysSuspenseQuery>;
+export type GetPreKeysQueryResult = Apollo.QueryResult<GetPreKeysQuery, GetPreKeysQueryVariables>;
+export const GetSecretMessageDocument = gql`
+    query GetSecretMessage($chatId: String!) {
+  getSecretMessage(chatId: $chatId) {
+    chatId
+    fromUserId
+    usedOpk
+    ukm
+    ekPub
+    iv
+    encryptedMessage
+    sig
+  }
+}
+    `;
+
+/**
+ * __useGetSecretMessageQuery__
+ *
+ * To run a query within a React component, call `useGetSecretMessageQuery` and pass it any options that fit your needs.
+ * When your component renders, `useGetSecretMessageQuery` returns an object from Apollo Client that contains loading, error, and data properties
+ * you can use to render your UI.
+ *
+ * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
+ *
+ * @example
+ * const { data, loading, error } = useGetSecretMessageQuery({
+ *   variables: {
+ *      chatId: // value for 'chatId'
+ *   },
+ * });
+ */
+export function useGetSecretMessageQuery(baseOptions: Apollo.QueryHookOptions<GetSecretMessageQuery, GetSecretMessageQueryVariables> & ({ variables: GetSecretMessageQueryVariables; skip?: boolean; } | { skip: boolean; }) ) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useQuery<GetSecretMessageQuery, GetSecretMessageQueryVariables>(GetSecretMessageDocument, options);
+      }
+export function useGetSecretMessageLazyQuery(baseOptions?: Apollo.LazyQueryHookOptions<GetSecretMessageQuery, GetSecretMessageQueryVariables>) {
+          const options = {...defaultOptions, ...baseOptions}
+          return Apollo.useLazyQuery<GetSecretMessageQuery, GetSecretMessageQueryVariables>(GetSecretMessageDocument, options);
+        }
+export function useGetSecretMessageSuspenseQuery(baseOptions?: Apollo.SkipToken | Apollo.SuspenseQueryHookOptions<GetSecretMessageQuery, GetSecretMessageQueryVariables>) {
+          const options = baseOptions === Apollo.skipToken ? baseOptions : {...defaultOptions, ...baseOptions}
+          return Apollo.useSuspenseQuery<GetSecretMessageQuery, GetSecretMessageQueryVariables>(GetSecretMessageDocument, options);
+        }
+export type GetSecretMessageQueryHookResult = ReturnType<typeof useGetSecretMessageQuery>;
+export type GetSecretMessageLazyQueryHookResult = ReturnType<typeof useGetSecretMessageLazyQuery>;
+export type GetSecretMessageSuspenseQueryHookResult = ReturnType<typeof useGetSecretMessageSuspenseQuery>;
+export type GetSecretMessageQueryResult = Apollo.QueryResult<GetSecretMessageQuery, GetSecretMessageQueryVariables>;
+export const GetSharedSecretKeyDocument = gql`
+    query GetSharedSecretKey($chatId: String!) {
+  getSharedSecretKey(chatId: $chatId) {
+    chatId
+    fromUserId
+    toUserId
+    ekPub
+    usedOpk
+    ukm
+    iv
+    encryptedKey
+    sig
+  }
+}
+    `;
+
+/**
+ * __useGetSharedSecretKeyQuery__
+ *
+ * To run a query within a React component, call `useGetSharedSecretKeyQuery` and pass it any options that fit your needs.
+ * When your component renders, `useGetSharedSecretKeyQuery` returns an object from Apollo Client that contains loading, error, and data properties
+ * you can use to render your UI.
+ *
+ * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
+ *
+ * @example
+ * const { data, loading, error } = useGetSharedSecretKeyQuery({
+ *   variables: {
+ *      chatId: // value for 'chatId'
+ *   },
+ * });
+ */
+export function useGetSharedSecretKeyQuery(baseOptions: Apollo.QueryHookOptions<GetSharedSecretKeyQuery, GetSharedSecretKeyQueryVariables> & ({ variables: GetSharedSecretKeyQueryVariables; skip?: boolean; } | { skip: boolean; }) ) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useQuery<GetSharedSecretKeyQuery, GetSharedSecretKeyQueryVariables>(GetSharedSecretKeyDocument, options);
+      }
+export function useGetSharedSecretKeyLazyQuery(baseOptions?: Apollo.LazyQueryHookOptions<GetSharedSecretKeyQuery, GetSharedSecretKeyQueryVariables>) {
+          const options = {...defaultOptions, ...baseOptions}
+          return Apollo.useLazyQuery<GetSharedSecretKeyQuery, GetSharedSecretKeyQueryVariables>(GetSharedSecretKeyDocument, options);
+        }
+export function useGetSharedSecretKeySuspenseQuery(baseOptions?: Apollo.SkipToken | Apollo.SuspenseQueryHookOptions<GetSharedSecretKeyQuery, GetSharedSecretKeyQueryVariables>) {
+          const options = baseOptions === Apollo.skipToken ? baseOptions : {...defaultOptions, ...baseOptions}
+          return Apollo.useSuspenseQuery<GetSharedSecretKeyQuery, GetSharedSecretKeyQueryVariables>(GetSharedSecretKeyDocument, options);
+        }
+export type GetSharedSecretKeyQueryHookResult = ReturnType<typeof useGetSharedSecretKeyQuery>;
+export type GetSharedSecretKeyLazyQueryHookResult = ReturnType<typeof useGetSharedSecretKeyLazyQuery>;
+export type GetSharedSecretKeySuspenseQueryHookResult = ReturnType<typeof useGetSharedSecretKeySuspenseQuery>;
+export type GetSharedSecretKeyQueryResult = Apollo.QueryResult<GetSharedSecretKeyQuery, GetSharedSecretKeyQueryVariables>;
 export const FindAllUsersDocument = gql`
     query FindAllUsers {
   findAllUsers {
@@ -2289,10 +2719,13 @@ export type FindProfileQueryResult = Apollo.QueryResult<FindProfileQuery, FindPr
 export const ChatAddedDocument = gql`
     subscription ChatAdded($userId: String!, $groupId: String!) {
   chatAdded(userId: $userId, groupId: $groupId) {
-    id
     chatName
-    updatedAt
     avatarUrl
+    updatedAt
+    isSecret
+    id
+    isGroup
+    groupId
     members {
       user {
         id
@@ -2300,17 +2733,17 @@ export const ChatAddedDocument = gql`
         avatarUrl
       }
     }
-    draftMessages {
-      files {
-        fileName
-      }
-      text
-    }
     lastMessage {
       text
       user {
         username
       }
+      files {
+        fileName
+      }
+    }
+    draftMessages {
+      text
       files {
         fileName
       }
@@ -2347,6 +2780,7 @@ export const ChatDeletedDocument = gql`
     subscription ChatDeleted($groupId: String!, $userId: String!) {
   chatDeleted(groupId: $groupId, userId: $userId) {
     id
+    isSecret
   }
 }
     `;
@@ -2380,6 +2814,7 @@ export const ChatMessageAddedDocument = gql`
     id
     text
     isEdited
+    createdAt
     files {
       fileName
       fileFormat
@@ -2473,10 +2908,13 @@ export type ChatMessageRemovedSubscriptionResult = Apollo.SubscriptionResult<Cha
 export const ChatUpdatedDocument = gql`
     subscription ChatUpdated($userId: String!) {
   chatUpdated(userId: $userId) {
-    id
     chatName
     avatarUrl
     updatedAt
+    isSecret
+    id
+    isGroup
+    groupId
     members {
       user {
         id
@@ -2484,17 +2922,17 @@ export const ChatUpdatedDocument = gql`
         avatarUrl
       }
     }
-    draftMessages {
-      files {
-        fileName
-      }
-      text
-    }
     lastMessage {
       text
       user {
         username
       }
+      files {
+        fileName
+      }
+    }
+    draftMessages {
+      text
       files {
         fileName
       }
@@ -2588,3 +3026,76 @@ export function useGroupDeletedSubscription(baseOptions: Apollo.SubscriptionHook
       }
 export type GroupDeletedSubscriptionHookResult = ReturnType<typeof useGroupDeletedSubscription>;
 export type GroupDeletedSubscriptionResult = Apollo.SubscriptionResult<GroupDeletedSubscription>;
+export const AddSecretMessageDocument = gql`
+    subscription AddSecretMessage($userId: String!) {
+  addSecretMessage(userId: $userId) {
+    chatId
+    fromUserId
+    ukm
+    iv
+    encryptedMessage
+    sig
+  }
+}
+    `;
+
+/**
+ * __useAddSecretMessageSubscription__
+ *
+ * To run a query within a React component, call `useAddSecretMessageSubscription` and pass it any options that fit your needs.
+ * When your component renders, `useAddSecretMessageSubscription` returns an object from Apollo Client that contains loading, error, and data properties
+ * you can use to render your UI.
+ *
+ * @param baseOptions options that will be passed into the subscription, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
+ *
+ * @example
+ * const { data, loading, error } = useAddSecretMessageSubscription({
+ *   variables: {
+ *      userId: // value for 'userId'
+ *   },
+ * });
+ */
+export function useAddSecretMessageSubscription(baseOptions: Apollo.SubscriptionHookOptions<AddSecretMessageSubscription, AddSecretMessageSubscriptionVariables> & ({ variables: AddSecretMessageSubscriptionVariables; skip?: boolean; } | { skip: boolean; }) ) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useSubscription<AddSecretMessageSubscription, AddSecretMessageSubscriptionVariables>(AddSecretMessageDocument, options);
+      }
+export type AddSecretMessageSubscriptionHookResult = ReturnType<typeof useAddSecretMessageSubscription>;
+export type AddSecretMessageSubscriptionResult = Apollo.SubscriptionResult<AddSecretMessageSubscription>;
+export const AddSharedSecretKeyDocument = gql`
+    subscription AddSharedSecretKey($userId: String!) {
+  addSharedSecretKey(userId: $userId) {
+    chatId
+    fromUserId
+    toUserId
+    ekPub
+    usedOpk
+    ukm
+    iv
+    encryptedKey
+    sig
+  }
+}
+    `;
+
+/**
+ * __useAddSharedSecretKeySubscription__
+ *
+ * To run a query within a React component, call `useAddSharedSecretKeySubscription` and pass it any options that fit your needs.
+ * When your component renders, `useAddSharedSecretKeySubscription` returns an object from Apollo Client that contains loading, error, and data properties
+ * you can use to render your UI.
+ *
+ * @param baseOptions options that will be passed into the subscription, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
+ *
+ * @example
+ * const { data, loading, error } = useAddSharedSecretKeySubscription({
+ *   variables: {
+ *      userId: // value for 'userId'
+ *   },
+ * });
+ */
+export function useAddSharedSecretKeySubscription(baseOptions: Apollo.SubscriptionHookOptions<AddSharedSecretKeySubscription, AddSharedSecretKeySubscriptionVariables> & ({ variables: AddSharedSecretKeySubscriptionVariables; skip?: boolean; } | { skip: boolean; }) ) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useSubscription<AddSharedSecretKeySubscription, AddSharedSecretKeySubscriptionVariables>(AddSharedSecretKeyDocument, options);
+      }
+export type AddSharedSecretKeySubscriptionHookResult = ReturnType<typeof useAddSharedSecretKeySubscription>;
+export type AddSharedSecretKeySubscriptionResult = Apollo.SubscriptionResult<AddSharedSecretKeySubscription>;

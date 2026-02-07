@@ -48,10 +48,8 @@ const AuthProvider: FC<PropsWithChildren<unknown>> = ({ children }) => {
 		try {
 			// 1) локальный access token (и автоматический refresh внутри getAccessToken)
 			const token = await getAccessToken()
+
 			if (!token) {
-				// если токена нет — делаем logout
-				await handleLogout()
-				setUserId('')
 				return false
 			}
 
@@ -63,6 +61,7 @@ const AuthProvider: FC<PropsWithChildren<unknown>> = ({ children }) => {
 				})
 
 				const meId = (res?.data as any)?.me?.id
+
 				if (meId) {
 					setUserId(meId)
 					// пересоздаём WS на всякий случай (если токен был refresh'нут внутри getAccessToken)
@@ -74,18 +73,21 @@ const AuthProvider: FC<PropsWithChildren<unknown>> = ({ children }) => {
 					return true
 				} else {
 					// если сервер вернул пустого me — принудительный логаут
+
 					await handleLogout()
 					setUserId('')
 					return false
 				}
 			} catch (e) {
 				// Если сетевой запрос упал (напр. 401) — логинимся
+
 				await handleLogout()
 				setUserId('')
 				return false
 			}
 		} catch (e) {
 			// безопасно логаутим по умолчанию
+
 			await handleLogout()
 			setUserId('')
 			return false
@@ -104,6 +106,7 @@ const AuthProvider: FC<PropsWithChildren<unknown>> = ({ children }) => {
 				}
 
 				// полноценная проверка токена и валидация у сервера
+
 				await checkAuth()
 			} finally {
 				// прячем сплэш только после завершения проверки

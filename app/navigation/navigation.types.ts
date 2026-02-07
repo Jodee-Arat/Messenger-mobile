@@ -11,7 +11,12 @@ export type TypeRootStackParamList = {
 	ChatsList: { groupId: string; groupName: string }
 	Groups: undefined
 	UserSettings: undefined
-	Chat: { chatId: string; chatName: string }
+	Chat: {
+		chatId: string
+		chatName: string
+		isSecret: boolean
+		groupId: string
+	}
 	ChatSettings: { chatId: string }
 	// Thanks: undefined
 	// Category: {

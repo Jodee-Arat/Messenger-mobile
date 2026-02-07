@@ -10,9 +10,14 @@ import { FindAllChatsByGroupQuery } from '@/graphql/generated/output'
 interface ChatDropdownTrigger {
 	chat: FindAllChatsByGroupQuery['findAllChatsByGroup'][0]
 	deleteChat: (chatId: string) => void
+	groupId: string
 }
 
-const ChatDropdownTrigger: FC<ChatDropdownTrigger> = ({ deleteChat, chat }) => {
+const ChatDropdownTrigger: FC<ChatDropdownTrigger> = ({
+	deleteChat,
+	chat,
+	groupId
+}) => {
 	const [modalVisible, setModalVisible] = useState(false)
 
 	const handleLongPress = () => setModalVisible(true)
@@ -23,7 +28,11 @@ const ChatDropdownTrigger: FC<ChatDropdownTrigger> = ({ deleteChat, chat }) => {
 
 	return (
 		<View>
-			<ChatsItem chat={chat} handleLongPress={handleLongPress} />
+			<ChatsItem
+				groupId={groupId}
+				chat={chat}
+				handleLongPress={handleLongPress}
+			/>
 
 			<Modal
 				transparent

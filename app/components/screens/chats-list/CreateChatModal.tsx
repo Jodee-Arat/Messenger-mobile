@@ -5,7 +5,6 @@ import {
 	ActivityIndicator,
 	Modal,
 	ScrollView,
-	StyleSheet,
 	Text,
 	TextInput,
 	TouchableOpacity,
@@ -22,9 +21,9 @@ import { createSecretChat } from '@/utils/secret-chat/secretChat'
 
 import {
 	FindAllChatsByGroupQuery,
-	FindAllUsersQuery,
 	useCreateChatMutation,
-	useFindAllUsersQuery
+	useFindAllUsersQuery,
+	useGetPreKeysLazyQuery
 } from '@/graphql/generated/output'
 import {
 	createChatSchema,
@@ -56,7 +55,6 @@ const CreateChatModal: FC<CreateChatModalProp> = ({ groupId, setAllChats }) => {
 			userIds: []
 		}
 	})
-	const { user } = useCurrentUser()
 
 	const users = data?.findAllUsers ?? []
 
@@ -79,38 +77,13 @@ const CreateChatModal: FC<CreateChatModalProp> = ({ groupId, setAllChats }) => {
 	})
 
 	const onSubmit = (data: createChatSchemaType) => {
-		if (data.isSecretChat) {
-			const secretUsers: FindAllUsersQuery['findAllUsers'] = []
-			users.forEach(user => {
-				if (data.userIds.includes(user.id)) {
-					secretUsers.push(user)
-				}
-			})
-			if (user) {
-				secretUsers.push(user)
-			}
-			createSecretChat(data.chatName, secretUsers)
-				.then(chat => {
-					setAllChats(prevAllChats => [chat, ...(prevAllChats ?? [])])
-					Toast.show({
-						type: 'success',
-						text1: 'Chat created successfully!'
-					})
-				})
-				.catch(error => {
-					Toast.show({
-						type: 'error',
-						text1: 'Error creating chat',
-						text2: error.message || 'Something went wrong'
-					})
-				})
-		}
 		createChat({
 			variables: {
 				groupId,
 				data: {
 					chatName: data.chatName,
-					userIds: data.userIds
+					userIds: data.userIds,
+					isSecret: data.isSecretChat
 				}
 			}
 		})
@@ -165,7 +138,13 @@ const CreateChatModal: FC<CreateChatModalProp> = ({ groupId, setAllChats }) => {
 										control={form.control}
 										name='userIds'
 										render={({ field }) => (
-											<View className='flex-row items-center mb-2'>
+											<View
+												style={{
+													flexDirection: 'row',
+													alignItems: 'center',
+													marginBottom: 8
+												}}
+											>
 												<Checkbox
 													checked={field.value.includes(
 														user.id
@@ -192,7 +171,7 @@ const CreateChatModal: FC<CreateChatModalProp> = ({ groupId, setAllChats }) => {
 													}}
 												/>
 
-												<Text className='ml-2'>
+												<Text style={{ marginLeft: 8 }}>
 													{user.username}
 												</Text>
 											</View>

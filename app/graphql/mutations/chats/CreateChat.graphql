@@ -4,5 +4,6 @@ mutation createChat($data: CreateChatInput!, $groupId: String!) {
 		avatarUrl
 		id
 		updatedAt
+		isSecret
 	}
 }

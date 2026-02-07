@@ -168,8 +168,6 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 		)
 	}
 
-	// FlatList expects newest messages to be at the end if inverted={true}
-	// messagesInfo is assumed chronological (oldest first).
 	return (
 		<View className='flex-1'>
 			<ChatToolbar
@@ -196,25 +194,36 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 						<Text>Пусто</Text>
 					</View>
 				)}
-				renderItem={({ item, index }) => (
-					<View className='mb-2'>
-						<ChatMessageDropdownTrigger
-							startEdit={startEdit}
-							handleAddForwardedMessage={
-								handleAddForwardedMessage
-							}
-							handleClearMessagesId={handleClearMessagesId}
-							handleChooseMessage={handleChooseMessage}
-							messageInfo={item}
-							userId={userId}
-							key={item.id}
-							messageId={item.id}
-							messageIds={messageIds}
-							chatId={chatId}
-							setPinnedMessage={setPinnedMessage}
-						/>
-					</View>
-				)}
+				renderItem={({ item, index }) => {
+					const isSelected = messageIds.includes(item.id)
+					return (
+						<View className='mb-2'>
+							<ChatMessageDropdownTrigger
+								startEdit={startEdit}
+								handleAddForwardedMessage={
+									handleAddForwardedMessage
+								}
+								handleClearMessagesId={handleClearMessagesId}
+								handleChooseMessage={handleChooseMessage}
+								messageInfo={item}
+								userId={userId}
+								key={item.id}
+								messageId={item.id}
+								messageIds={messageIds}
+								chatId={chatId}
+								isSelected={isSelected}
+								setPinnedMessage={setPinnedMessage}
+							/>
+							{item.files && item.files.length > 0 && (
+								<MessageFileList
+									chatId={chatId}
+									files={item.files}
+									isSelected={isSelected}
+								/>
+							)}
+						</View>
+					)
+				}}
 			/>
 		</View>
 	)

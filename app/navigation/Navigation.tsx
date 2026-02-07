@@ -1,7 +1,5 @@
-import {
-	NavigationContainer,
-	useNavigationContainerRef
-} from '@react-navigation/native'
+// Navigation.tsx
+import { NavigationContainer } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { FC, useEffect, useState } from 'react'
 import { useColorScheme } from 'react-native'
@@ -9,33 +7,29 @@ import { useColorScheme } from 'react-native'
 import BottomMenu from '@/components/layout/bottom-menu/BottomMenu'
 
 import { useAuth } from '@/hooks/useAuth'
-import { useUser } from '@/hooks/useUser'
 
+import { navigationRef } from './navigate'
 import { TypeRootStackParamList } from './navigation.types'
 import { routes } from './routes'
+
+// <-- глобальный ref
 
 const Stack = createNativeStackNavigator<TypeRootStackParamList>()
 
 const Navigation: FC = () => {
 	const scheme = useColorScheme()
-
 	const { isAuthenticated } = useAuth()
-
 	const [currentRoute, setCurrentRoute] = useState<string | undefined>(
 		undefined
 	)
 
-	const navRef = useNavigationContainerRef()
-
 	useEffect(() => {
-		setCurrentRoute(navRef.getCurrentRoute()?.name)
-
-		const listener = navRef.addListener('state', () =>
-			setCurrentRoute(navRef.getCurrentRoute()?.name)
+		setCurrentRoute(navigationRef.getCurrentRoute()?.name)
+		const listener = navigationRef.addListener('state', () =>
+			setCurrentRoute(navigationRef.getCurrentRoute()?.name)
 		)
-
 		return () => {
-			navRef.removeListener('state', listener)
+			navigationRef.removeListener('state', listener)
 		}
 	}, [])
 
@@ -43,7 +37,7 @@ const Navigation: FC = () => {
 
 	return (
 		<>
-			<NavigationContainer ref={navRef}>
+			<NavigationContainer ref={navigationRef}>
 				<Stack.Navigator
 					screenOptions={{
 						headerShown: false,
@@ -55,9 +49,17 @@ const Navigation: FC = () => {
 					))}
 				</Stack.Navigator>
 			</NavigationContainer>
-			{isAuthenticated && navRef.isReady() && currentRoute !== 'Chat' && (
-				<BottomMenu nav={navRef.navigate} currentRoute={currentRoute} />
-			)}
+
+			{isAuthenticated &&
+				navigationRef.isReady() &&
+				currentRoute !== 'Chat' && (
+					<BottomMenu
+						nav={screenName =>
+							navigationRef.navigate(screenName as any)
+						}
+						currentRoute={currentRoute}
+					/>
+				)}
 		</>
 	)
 }

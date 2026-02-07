@@ -3,6 +3,7 @@ query FindChatByChatId($chatId: String!) {
 		chatName
 		avatarUrl
 		updatedAt
+		isSecret
 		description
 		pinnedMessage {
 			isEdited

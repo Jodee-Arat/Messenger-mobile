@@ -1,40 +1,41 @@
 subscription ChatMessageAdded($chatId: String!, $userId: String!) {
-  chatMessageAdded(chatId: $chatId, userId: $userId) {
-    id
-    text
-    isEdited
-    files {
-      fileName
-      fileFormat
-      fileSize
-      id
-    }
-    repliedToLinks {
-      id
+	chatMessageAdded(chatId: $chatId, userId: $userId) {
+		id
+		text
+		isEdited
+		createdAt
+		files {
+			fileName
+			fileFormat
+			fileSize
+			id
+		}
+		repliedToLinks {
+			id
 
-      repliedTo {
-        id
-        text
-        files {
-          fileName
-          fileFormat
-          fileSize
-          id
-        }
-        user {
-          avatarUrl
-          username
-          id
-        }
-      }
-    }
-    chat {
-      chatName
-    }
-    user {
-      avatarUrl
-      username
-      id
-    }
-  }
+			repliedTo {
+				id
+				text
+				files {
+					fileName
+					fileFormat
+					fileSize
+					id
+				}
+				user {
+					avatarUrl
+					username
+					id
+				}
+			}
+		}
+		chat {
+			chatName
+		}
+		user {
+			avatarUrl
+			username
+			id
+		}
+	}
 }

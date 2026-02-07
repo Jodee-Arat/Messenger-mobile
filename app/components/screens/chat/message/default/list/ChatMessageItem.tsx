@@ -13,6 +13,7 @@ interface ChatMessageItemProp {
 	chatId: string
 	messageId: string
 	messageIds: string[]
+	isSelected: boolean
 	handleChooseMessage: (messageId: string) => void
 }
 
@@ -22,10 +23,10 @@ const ChatMessageItem: FC<ChatMessageItemProp> = ({
 	messageId,
 	userId,
 	messageIds,
+	isSelected,
 	chatId
 }) => {
 	const { text, user, files, isEdited } = messageInfo
-	const isSelected = messageIds.includes(messageId)
 
 	const forwardedMessages: ForwardedMessageType[] =
 		messageInfo.repliedToLinks

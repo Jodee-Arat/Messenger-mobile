@@ -2,8 +2,11 @@ query FindAllChatsByUser($filters: FiltersInput!) {
 	findAllChatsByUser(filters: $filters) {
 		chatName
 		avatarUrl
-		id
 		updatedAt
+		isSecret
+		id
+		isGroup
+		groupId
 		members {
 			user {
 				id

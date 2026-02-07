@@ -11,21 +11,30 @@ import EntityAvatar from '@/components/ui/EntityAvatar'
 
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 
+import { createSecretChat } from '@/utils/secret-chat/secretChat'
+
 import { FindAllChatsByGroupQuery } from '@/graphql/generated/output'
 
 interface ChatsItemProps {
 	chat: FindAllChatsByGroupQuery['findAllChatsByGroup'][0]
 	handleLongPress?: () => void
+	groupId: string
 }
 
-const ChatsItem: FC<ChatsItemProps> = ({ chat, handleLongPress }) => {
+const ChatsItem: FC<ChatsItemProps> = ({ chat, handleLongPress, groupId }) => {
 	const navigation = useTypedNavigation()
 	const handlePress = () => {
 		navigation.navigate('Chat', {
 			chatId: chat.id,
-			chatName: chat.chatName!
+			chatName: chat.chatName!,
+			isSecret: chat.isSecret,
+			groupId: groupId
 		})
 	}
+	if (chat.isSecret) {
+		createSecretChat(chat)
+	}
+
 	return (
 		<Pressable
 			onLongPress={handleLongPress}

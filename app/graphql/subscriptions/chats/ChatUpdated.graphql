@@ -1,9 +1,12 @@
 subscription ChatUpdated($userId: String!) {
 	chatUpdated(userId: $userId) {
-		id
 		chatName
 		avatarUrl
 		updatedAt
+		isSecret
+		id
+		isGroup
+		groupId
 		members {
 			user {
 				id
@@ -11,17 +14,17 @@ subscription ChatUpdated($userId: String!) {
 				avatarUrl
 			}
 		}
-		draftMessages {
-			files {
-				fileName
-			}
-			text
-		}
 		lastMessage {
 			text
 			user {
 				username
 			}
+			files {
+				fileName
+			}
+		}
+		draftMessages {
+			text
 			files {
 				fileName
 			}

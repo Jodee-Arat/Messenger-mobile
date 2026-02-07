@@ -5,6 +5,8 @@ import { Pressable, Text, View } from 'react-native'
 import { useAuth } from '@/hooks/useAuth'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 
+import { loadMyPreKeyJSON } from '@/utils/secret-chat/secretChat'
+
 const Header: FC = () => {
 	const { navigate } = useTypedNavigation()
 	const { exit } = useAuth()
@@ -24,7 +26,10 @@ const Header: FC = () => {
 				<Text>X</Text>
 			</Pressable>
 
-			<Pressable onPress={() => navigate('Cart')}>
+			<Pressable onPress={() => loadMyPreKeyJSON()}>
+				<Ionicons name='cart' size={26} color='#6d7279' />
+			</Pressable>
+			<Pressable onPress={() => loadMyPreKeyJSON()}>
 				<Ionicons name='cart' size={26} color='#6d7279' />
 			</Pressable>
 		</View>

@@ -1,9 +1,13 @@
+import { CommonActions } from '@react-navigation/native'
 import { FC } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 
 import Layout from '@/components/layout/Layout'
 
+import { useAuth } from '@/hooks/useAuth'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
+
+import { handleLogout } from '@/services/auth/auth.service'
 
 import Header from './Header'
 
@@ -40,7 +44,7 @@ const Home: FC = () => {
 		{
 			id: '5',
 			name: 'Exit',
-			onPress: () => console.log('Выход из приложения')
+			onPress: async () => await handleLogout()
 		}
 	]
 
