@@ -143,6 +143,7 @@ export type ChatModel = {
 
 export type CreateChatInput = {
   chatName: Scalars['String']['input'];
+  isGroup: Scalars['Boolean']['input'];
   isSecret?: InputMaybe<Scalars['Boolean']['input']>;
   userIds: Array<Scalars['String']['input']>;
 };
@@ -268,8 +269,8 @@ export type Mutation = {
   sendChatMessage: Scalars['Boolean']['output'];
   sendFile: AttachFileModel;
   sendPreKey: Scalars['Boolean']['output'];
-  sendSecretMessage: Scalars['Boolean']['output'];
-  sendSharedSecretKey: Scalars['Boolean']['output'];
+  sendSecretMessage: QueueSecretMessageModel;
+  sendSharedSecretKey: QueueSharedSecretKeyModel;
   unPinChat: Scalars['Boolean']['output'];
   unPinMessage: Scalars['Boolean']['output'];
 };
@@ -624,7 +625,7 @@ export type SharedSecretKeyInput = {
 export type Subscription = {
   __typename?: 'Subscription';
   addSecretMessage: QueueSecretMessageModel;
-  addSharedSecretKey: QueueSharedSecretKeyModel;
+  addSharedSecretKey?: Maybe<QueueSharedSecretKeyModel>;
   chatAdded: ChatModel;
   chatDeleted: ChatModel;
   chatMessageAdded: ChatMessageModel;
@@ -901,14 +902,14 @@ export type SendSecretMessageMutationVariables = Exact<{
 }>;
 
 
-export type SendSecretMessageMutation = { __typename?: 'Mutation', sendSecretMessage: boolean };
+export type SendSecretMessageMutation = { __typename?: 'Mutation', sendSecretMessage: { __typename?: 'QueueSecretMessageModel', id: string } };
 
 export type SendSharedSecretKeyMutationVariables = Exact<{
   data: SharedSecretKeyInput;
 }>;
 
 
-export type SendSharedSecretKeyMutation = { __typename?: 'Mutation', sendSharedSecretKey: boolean };
+export type SendSharedSecretKeyMutation = { __typename?: 'Mutation', sendSharedSecretKey: { __typename?: 'QueueSharedSecretKeyModel', id: string } };
 
 export type ChangeProfileAvatarMutationVariables = Exact<{
   avatar: Scalars['Upload']['input'];
@@ -999,7 +1000,7 @@ export type GetSharedSecretKeyQueryVariables = Exact<{
 }>;
 
 
-export type GetSharedSecretKeyQuery = { __typename?: 'Query', getSharedSecretKey: Array<{ __typename?: 'QueueSharedSecretKeyModel', chatId: string, fromUserId: string, toUserId: string, ekPub: string, usedOpk?: string | null, ukm: string, iv: string, encryptedKey: string, sig: string }> };
+export type GetSharedSecretKeyQuery = { __typename?: 'Query', getSharedSecretKey: Array<{ __typename?: 'QueueSharedSecretKeyModel', id: string, groupId: string, createdAt: any, updatedAt: any, ikPub: string, chatId: string, fromUserId: string, toUserId: string, ekPub: string, usedOpk?: string | null, ukm: string, iv: string, encryptedKey: string, sig: string }> };
 
 export type FindAllUsersQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -1076,7 +1077,7 @@ export type AddSharedSecretKeySubscriptionVariables = Exact<{
 }>;
 
 
-export type AddSharedSecretKeySubscription = { __typename?: 'Subscription', addSharedSecretKey: { __typename?: 'QueueSharedSecretKeyModel', chatId: string, fromUserId: string, toUserId: string, ekPub: string, usedOpk?: string | null, ukm: string, iv: string, encryptedKey: string, sig: string } };
+export type AddSharedSecretKeySubscription = { __typename?: 'Subscription', addSharedSecretKey?: { __typename?: 'QueueSharedSecretKeyModel', chatId: string, fromUserId: string, toUserId: string, ekPub: string, usedOpk?: string | null, ukm: string, iv: string, encryptedKey: string, sig: string } | null };
 
 
 export const CreateUserWEmailDocument = gql`
@@ -1894,7 +1895,9 @@ export type SendPreKeyMutationResult = Apollo.MutationResult<SendPreKeyMutation>
 export type SendPreKeyMutationOptions = Apollo.BaseMutationOptions<SendPreKeyMutation, SendPreKeyMutationVariables>;
 export const SendSecretMessageDocument = gql`
     mutation SendSecretMessage($data: SendSecretMessageInput!) {
-  sendSecretMessage(data: $data)
+  sendSecretMessage(data: $data) {
+    id
+  }
 }
     `;
 export type SendSecretMessageMutationFn = Apollo.MutationFunction<SendSecretMessageMutation, SendSecretMessageMutationVariables>;
@@ -1925,7 +1928,9 @@ export type SendSecretMessageMutationResult = Apollo.MutationResult<SendSecretMe
 export type SendSecretMessageMutationOptions = Apollo.BaseMutationOptions<SendSecretMessageMutation, SendSecretMessageMutationVariables>;
 export const SendSharedSecretKeyDocument = gql`
     mutation SendSharedSecretKey($data: SharedSecretKeyInput!) {
-  sendSharedSecretKey(data: $data)
+  sendSharedSecretKey(data: $data) {
+    id
+  }
 }
     `;
 export type SendSharedSecretKeyMutationFn = Apollo.MutationFunction<SendSharedSecretKeyMutation, SendSharedSecretKeyMutationVariables>;
@@ -2586,6 +2591,11 @@ export type GetSecretMessageQueryResult = Apollo.QueryResult<GetSecretMessageQue
 export const GetSharedSecretKeyDocument = gql`
     query GetSharedSecretKey($chatId: String!) {
   getSharedSecretKey(chatId: $chatId) {
+    id
+    groupId
+    createdAt
+    updatedAt
+    ikPub
     chatId
     fromUserId
     toUserId

@@ -31,9 +31,11 @@ import {
 	FindAllUsersQuery,
 	GetPreKeysQuery,
 	useAddSecretMessageSubscription,
+	useAddSharedSecretKeySubscription,
 	useFindChatByChatIdQuery,
 	useGetPreKeysLazyQuery,
 	useGetSecretMessageLazyQuery,
+	useGetSharedSecretKeyLazyQuery,
 	useSendChatMessageMutation,
 	useSendSecretMessageMutation,
 	useSendSharedSecretKeyMutation
@@ -125,13 +127,18 @@ export const useSecretChat = (
 		useGetPreKeysLazyQuery({
 			fetchPolicy: 'network-only'
 		})
-	const [getSecretMessage, { data: dataSecretMessage }] =
-		useGetSecretMessageLazyQuery({
-			fetchPolicy: 'network-only'
-		})
+	const [getSecretMessage] = useGetSecretMessageLazyQuery({
+		fetchPolicy: 'network-only'
+	})
+	const [getSharedSecretKey] = useGetSharedSecretKeyLazyQuery({
+		fetchPolicy: 'network-only'
+	})
 	const { data: subSecretMessage } = useAddSecretMessageSubscription({
 		variables: { userId }
 	})
+	// const { data: subSharedSecretKey } = useAddSharedSecretKeySubscription({
+	// 	variables: { userId }
+	// })
 
 	const [sendMessageToClients] = useSendSecretMessageMutation()
 	const [sendSharedSecretKey] = useSendSharedSecretKeyMutation()
@@ -159,9 +166,12 @@ export const useSecretChat = (
 	// Подписка на новые секретные сообщения
 	useEffect(() => {
 		const msg = subSecretMessage?.addSecretMessage
+		console.log(msg)
+
 		if (!msg) return
 		;(async () => {
 			const result = await processSecretSubscriptionAction({
+				getSharedSecretKey,
 				msg,
 				chat,
 				chatId,

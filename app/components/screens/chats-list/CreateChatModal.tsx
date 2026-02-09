@@ -81,6 +81,7 @@ const CreateChatModal: FC<CreateChatModalProp> = ({ groupId, setAllChats }) => {
 			variables: {
 				groupId,
 				data: {
+					isGroup: true,
 					chatName: data.chatName,
 					userIds: data.userIds,
 					isSecret: data.isSecretChat

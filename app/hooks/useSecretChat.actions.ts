@@ -164,6 +164,7 @@ export const processSecretSubscriptionAction = async (params: {
 	preKeysPub: GetPreKeysQuery['getPreKeys'] // публичные preKeys всех участников
 	mySecretPreKey: PreKeyBundleClient | null // мои приватные ключи IK/SPK из файла
 	getPreKeys?: ReturnType<typeof useGetPreKeysLazyQuery>[0] // ленивый запрос preKeys (для рефреша)
+	getSharedSecretKey: ReturnType<typeof useGetSharedSecretKeyLazyQuery>[0] // ленивый запрос shared secret key (для финализации)
 	getSecretMessage: ReturnType<typeof useGetSecretMessageLazyQuery>[0] // ленивый запрос секретного сообщения
 	processedRef?: MutableRefObject<Set<string>> // глобальный набор уже обработанных пакетов (iv+sig)
 }): Promise<{
@@ -182,10 +183,12 @@ export const processSecretSubscriptionAction = async (params: {
 		mySecretPreKey, // мои приватные ключи
 		getPreKeys, // функция запроса preKeys
 		getSecretMessage, // функция запроса секретного сообщения
-		processedRef // глобальный набор обработанных пакетов
+		processedRef, // глобальный набор обработанных пакетов
+		getSharedSecretKey
 	} = params
 
-	if (!msg || !chat) return {} // если нет данных — выходим
+	if (!msg || !chat || preKeysPub.length === 0 || !mySecretPreKey) return {} // если нет данных — выходим
+	console.log(userId)
 
 	// Global dedup by iv+sig if provided
 	try {
@@ -214,14 +217,14 @@ export const processSecretSubscriptionAction = async (params: {
 		} else if (mySecretPreKey) {
 			// иначе пробуем финализировать через GSM
 			try {
-				// пытаемся получить пакет для финализации
-				const resMsg = await getSecretMessage({ variables: { chatId } }) // запрос пары для финализации
-				const smsg: any = resMsg.data?.getSecretMessage // извлекаем полезную нагрузку
+				const resSharedSecretKey = (
+					await getSharedSecretKey({ variables: { chatId } })
+				).data?.getSharedSecretKey[0] // запрос пакета для финализации
 				console.log(
 					'[SecretChat][Sub][GSM] full payload:', // лог payload
-					JSON.stringify(smsg)
+					JSON.stringify(msg)
 				)
-				if (smsg?.ukm) {
+				if (msg?.ukm) {
 					// ukm присутствует — это инициирующий пакет
 					const ikPrivHex = mySecretPreKey.ikPriv || '' // IK приватный ключ в hex
 					const spkPrivHex = mySecretPreKey.spkPriv || '' // SPK приватный ключ в hex
@@ -235,8 +238,8 @@ export const processSecretSubscriptionAction = async (params: {
 					const ikPriv = await importPrivateRaw(fromHex(ikPrivHex)) // импорт IK
 					const spkPriv = await importPrivateRaw(fromHex(spkPrivHex)) // импорт SPK
 					let senderIkPub =
-						smsg.ikPub || // приоритет — из payload
-						preKeysPub.find(pk => pk.userId === smsg.fromUserId)
+						resSharedSecretKey?.ikPub || // приоритет — из payload
+						preKeysPub.find(pk => pk.userId === msg.fromUserId)
 							?.ikPub || // иначе из preKeys
 						undefined
 					if (!senderIkPub && getPreKeys) {
@@ -247,7 +250,7 @@ export const processSecretSubscriptionAction = async (params: {
 							})
 							const fresh = preKeysResponse.data?.getPreKeys || []
 							senderIkPub = fresh.find(
-								pk => pk.userId === smsg.fromUserId
+								pk => pk.userId === msg.fromUserId
 							)?.ikPub
 						} catch (e) {
 							console.warn(
@@ -265,12 +268,12 @@ export const processSecretSubscriptionAction = async (params: {
 					}
 					const envelope = {
 						ikAPub: senderIkPub, // публичный IK отправителя
-						ekAPub: smsg.ekPub, // efemерный ключ отправителя
-						usedOpk: smsg.usedOpk ?? null, // использованный OPK
-						ukm: smsg.ukm, // ukm для KDF
-						iv: smsg.iv, // IV для шифрования
-						ct: smsg.encryptedMessage, // шифртекст
-						sig: smsg.sig // подпись отправителя
+						ekAPub: resSharedSecretKey?.ekPub!, // efemерный ключ отправителя
+						usedOpk: resSharedSecretKey?.usedOpk ?? null, // использованный OPK
+						ukm: msg.ukm, // ukm для KDF
+						iv: msg.iv, // IV для шифрования
+						ct: msg.encryptedMessage, // шифртекст
+						sig: msg.sig // подпись отправителя
 					}
 					console.log(
 						'[SecretChat][Sub] envelope from GSM:', // лог конверта
@@ -286,10 +289,10 @@ export const processSecretSubscriptionAction = async (params: {
 					currentSession = finalize.sessionKey // сохраняем ключ сессии в локальную переменную
 					try {
 						// отмечаем пакет как обработанный (глобально)
-						processedRef?.current?.add(`${smsg.iv}.${smsg.sig}`)
+						processedRef?.current?.add(`${msg.iv}.${msg.sig}`)
 					} catch {}
 					const sender = chat.members.find(
-						(m: any) => m.user.id === smsg.fromUserId
+						(m: any) => m.user.id === msg.fromUserId
 					)?.user // ищем метаданные пользователя-отправителя
 					const firstMessage: MessageType = {
 						// собираем первое расшифрованное сообщение
@@ -297,13 +300,14 @@ export const processSecretSubscriptionAction = async (params: {
 						text: finalize.decrypted,
 						isEdited: false,
 						user: {
-							id: smsg.fromUserId,
+							id: msg.fromUserId,
 							username: sender?.username || 'user'
 						},
 						chat: { chatName: chat.chatName },
 						createdAt: new Date().toISOString(),
 						files: []
 					}
+
 					return {
 						sessionKey: currentSession, // вернём ключ
 						newMessage: firstMessage, // и само сообщение
@@ -391,15 +395,16 @@ export const pullSecretMessagesAction = async (params: {
 		processedRef // глобальный набор обработанных пакетов
 	} = params
 
-	if (!chat) return { newMessages: [] } // без чата — выходим
+	if (!chat || !(preKeysPub.length === 0) || !mySecretPreKey || !chatId)
+		return { newMessages: [] } // без чата — выходим
 
 	let currentSession = sessionKey // локальная копия ключа
 	let needPersistKey = false // флаг сохранения ключа
-	
+
 	if (!currentSession) {
 		// если ключа нет — пытаемся восстановить
 		const fromDisk = await loadMyKeys(chatId, groupId) // читаем ключ с диска
-		
+
 		if (fromDisk?.sessionKeyHex) {
 			currentSession = fromDisk.sessionKeyHex // берем ключ из файла
 		} else if (mySecretPreKey) {
@@ -407,9 +412,11 @@ export const pullSecretMessagesAction = async (params: {
 			try {
 				// запрос GSM для финализации
 				const resMsg = await getSecretMessage({ variables: { chatId } }) // запрос пакета
-				
-				const msg: GetSecretMessageQuery['getSecretMessage']|undefined = resMsg.data?.getSecretMessage // полезная нагрузка
-				
+
+				const msg:
+					| GetSecretMessageQuery['getSecretMessage']
+					| undefined = resMsg.data?.getSecretMessage // полезная нагрузка
+
 				if (msg && msg.ukm) {
 					// ukm есть — это инициатор
 					const ikPrivHex = mySecretPreKey.ikPriv || '' // IK приватный ключ
@@ -425,8 +432,7 @@ export const pullSecretMessagesAction = async (params: {
 					const spkPriv = await importPrivateRaw(fromHex(spkPrivHex)) // импорт SPK
 					let senderIkPub =
 						preKeysPub.find(pk => pk.userId === msg.fromUserId)
-							?.ikPub || // иначе preKeys
-						undefined
+							?.ikPub || undefined // иначе preKeys
 					if (!senderIkPub && params.getPreKeys) {
 						// рефреш preKeys
 						try {
@@ -502,16 +508,18 @@ export const pullSecretMessagesAction = async (params: {
 					const processedKeys = new Set<string>()
 					processedKeys.add(`${msg.iv}.${msg.sig}`)
 					// Continue tail loop
-					for (let i = 0; i < 10; i++) {
+					for (let i = 0; i < 20; i++) {
 						// читаем хвост до 10 сообщений
 						const res = await getSecretMessage({
-							variables: { chatId }
+							variables: { chatId },
+							fetchPolicy: 'network-only'
 						})
 						const nextMsg: any = res.data?.getSecretMessage
-						console.log(
-							'[SecretChat][Pull][GSM] tail payload:',
-							JSON.stringify(nextMsg)
-						)
+
+						// console.log(
+						// 	'[SecretChat][Pull][GSM] tail payload:',
+						// 	JSON.stringify(nextMsg)
+						// )
 						if (!nextMsg) break // нет сообщений — выходим из хвоста
 						const key = `${nextMsg.iv}.${nextMsg.sig}`
 						if (processedKeys.has(key)) {
@@ -593,13 +601,13 @@ export const pullSecretMessagesAction = async (params: {
 
 	const collected: MessageType[] = [] // набор для обычного хвоста
 	const processedKeys = new Set<string>()
-	for (let i = 0; i < 10; i++) {
+	for (let i = 0; i < 20; i++) {
 		const res = await getSecretMessage({ variables: { chatId } })
 		const msg: any = res.data?.getSecretMessage
-		console.log(
-			'[SecretChat][Pull][GSM] tail payload:',
-			JSON.stringify(msg)
-		)
+		// console.log(
+		// 	'[SecretChat][Pull][GSM] tail payload:',
+		// 	JSON.stringify(msg)
+		// )
 		if (!msg) break // нет пакетов — выходим
 		const key = `${msg.iv}.${msg.sig}`
 		if (processedKeys.has(key)) {

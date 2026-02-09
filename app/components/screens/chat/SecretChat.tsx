@@ -1,4 +1,4 @@
-import { Settings2 } from 'lucide-react-native'
+import { ArrowLeft, Settings2 } from 'lucide-react-native'
 import React, { FC } from 'react'
 import {
 	ActivityIndicator,
@@ -72,6 +72,10 @@ const SecretChat: FC<SecretChatProps> = ({
 		navigation.navigate('ChatSettings', { chatId })
 	}
 
+	const goBack = () => {
+		navigation.goBack()
+	}
+
 	const handleSend = async () => {
 		sendMessage(draftText, user)
 	}
@@ -85,6 +89,9 @@ const SecretChat: FC<SecretChatProps> = ({
 					<View className='flex-row items-center'>
 						<Button size='icon' onPress={goToSettings}>
 							<Settings2 className='text-black' />
+						</Button>
+						<Button size='icon' onPress={goBack}>
+							<ArrowLeft className='text-black' />
 						</Button>
 					</View>
 				</View>

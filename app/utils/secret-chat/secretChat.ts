@@ -236,7 +236,7 @@ export async function loadMyKeys(
 	const FILE_PATH = `${CHAT_DIRECTORY}/${FILE.MY_KEYS}`
 	const fileInfo = await FileSystem.getInfoAsync(FILE_PATH)
 	if (!fileInfo.exists) {
-		console.warn(`Файл ключей ${FILE.MY_KEYS} не найден в чате ${chatId}`)
+		// console.warn(`Файл ключей ${FILE.MY_KEYS} не найден в чате ${chatId}`)
 		return null
 	}
 
