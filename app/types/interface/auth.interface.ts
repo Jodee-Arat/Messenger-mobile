@@ -4,6 +4,7 @@ export interface IAuthFormData {
 	login: string
 	password: string
 	email: string
+	pin?: string
 }
 
 export enum EnumSecureStore {

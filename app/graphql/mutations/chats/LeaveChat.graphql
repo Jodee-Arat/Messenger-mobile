@@ -1,0 +1,3 @@
+mutation LeaveChat($chatId: String!) {
+	leaveChat(chatId: $chatId)
+}

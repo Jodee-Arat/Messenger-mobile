@@ -1,16 +1,11 @@
-import * as FileSystem from 'expo-file-system'
-import { MutableRefObject, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import {
-	FILE,
 	addMessages,
 	createMyKey,
-	fileExist,
-	loadAllSecretChats,
-	loadChatData,
+	deleteMyKeys,
 	loadMessages,
 	loadMyKeys,
-	loadMyPreKeyJSON,
 	saveMessages
 } from '@/utils/secret-chat/secretChat'
 
@@ -18,17 +13,24 @@ import { MessageType } from '../types/message.type'
 import { SendFileType } from '../types/send-file.type'
 
 import {
+	DM_STORAGE_GROUP_ID,
 	clearFormAction,
 	deleteMessagesAction,
+	ensureDirectChatDirectory,
+	initGroupSessionAction,
 	loadChatAction,
+	loadDMKeysAction,
 	pickFileAction,
 	processSecretSubscriptionAction,
 	pullSecretMessagesAction,
+	receiveGroupKeyAction,
+	sendGroupKeyToNewMemberAction,
 	sendSecretMessageAction
 } from './useSecretChat.actions'
 import {
 	FindAllChatsByGroupQuery,
 	FindAllUsersQuery,
+	FindChatByChatIdQuery,
 	GetPreKeysQuery,
 	useAddSecretMessageSubscription,
 	useAddSharedSecretKeySubscription,
@@ -36,13 +38,11 @@ import {
 	useGetPreKeysLazyQuery,
 	useGetSecretMessageLazyQuery,
 	useGetSharedSecretKeyLazyQuery,
-	useSendChatMessageMutation,
+	useSecretKeyRotationSubscription,
 	useSendSecretMessageMutation,
 	useSendSharedSecretKeyMutation
 } from '@/graphql/generated/output'
 import { PreKeyBundleClient } from '@/libs/e2ee/gost'
-
-// Вспомогательные утилиты вынесены в отдельный модуль useSecretChat.actions.ts
 
 export interface SecretChatData {
 	id: string
@@ -61,31 +61,32 @@ export interface SecretChatData {
 	lastMessage: MessageType
 }
 
-// ===== Вспомогательные функции (будущие выносные утилиты) =====
-// Каждая функция ниже задокументирована и не зависит от React-хуков напрямую.
-// Хук будет только хранить состояния и вызывать эти функции.
-
-// loadChatAction вынесен в ./useSecretChat.actions
-
-// processSecretSubscriptionAction вынесен в ./useSecretChat.actions
-
-// pullSecretMessagesAction вынесен в ./useSecretChat.actions
-
-// sendSecretMessageAction вынесен в ./useSecretChat.actions
-
-// deleteMessagesAction вынесен в ./useSecretChat.actions
-
-// pickFileAction вынесен в ./useSecretChat.actions
-
-// clearFormAction вынесен в ./useSecretChat.actions
-
+/**
+ * hook for secret chats — both group and DM.
+ *
+ * @param chatId
+ * @param userId
+ * @param groupId
+ */
 export const useSecretChat = (
-	groupId: string,
 	chatId: string,
-	userId: string
+	userId: string,
+	groupId?: string
 ) => {
+	const isDM = !groupId
+	const effectiveGroupId = groupId || DM_STORAGE_GROUP_ID
+
+	// Данные чата с сервера (только для DM)
+	const { data: chatData } = useFindChatByChatIdQuery({
+		variables: { chatId },
+		fetchPolicy: 'network-only',
+		skip: !isDM
+	})
+
 	const [chat, setChat] = useState<
-		FindAllChatsByGroupQuery['findAllChatsByGroup'][0] | null
+		| FindAllChatsByGroupQuery['findAllChatsByGroup'][0]
+		| FindChatByChatIdQuery['findChatByChatId']
+		| null
 	>(null)
 	const [messages, setMessages] = useState<MessageType[]>([])
 	const messagesRef = useRef<MessageType[]>([])
@@ -103,30 +104,21 @@ export const useSecretChat = (
 	)
 	const [errorMessage, setErrorMessage] = useState<string>('')
 
-	// ref для отслеживания изменений
 	const chatRef = useRef<SecretChatData | null>(null)
 
-	// Держим актуальную копию сообщений в ref для корректного cleanup
 	useEffect(() => {
 		messagesRef.current = messages
 	}, [messages])
 
-	// Загружаем чат
 	useEffect(() => {
-		const runLoadMessages = async () => {
-			const chatMessagesData = await loadMessages(chatId, groupId)
-			setMessages(chatMessagesData || [])
+		if (isDM && chatData?.findChatByChatId) {
+			setChat(chatData.findChatByChatId)
 		}
+	}, [chatData, isDM])
 
-		runLoadMessages()
-		loadChat()
-		return () => {}
-	}, [chatId])
-
-	const [getPreKeys, { data: dataPreKeys, loading: loadGetPreKeys }] =
-		useGetPreKeysLazyQuery({
-			fetchPolicy: 'network-only'
-		})
+	const [getPreKeys] = useGetPreKeysLazyQuery({
+		fetchPolicy: 'network-only'
+	})
 	const [getSecretMessage] = useGetSecretMessageLazyQuery({
 		fetchPolicy: 'network-only'
 	})
@@ -136,38 +128,72 @@ export const useSecretChat = (
 	const { data: subSecretMessage } = useAddSecretMessageSubscription({
 		variables: { userId }
 	})
-	// const { data: subSharedSecretKey } = useAddSharedSecretKeySubscription({
-	// 	variables: { userId }
-	// })
+	const { data: subSharedSecretKey } = useAddSharedSecretKeySubscription({
+		variables: { userId },
+		skip: isDM
+	})
+
+	const { data: subKeyRotation } = useSecretKeyRotationSubscription({
+		variables: { userId },
+		skip: isDM
+	})
 
 	const [sendMessageToClients] = useSendSecretMessageMutation()
 	const [sendSharedSecretKey] = useSendSharedSecretKeyMutation()
 
-	// Глобальная дедупликация обработанных пакетов (iv+sig)
 	const processedRef = useRef<Set<string>>(new Set())
 
 	const loadChat = async () => {
 		setLoadingMessage('Загрузка чата...')
-		const res = await loadChatAction({
-			chatId,
-			groupId,
-			userId,
-			getPreKeys
-		})
-		if (res.errorMessage) setErrorMessage(res.errorMessage)
-		if (res.chat !== undefined) setChat(res.chat)
-		if (res.mySecretPreKey !== undefined)
-			setMySecretPreKey(res.mySecretPreKey ?? null)
-		if (res.preKeysPub !== undefined) setPreKeysPub(res.preKeysPub ?? [])
-		if (res.sessionKey !== undefined) setSessionKey(res.sessionKey ?? null)
+
+		if (isDM) {
+			await ensureDirectChatDirectory(chatId)
+			const res = await loadDMKeysAction({ chatId, userId, getPreKeys })
+			if (res.errorMessage) setErrorMessage(res.errorMessage)
+			if (res.mySecretPreKey !== undefined)
+				setMySecretPreKey(res.mySecretPreKey ?? null)
+			if (res.preKeysPub !== undefined)
+				setPreKeysPub(res.preKeysPub ?? [])
+			if (res.sessionKey !== undefined)
+				setSessionKey(res.sessionKey ?? null)
+		} else {
+			const res = await loadChatAction({
+				chatId,
+				groupId: effectiveGroupId,
+				userId,
+				getPreKeys
+			})
+			if (res.errorMessage) setErrorMessage(res.errorMessage)
+			if (res.chat !== undefined) setChat(res.chat)
+			if (res.mySecretPreKey !== undefined)
+				setMySecretPreKey(res.mySecretPreKey ?? null)
+			if (res.preKeysPub !== undefined)
+				setPreKeysPub(res.preKeysPub ?? [])
+			if (res.sessionKey !== undefined)
+				setSessionKey(res.sessionKey ?? null)
+		}
+
 		setLoadingMessage('')
 	}
+
+	useEffect(() => {
+		const runLoadMessages = async () => {
+			if (isDM) await ensureDirectChatDirectory(chatId)
+			const chatMessagesData = await loadMessages(
+				chatId,
+				effectiveGroupId
+			)
+			setMessages(chatMessagesData || [])
+		}
+
+		runLoadMessages()
+		loadChat()
+		return () => {}
+	}, [chatId])
 
 	// Подписка на новые секретные сообщения
 	useEffect(() => {
 		const msg = subSecretMessage?.addSecretMessage
-		console.log(msg)
-
 		if (!msg) return
 		;(async () => {
 			const result = await processSecretSubscriptionAction({
@@ -175,7 +201,7 @@ export const useSecretChat = (
 				msg,
 				chat,
 				chatId,
-				groupId,
+				groupId: effectiveGroupId,
 				userId,
 				sessionKey,
 				preKeysPub,
@@ -187,22 +213,29 @@ export const useSecretChat = (
 			if (result.sessionKey !== undefined)
 				setSessionKey(result.sessionKey ?? null)
 			if (result.needPersistKey && result.sessionKey)
-				await createMyKey(chatId, groupId, userId, result.sessionKey)
+				await createMyKey(
+					chatId,
+					effectiveGroupId,
+					userId,
+					result.sessionKey
+				)
 			if (result.newMessage) {
 				const nm = result.newMessage
 				setMessages(prev => [...prev, nm])
-				addMessages([nm], chatId, groupId)
+				addMessages([nm], chatId, effectiveGroupId)
 			}
 		})()
 	}, [subSecretMessage, chat, sessionKey, preKeysPub, mySecretPreKey])
 
-	// Получение секретных сообщений: при наличии сессионного ключа — просто расшифровываем;
-	// если ключа нет — пытаемся восстановить из файла, затем из очереди sharedSecretKey
+	// Получение секретных сообщений при наличии сессионного ключа
+	// Для DM разрешаем запуск без sessionKey - pullSecretMessagesAction
+	// сам выполнит X3DH-финализацию по первому сообщению в очереди
 	useEffect(() => {
+		if (!sessionKey && !isDM) return
 		;(async () => {
 			const result = await pullSecretMessagesAction({
 				chatId,
-				groupId,
+				groupId: effectiveGroupId,
 				userId,
 				chat,
 				sessionKey,
@@ -215,24 +248,143 @@ export const useSecretChat = (
 			if (result.sessionKey !== undefined)
 				setSessionKey(result.sessionKey ?? null)
 			if (result.needPersistKey && result.sessionKey)
-				await createMyKey(chatId, groupId, userId, result.sessionKey)
+				await createMyKey(
+					chatId,
+					effectiveGroupId,
+					userId,
+					result.sessionKey
+				)
 			if (result.newMessages.length) {
 				setMessages(prev => [...prev, ...result.newMessages])
-				addMessages(result.newMessages, chatId, groupId)
+				addMessages(result.newMessages, chatId, effectiveGroupId)
 			}
 		})()
-	}, [chatId, chat, preKeysPub, mySecretPreKey])
+	}, [chatId, chat, preKeysPub, mySecretPreKey, sessionKey])
+
+	// ─── Group-only: инициализация/получение группового ключа ───────
+	useEffect(() => {
+		if (isDM) return
+		if (sessionKey || !chat || !mySecretPreKey || preKeysPub.length === 0)
+			return
+		;(async () => {
+			const fromDisk = await loadMyKeys(chatId, effectiveGroupId)
+			if (fromDisk?.sessionKeyHex) {
+				setSessionKey(fromDisk.sessionKeyHex)
+				return
+			}
+
+			setLoadingMessage('Получение ключа шифрования...')
+
+			const receiveResult = await receiveGroupKeyAction({
+				chatId,
+				groupId: effectiveGroupId,
+				userId,
+				mySecretPreKey,
+				preKeysPub,
+				getPreKeys,
+				getSharedSecretKey
+			})
+
+			if (receiveResult.groupKey) {
+				setSessionKey(receiveResult.groupKey)
+				if (receiveResult.needPersistKey) {
+					await createMyKey(
+						chatId,
+						effectiveGroupId,
+						userId,
+						receiveResult.groupKey
+					)
+				}
+				console.log(
+					'[SecretChat] Group key received and saved from initiator'
+				)
+				setLoadingMessage('')
+				return
+			}
+
+			setLoadingMessage('Генерация ключа шифрования...')
+			const initResult = await initGroupSessionAction({
+				chat,
+				chatId,
+				groupId: effectiveGroupId,
+				userId,
+				mySecretPreKey,
+				preKeysPub,
+				getPreKeys,
+				sendSharedSecretKey
+			})
+
+			if (initResult.errorMessage) {
+				setErrorMessage(initResult.errorMessage)
+			} else if (initResult.groupKey) {
+				setSessionKey(initResult.groupKey)
+				if (initResult.needPersistKey) {
+					await createMyKey(
+						chatId,
+						effectiveGroupId,
+						userId,
+						initResult.groupKey
+					)
+				}
+				console.log('[SecretChat] Group key generated and distributed')
+			}
+			setLoadingMessage('')
+		})()
+	}, [chatId, chat, sessionKey, mySecretPreKey, preKeysPub])
+
+	// ─── Group-only: подписка на получение общего ключа ──────────────
+	useEffect(() => {
+		if (isDM) return
+		const sharedKeyData = subSharedSecretKey?.addSharedSecretKey
+		if (!sharedKeyData || sessionKey || !mySecretPreKey) return
+		;(async () => {
+			const receiveResult = await receiveGroupKeyAction({
+				chatId,
+				groupId: effectiveGroupId,
+				userId,
+				mySecretPreKey,
+				preKeysPub,
+				getPreKeys,
+				getSharedSecretKey
+			})
+			if (receiveResult.groupKey) {
+				setSessionKey(receiveResult.groupKey)
+				if (receiveResult.needPersistKey) {
+					await createMyKey(
+						chatId,
+						effectiveGroupId,
+						userId,
+						receiveResult.groupKey
+					)
+				}
+				console.log('[SecretChat] Group key received via subscription')
+			}
+		})()
+	}, [subSharedSecretKey, sessionKey, mySecretPreKey, preKeysPub])
+
+	// ─── Group-only: ротация ключей при leave/remove ────────────────
+	useEffect(() => {
+		if (isDM) return
+		const rotationData = subKeyRotation?.secretKeyRotation
+		if (!rotationData || rotationData.chatId !== chatId) return
+		;(async () => {
+			console.log('[SecretChat] Key rotation triggered for chat:', chatId)
+			await deleteMyKeys(chatId, effectiveGroupId)
+			setSessionKey(null)
+		})()
+	}, [subKeyRotation, chatId, effectiveGroupId])
 
 	const sendMessage = async (
 		text: string,
 		user: FindAllUsersQuery['findAllUsers'][number]
 	) => {
+		if (isDM) await ensureDirectChatDirectory(chatId)
 		const res = await sendSecretMessageAction({
 			text,
 			user,
 			chat,
 			chatId,
-			groupId,
+			groupId: effectiveGroupId,
 			userId,
 			files,
 			sessionKey,
@@ -246,11 +398,11 @@ export const useSecretChat = (
 		if (res.newMessage) {
 			const nm = res.newMessage
 			setMessages(prev => [...prev, nm])
-			addMessages([nm], chatId, groupId)
+			addMessages([nm], chatId, effectiveGroupId)
 		}
 		if (res.sessionKey !== undefined) setSessionKey(res.sessionKey ?? null)
 		if (res.needPersistKey && res.sessionKey && chat)
-			await createMyKey(chat.id, groupId, user.id, res.sessionKey)
+			await createMyKey(chatId, effectiveGroupId, userId, res.sessionKey)
 	}
 
 	const deleteMessage = async (messageIds: string[]) => {
@@ -258,10 +410,10 @@ export const useSecretChat = (
 			messageIds,
 			messagesRef,
 			chatId,
-			groupId
+			groupId: effectiveGroupId
 		})
 		setMessages(nextMessages)
-		await saveMessages(nextMessages, chatId, groupId)
+		await saveMessages(nextMessages, chatId, effectiveGroupId)
 	}
 
 	const pickFile = async () => {
@@ -276,6 +428,35 @@ export const useSecretChat = (
 		setFiles(res.files)
 	}
 
+	/**
+	 * Отправить существующий групповой ключ новому участнику после приглашения.
+	 */
+	const sendKeyToNewMember = async (targetUserId: string) => {
+		if (!sessionKey || !mySecretPreKey) {
+			console.warn(
+				'[SecretChat] sendKeyToNewMember: нет sessionKey или mySecretPreKey'
+			)
+			return
+		}
+		const result = await sendGroupKeyToNewMemberAction({
+			chatId,
+			groupId: effectiveGroupId,
+			userId,
+			targetUserId,
+			sessionKey,
+			mySecretPreKey,
+			preKeysPub,
+			getPreKeys,
+			sendSharedSecretKey
+		})
+		if (result.errorMessage) {
+			console.error(
+				'[SecretChat] sendKeyToNewMember error:',
+				result.errorMessage
+			)
+		}
+	}
+
 	return {
 		chat,
 		messages,
@@ -288,6 +469,9 @@ export const useSecretChat = (
 		sendMessage,
 		deleteMessage,
 		clearForm,
-		reload: loadChat
+		reload: loadChat,
+		preKeysPub,
+		sendKeyToNewMember,
+		isKeyReady: sessionKey !== null
 	}
 }

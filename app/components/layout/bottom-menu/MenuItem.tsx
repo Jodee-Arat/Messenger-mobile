@@ -2,6 +2,8 @@ import { Feather } from '@expo/vector-icons'
 import { FC } from 'react'
 import { Pressable } from 'react-native'
 
+import { useTheme } from '@/hooks/useTheme'
+
 import { IMenuItem, TypeNavigate } from './menu.interface'
 
 interface IMenuItemProps {
@@ -12,6 +14,7 @@ interface IMenuItemProps {
 
 const MenuItem: FC<IMenuItemProps> = ({ currentRoute, item, nav }) => {
 	const isActive = currentRoute === item.path
+	const { colors } = useTheme()
 
 	return (
 		<Pressable
@@ -21,7 +24,7 @@ const MenuItem: FC<IMenuItemProps> = ({ currentRoute, item, nav }) => {
 			<Feather
 				name={item.iconName}
 				size={26}
-				color={isActive ? '#47AA52' : '#858b95'}
+				color={isActive ? colors.accent : colors.textMuted}
 			/>
 		</Pressable>
 	)

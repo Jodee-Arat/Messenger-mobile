@@ -1,12 +1,25 @@
 query FindChatByChatId($chatId: String!) {
 	findChatByChatId(chatId: $chatId) {
+		id
 		chatName
 		avatarUrl
 		updatedAt
 		isSecret
+		requireTotp
+		isGroup
+		groupId
 		description
 		pinnedMessage {
+			id
+			text
+			createdAt
 			isEdited
+			files {
+				fileName
+				fileFormat
+				fileSize
+				id
+			}
 			chat {
 				id
 			}
@@ -59,6 +72,21 @@ query FindChatByChatId($chatId: String!) {
 						id
 					}
 				}
+			}
+		}
+		members {
+			id
+			isCreator
+			user {
+				id
+				username
+				avatarUrl
+			}
+			roles {
+				id
+				name
+				color
+				permissions
 			}
 		}
 	}

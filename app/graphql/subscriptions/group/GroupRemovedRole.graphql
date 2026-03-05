@@ -1,0 +1,11 @@
+subscription GroupRemovedRole($groupId: String!) {
+	groupRemovedRole(groupId: $groupId) {
+		id
+		name
+		color
+		groupId
+		permissions
+		createdAt
+		updatedAt
+	}
+}

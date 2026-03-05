@@ -1,0 +1,3 @@
+mutation UpdatePinnedChatsOrder($chatIds: [String!]!) {
+  updatePinnedChatsOrder(chatIds: $chatIds)
+}

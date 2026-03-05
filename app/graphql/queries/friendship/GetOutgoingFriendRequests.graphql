@@ -1,0 +1,14 @@
+query GetOutgoingFriendRequests {
+	getOutgoingFriendRequests {
+		id
+		userId
+		friendId
+		status
+		friend {
+			id
+			username
+			avatarUrl
+		}
+		createdAt
+	}
+}

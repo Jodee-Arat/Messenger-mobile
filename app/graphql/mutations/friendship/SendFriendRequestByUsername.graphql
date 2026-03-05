@@ -1,0 +1,3 @@
+mutation SendFriendRequestByUsername($username: String!) {
+	sendFriendRequestByUsername(username: $username)
+}

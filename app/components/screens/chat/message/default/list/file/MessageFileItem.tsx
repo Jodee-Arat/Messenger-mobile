@@ -1,4 +1,4 @@
-import { File } from 'lucide-react-native'
+﻿import { File } from 'lucide-react-native'
 import React, { FC } from 'react'
 import {
 	ActivityIndicator,
@@ -8,6 +8,8 @@ import {
 	View
 } from 'react-native'
 import Toast from 'react-native-toast-message'
+
+import { useTheme, useTranslation } from '@/hooks/useTheme'
 
 import { MessageFileType } from '@/types/message-file.type'
 
@@ -27,6 +29,8 @@ const MessageFileItem: FC<MessageFileItemProp> = ({
 	chatId,
 	isSelected
 }) => {
+	const { colors } = useTheme()
+	const { t } = useTranslation()
 	const [download, { loading: isLoadingDownload }] = useDownloadFileMutation({
 		onCompleted: async data => {
 			if (data.downloadFile) {
@@ -36,11 +40,11 @@ const MessageFileItem: FC<MessageFileItemProp> = ({
 				} catch {
 					Toast.show({
 						type: 'error',
-						text1: 'Ошибка при загрузке файла'
+						text1: t('fileDownloadError')
 					})
 				}
 			} else {
-				Toast.show({ type: 'error', text1: 'Не удалось скачать файл' })
+				Toast.show({ type: 'error', text1: t('fileDownloadFailed') })
 			}
 		}
 	})
@@ -63,19 +67,24 @@ const MessageFileItem: FC<MessageFileItemProp> = ({
 			className='flex-row items-center p-1 rounded-md bg-transparent'
 		>
 			{isLoadingDownload ? (
-				<ActivityIndicator size='small' />
+				<ActivityIndicator size='small' color={colors.accent} />
 			) : (
-				<File size={28} color='#000' />
+				<File size={28} color={colors.accent} />
 			)}
 
 			<View className='ml-2 w-24'>
 				<Text
 					numberOfLines={1}
-					className='text-xs font-medium text-black'
+					className='text-xs font-medium'
+					style={{ color: colors.text }}
 				>
 					{file.fileName}
 				</Text>
-				<Text numberOfLines={1} className='text-[10px] text-gray-500'>
+				<Text
+					numberOfLines={1}
+					className='text-[10px]'
+					style={{ color: colors.textSecondary }}
+				>
 					({formatBytes(parseInt(file.fileSize))})
 				</Text>
 			</View>

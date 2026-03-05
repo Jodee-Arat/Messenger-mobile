@@ -1,0 +1,14 @@
+query GetIncomingFriendRequests {
+	getIncomingFriendRequests {
+		id
+		userId
+		friendId
+		status
+		user {
+			id
+			username
+			avatarUrl
+		}
+		createdAt
+	}
+}

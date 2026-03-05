@@ -1,0 +1,3 @@
+mutation EnableTotp($token: String!) {
+	enableTotp(token: $token)
+}

@@ -1,0 +1,3 @@
+mutation DeleteGroupRole($groupId: String!, $roleId: String!) {
+	deleteGroupRole(groupId: $groupId, roleId: $roleId)
+}

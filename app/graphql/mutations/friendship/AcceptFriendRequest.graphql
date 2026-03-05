@@ -1,0 +1,3 @@
+mutation AcceptFriendRequest($friendshipId: String!) {
+	acceptFriendRequest(friendshipId: $friendshipId)
+}

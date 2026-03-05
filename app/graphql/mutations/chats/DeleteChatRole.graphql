@@ -1,0 +1,3 @@
+mutation DeleteChatRole($chatId: String!, $roleId: String!) {
+	deleteChatRole(chatId: $chatId, roleId: $roleId)
+}

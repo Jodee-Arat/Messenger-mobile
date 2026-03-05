@@ -1,0 +1,11 @@
+mutation RemoveGroupRoleFromMember(
+	$groupId: String!
+	$roleId: String!
+	$memberId: String!
+) {
+	removeGroupRoleFromMember(
+		groupId: $groupId
+		roleId: $roleId
+		memberId: $memberId
+	)
+}

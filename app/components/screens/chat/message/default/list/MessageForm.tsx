@@ -1,6 +1,7 @@
-import React, { FC } from 'react'
+﻿import React, { FC } from 'react'
 import { Text, View } from 'react-native'
 
+import { useTheme, useTranslation } from '@/hooks/useTheme'
 import EntityAvatar from '@/components/ui/EntityAvatar'
 
 import { MessageFileType } from '@/types/message-file.type'
@@ -30,6 +31,8 @@ const MessageForm: FC<MessageFormProp> = ({
 	text,
 	isEdited
 }) => {
+	const { colors } = useTheme()
+	const { t } = useTranslation()
 	const isOwnMessage = user.id === userId
 
 	return (
@@ -52,12 +55,16 @@ const MessageForm: FC<MessageFormProp> = ({
 						className={`font-semibold ${
 							isOwnMessage ? 'text-right' : 'text-left'
 						}`}
+						style={{ color: colors.accent }}
 					>
 						{user.username}
 					</Text>
 
 					{isEdited && (
-						<Text className='text-xs text-gray-500'>Edited</Text>
+						<Text
+							className='text-xs'
+							style={{ color: colors.textSecondary }}
+						>{t('edited')}</Text>
 					)}
 
 					{text !== '' && text !== 'null' && (
@@ -65,6 +72,7 @@ const MessageForm: FC<MessageFormProp> = ({
 							className={`break-words text-sm ${
 								isOwnMessage ? 'text-right' : 'text-left'
 							}`}
+							style={{ color: colors.text }}
 						>
 							{text}
 						</Text>

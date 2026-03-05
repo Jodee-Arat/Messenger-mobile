@@ -1,7 +1,9 @@
-import { Paperclip, SendHorizonal, X } from 'lucide-react-native'
+﻿import { Paperclip, SendHorizonal, X } from 'lucide-react-native'
 import React, { FC, useEffect } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { Keyboard, TextInput, TouchableOpacity, View } from 'react-native'
+
+import { useTheme, useTranslation } from '@/hooks/useTheme'
 
 import { ForwardedMessageType } from '@/types/forward/forwarded-message.type'
 import { SendFileType } from '@/types/send-file.type'
@@ -24,7 +26,7 @@ interface SecretSendMessageFormProps {
 	editId: string | null
 	setEditId: (id: string | null) => void
 	setFilesEdited: (files: SendFileType[]) => void
-	onSend: (text: string) => void // получает текст и отправляет сообщение
+	onSend: (text: string) => void
 }
 
 interface FormValues {
@@ -47,6 +49,8 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 	setFilesEdited,
 	onSend
 }) => {
+	const { colors } = useTheme()
+	const { t } = useTranslation()
 	const { control, handleSubmit, watch, reset } = useForm<FormValues>({
 		defaultValues: { text: draftText ?? '' }
 	})
@@ -59,23 +63,20 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 		reset({ text: draftText })
 	}, [draftText])
 
-	// функция отправки
 	const handleSubmitMessage = (data: FormValues) => {
 		const text = data.text?.trim() ?? ''
 
 		if (!text && files.length === 0 && forwardedMessages.length === 0) {
-			// ничего не отправлять
 			return
 		}
 
-		onSend(text) // вызываем родительскую функцию с текстом
-		reset({ text: '' }) // очищаем форму после отправки
-		handleClearForm() // чистим файлы и пересланные сообщения
+		onSend(text)
+		reset({ text: '' })
+		handleClearForm()
 	}
 
 	return (
 		<View className='flex-col'>
-			{/* Список файлов */}
 			{(files.length > 0 || filesEdited.length > 0) && (
 				<FileList
 					files={files}
@@ -85,7 +86,6 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 				/>
 			)}
 
-			{/* Пересланные сообщения */}
 			{forwardedMessages && forwardedMessages.length > 0 && (
 				<ForwardedMessagesBar
 					forwardedMessages={forwardedMessages}
@@ -93,35 +93,39 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 				/>
 			)}
 
-			{/* Поле ввода и кнопки */}
 			<View className='flex-row items-center mt-3 space-x-2'>
-				{/* Кнопка выбора файла */}
 				<TouchableOpacity
 					onPress={pickAndSendFile}
-					className='p-2 bg-gray-200 rounded-md'
+					className='p-2 rounded-lg'
+					style={{ backgroundColor: colors.cardHover }}
 				>
-					<Paperclip size={24} color='#000' />
+					<Paperclip size={24} color={colors.textSecondary} />
 				</TouchableOpacity>
 
-				{/* Текстовое поле */}
 				<Controller
 					control={control}
 					name='text'
 					render={({ field }) => (
 						<TextInput
-							value={draftText}
-							onChangeText={text => setDraftText(text)}
-							placeholder='Send message'
+							value={field.value}
+							onChangeText={text => {
+								field.onChange(text)
+								setDraftText(text)
+							}}
+							placeholder={t('writeMessage')}
+							placeholderTextColor={colors.textMuted}
 							multiline
 							style={{
 								flex: 1,
 								minHeight: 40,
 								maxHeight: 120,
-								paddingHorizontal: 8,
-								paddingVertical: 6,
+								paddingHorizontal: 12,
+								paddingVertical: 8,
 								borderWidth: 1,
-								borderColor: '#ccc',
-								borderRadius: 8
+								borderColor: colors.borderLight,
+								backgroundColor: colors.inputBg,
+								color: colors.text,
+								borderRadius: 12
 							}}
 							onSubmitEditing={() => {
 								Keyboard.dismiss()
@@ -132,23 +136,25 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 					)}
 				/>
 
-				{/* Кнопка отмены редактирования */}
 				{editId && (
 					<TouchableOpacity
 						onPress={() => setEditId(null)}
-						className='p-2 bg-gray-300 rounded-md'
+						className='p-2 rounded-lg'
+						style={{ backgroundColor: colors.cardHover }}
 					>
-						<X size={20} color='#000' />
+						<X size={20} color={colors.textSecondary} />
 					</TouchableOpacity>
 				)}
 
-				{/* Кнопка отправки */}
 				<TouchableOpacity
 					onPress={handleSubmit(handleSubmitMessage)}
 					disabled={!canSendMessage}
-					className={`p-2 rounded-md ${
-						canSendMessage ? 'bg-blue-500' : 'bg-gray-300'
-					}`}
+					className='p-2 rounded-lg'
+					style={{
+						backgroundColor: canSendMessage
+							? colors.accent
+							: colors.cardHover
+					}}
 				>
 					<SendHorizonal size={24} color='#fff' />
 				</TouchableOpacity>

@@ -2,6 +2,8 @@ import { type VariantProps, cva } from 'class-variance-authority'
 import { memo } from 'react'
 import { Image, Text, View } from 'react-native'
 
+import { useTheme } from '@/hooks/useTheme'
+
 import { getMediaSource } from '@/utils/get-media-source'
 import { cn } from '@/utils/tw-merge'
 
@@ -26,14 +28,16 @@ interface EntityAvatarProps extends VariantProps<typeof avatarSizes> {
 
 const EntityAvatar = memo(({ size, name, avatarUrl }: EntityAvatarProps) => {
 	const firstLetter = name?.[0] ?? ''
+	const { colors } = useTheme()
 
 	return (
 		<View className='relative items-center justify-center'>
 			<View
 				className={cn(
 					avatarSizes({ size }),
-					'overflow-hidden bg-gray-200 items-center justify-center'
+					'overflow-hidden items-center justify-center'
 				)}
+				style={{ backgroundColor: colors.backgroundTertiary }}
 			>
 				{avatarUrl ? (
 					<Image
@@ -46,6 +50,7 @@ const EntityAvatar = memo(({ size, name, avatarUrl }: EntityAvatarProps) => {
 							size === 'xl' ? 'text-4xl' : 'text-base',
 							'pb-1'
 						)}
+						style={{ color: colors.text }}
 					>
 						{firstLetter}
 					</Text>

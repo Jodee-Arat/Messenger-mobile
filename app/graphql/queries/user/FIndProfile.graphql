@@ -1,9 +1,10 @@
 query FindProfile {
-  findProfile {
-    id
-    avatarUrl
-    username
-    bio
-    password
-  }
+	findProfile {
+		id
+		avatarUrl
+		username
+		bio
+		password
+		isTotpEnabled
+	}
 }

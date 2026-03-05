@@ -1,5 +1,6 @@
-import { createId } from '@paralleldrive/cuid2'
+﻿import { createId } from '@paralleldrive/cuid2'
 import * as DocumentPicker from 'expo-document-picker'
+import * as FileSystem from 'expo-file-system'
 import { MutableRefObject } from 'react'
 
 import {
@@ -28,17 +29,127 @@ import {
 	buildInitEnvelope,
 	buildSessionMsgEnvelope,
 	checkMyPreKeys,
+	decryptKuz,
 	decryptSessionMsgEnvelope,
+	encryptKuz,
+	establishSessionX3DH,
+	exportPublicRaw,
 	finalizeFromEnvelope,
 	fromHex,
+	generateEphemeralKeyPair,
+	generateKuznechikKey,
 	importPrivateRaw,
-	importPublicRaw
+	importPublicRaw,
+	signBytes,
+	toHex,
+	verifyBytes
 } from '@/libs/e2ee/gost'
 
-// Дополнительный тип для выбранного файла (с URI, если нужен для UI)
 export type PickedFile = SendFileType & { uri?: string }
 
-// 1) Загрузка состояния чата и ключей (чистая функция)
+export const DM_STORAGE_GROUP_ID = 'direct'
+
+/**
+ * Убедиться, что директория для хранения DM-секретного чата существует
+ */
+export async function ensureDirectChatDirectory(chatId: string) {
+	const BASE = FileSystem.documentDirectory
+	const CHAT_DIR = `${BASE}${DM_STORAGE_GROUP_ID}/${chatId}`
+	const info = await FileSystem.getInfoAsync(CHAT_DIR)
+	if (!info.exists) {
+		await FileSystem.makeDirectoryAsync(CHAT_DIR, { intermediates: true })
+	}
+}
+
+/**
+ * Загрузка ключей для DM-режима
+ */
+export const loadDMKeysAction = async (params: {
+	chatId: string
+	userId: string
+	getPreKeys: ReturnType<typeof useGetPreKeysLazyQuery>[0]
+}): Promise<{
+	mySecretPreKey?: PreKeyBundleClient | null
+	preKeysPub?: GetPreKeysQuery['getPreKeys']
+	sessionKey?: Uint8Array<ArrayBufferLike> | null
+	errorMessage?: string
+}> => {
+	const { chatId, userId, getPreKeys } = params
+	const groupId = DM_STORAGE_GROUP_ID
+
+	try {
+		await ensureDirectChatDirectory(chatId)
+
+		const haveMyKeys = await fileExist(chatId, groupId, FILE.MY_KEYS)
+		console.log(
+			'[SecretChat][DM] haveMyKeys:',
+			haveMyKeys,
+			'chatId:',
+			chatId
+		)
+
+		if (!haveMyKeys) {
+			const preKeysResponse = await getPreKeys({ variables: { chatId } })
+			if (preKeysResponse.error) {
+				console.error(
+					'[SecretChat][DM] Ошибка при получении PreKeys:',
+					preKeysResponse.error
+				)
+				return { errorMessage: 'Ошибка при получении PreKeys' }
+			}
+			const preKeys = preKeysResponse.data?.getPreKeys
+			if (!preKeys || preKeys.length === 0) {
+				return { errorMessage: 'PreKeys не найдены' }
+			}
+			const myPreKeys = await loadMyPreKeyJSON()
+			if (!myPreKeys) {
+				return { errorMessage: 'Мои PreKeys не найдены' }
+			}
+			let isMyPreKeys = false
+			for (const pk of preKeys) {
+				if (pk.userId === userId) {
+					isMyPreKeys = await checkMyPreKeys(myPreKeys.toServer, pk)
+					break
+				}
+			}
+			if (!isMyPreKeys) {
+				return { errorMessage: 'Мои PreKeys не совпадают с серверными' }
+			}
+			return {
+				mySecretPreKey: myPreKeys.toStore,
+				preKeysPub: preKeys,
+				sessionKey: null
+			}
+		} else {
+			const mySessionKeys = await loadMyKeys(chatId, groupId)
+			if (!mySessionKeys) {
+				return { errorMessage: 'Мои ключи сессии не найдены' }
+			}
+			const myPreKeys = await loadMyPreKeyJSON()
+			let preKeysPub: GetPreKeysQuery['getPreKeys'] | undefined
+			try {
+				const preKeysResponse = await getPreKeys({
+					variables: { chatId }
+				})
+				if (preKeysResponse.data?.getPreKeys) {
+					preKeysPub = preKeysResponse.data.getPreKeys
+				}
+			} catch {}
+			return {
+				mySecretPreKey: myPreKeys?.toStore ?? null,
+				preKeysPub,
+				sessionKey: mySessionKeys.sessionKeyHex
+			}
+		}
+	} catch (e) {
+		console.error('[SecretChat][DM] Ошибка загрузки ключей:', e)
+		return { errorMessage: 'Ошибка загрузки ключей чата' }
+	}
+}
+
+/**
+ * Загрузка состояния чата и ключей (для группового режима)
+ */
 export const loadChatAction = async (params: {
 	chatId: string
 	groupId: string
@@ -152,45 +263,44 @@ export const loadChatAction = async (params: {
 	}
 }
 
-// 2) Обработка сообщения из подписки (чистая функция)
-// Обработка сообщения из подписки: построчные пояснения
+/**
+ * Обработка сообщения из подписки
+ */
 export const processSecretSubscriptionAction = async (params: {
-	msg: any // объект сообщения из подписки
-	chat: any // текущий чат (метаданные и участники)
-	chatId: string // идентификатор чата
-	groupId: string // идентификатор группы
-	userId: string // мой идентификатор
-	sessionKey: Uint8Array<ArrayBufferLike> | null // текущий ключ сессии (если уже финализирован)
-	preKeysPub: GetPreKeysQuery['getPreKeys'] // публичные preKeys всех участников
-	mySecretPreKey: PreKeyBundleClient | null // мои приватные ключи IK/SPK из файла
-	getPreKeys?: ReturnType<typeof useGetPreKeysLazyQuery>[0] // ленивый запрос preKeys (для рефреша)
-	getSharedSecretKey: ReturnType<typeof useGetSharedSecretKeyLazyQuery>[0] // ленивый запрос shared secret key (для финализации)
-	getSecretMessage: ReturnType<typeof useGetSecretMessageLazyQuery>[0] // ленивый запрос секретного сообщения
-	processedRef?: MutableRefObject<Set<string>> // глобальный набор уже обработанных пакетов (iv+sig)
+	msg: any
+	chat: any
+	chatId: string
+	groupId: string
+	userId: string
+	sessionKey: Uint8Array<ArrayBufferLike> | null
+	preKeysPub: GetPreKeysQuery['getPreKeys']
+	mySecretPreKey: PreKeyBundleClient | null
+	getPreKeys?: ReturnType<typeof useGetPreKeysLazyQuery>[0]
+	getSharedSecretKey: ReturnType<typeof useGetSharedSecretKeyLazyQuery>[0]
+	getSecretMessage: ReturnType<typeof useGetSecretMessageLazyQuery>[0]
+	processedRef?: MutableRefObject<Set<string>>
 }): Promise<{
-	sessionKey?: Uint8Array<ArrayBufferLike> | null // новый или текущий ключ сессии
-	newMessage?: MessageType // расшифрованное новое сообщение
-	needPersistKey?: boolean // нужно ли сохранить ключ сессии на диск
+	sessionKey?: Uint8Array<ArrayBufferLike> | null
+	newMessage?: MessageType
+	needPersistKey?: boolean
 }> => {
 	const {
-		msg, // сообщение из подписки
-		chat, // чат
-		chatId, // id чата
-		groupId, // id группы
-		userId, // мой id
-		sessionKey, // ключ сессии (может быть null)
-		preKeysPub, // публичные preKeys
-		mySecretPreKey, // мои приватные ключи
-		getPreKeys, // функция запроса preKeys
-		getSecretMessage, // функция запроса секретного сообщения
-		processedRef, // глобальный набор обработанных пакетов
+		msg,
+		chat,
+		chatId,
+		groupId,
+		userId,
+		sessionKey,
+		preKeysPub,
+		mySecretPreKey,
+		getPreKeys,
+		getSecretMessage,
+		processedRef,
 		getSharedSecretKey
 	} = params
 
-	if (!msg || !chat || preKeysPub.length === 0 || !mySecretPreKey) return {} // если нет данных — выходим
-	console.log(userId)
+	if (!msg || !chat || preKeysPub.length === 0 || !mySecretPreKey) return {}
 
-	// Global dedup by iv+sig if provided
 	try {
 		const key = `${msg.iv}.${msg.sig}`
 		if (processedRef?.current?.has(key)) {
@@ -198,52 +308,44 @@ export const processSecretSubscriptionAction = async (params: {
 		}
 	} catch {}
 
-	let currentSession = sessionKey // локальная копия ключа сессии
+	let currentSession = sessionKey
 	console.log(
-		'[SecretChat][Sub] incoming msg:', // лог прихода сообщения
+		'[SecretChat][Sub] incoming msg:',
 		!!msg,
 		'sessionKey exists:',
 		!!currentSession
 	)
 	if (!currentSession) {
-		// если нет ключа — пытаемся восстановить
-		const fromDisk = await loadMyKeys(chatId, groupId) // читаем ключ с диска
+		const fromDisk = await loadMyKeys(chatId, groupId)
 		console.log(
-			'[SecretChat][Sub] fromDisk session:', // лог наличия ключа на диске
+			'[SecretChat][Sub] fromDisk session:',
 			!!fromDisk?.sessionKeyHex
 		)
 		if (fromDisk?.sessionKeyHex) {
-			currentSession = fromDisk.sessionKeyHex // берем ключ из файла
+			currentSession = fromDisk.sessionKeyHex
 		} else if (mySecretPreKey) {
-			// иначе пробуем финализировать через GSM
 			try {
 				const resSharedSecretKey = (
 					await getSharedSecretKey({ variables: { chatId } })
-				).data?.getSharedSecretKey[0] // запрос пакета для финализации
-				console.log(
-					'[SecretChat][Sub][GSM] full payload:', // лог payload
-					JSON.stringify(msg)
-				)
+				).data?.getSharedSecretKey[0]
+				console.log(JSON.stringify(msg))
 				if (msg?.ukm) {
-					// ukm присутствует — это инициирующий пакет
-					const ikPrivHex = mySecretPreKey.ikPriv || '' // IK приватный ключ в hex
-					const spkPrivHex = mySecretPreKey.spkPriv || '' // SPK приватный ключ в hex
+					const ikPrivHex = mySecretPreKey.ikPriv || ''
+					const spkPrivHex = mySecretPreKey.spkPriv || ''
 					if (!ikPrivHex || !spkPrivHex) {
-						// защита от пустых ключей
 						console.warn(
 							'[SecretChat][Sub] mySecretPreKey is missing private keys'
 						)
 						return {}
 					}
-					const ikPriv = await importPrivateRaw(fromHex(ikPrivHex)) // импорт IK
-					const spkPriv = await importPrivateRaw(fromHex(spkPrivHex)) // импорт SPK
+					const ikPriv = await importPrivateRaw(fromHex(ikPrivHex))
+					const spkPriv = await importPrivateRaw(fromHex(spkPrivHex))
 					let senderIkPub =
-						resSharedSecretKey?.ikPub || // приоритет — из payload
+						resSharedSecretKey?.ikPub ||
 						preKeysPub.find(pk => pk.userId === msg.fromUserId)
-							?.ikPub || // иначе из preKeys
+							?.ikPub ||
 						undefined
 					if (!senderIkPub && getPreKeys) {
-						// при необходимости — рефреш preKeys
 						try {
 							const preKeysResponse = await getPreKeys({
 								variables: { chatId }
@@ -260,42 +362,35 @@ export const processSecretSubscriptionAction = async (params: {
 						}
 					}
 					if (!senderIkPub) {
-						// без IK паблика не можем проверить подпись
 						console.warn(
 							'[SecretChat][Sub] senderIkPub missing; abort finalize'
 						)
 						return {}
 					}
 					const envelope = {
-						ikAPub: senderIkPub, // публичный IK отправителя
-						ekAPub: resSharedSecretKey?.ekPub!, // efemерный ключ отправителя
-						usedOpk: resSharedSecretKey?.usedOpk ?? null, // использованный OPK
-						ukm: msg.ukm, // ukm для KDF
-						iv: msg.iv, // IV для шифрования
-						ct: msg.encryptedMessage, // шифртекст
-						sig: msg.sig // подпись отправителя
+						ikAPub: senderIkPub,
+						ekAPub: resSharedSecretKey?.ekPub!,
+						usedOpk: resSharedSecretKey?.usedOpk ?? null,
+						ukm: msg.ukm,
+						iv: msg.iv,
+						ct: msg.encryptedMessage,
+						sig: msg.sig
 					}
-					console.log(
-						'[SecretChat][Sub] envelope from GSM:', // лог конверта
-						envelope
-					)
+					console.log('[SecretChat][Sub] envelope:', envelope)
 					const finalize = await finalizeFromEnvelope({
-						// финализируем сессию у получателя
 						bobIKPriv: ikPriv,
 						bobSPKPriv: spkPriv,
 						opkPriv: undefined,
 						envelope
 					})
-					currentSession = finalize.sessionKey // сохраняем ключ сессии в локальную переменную
+					currentSession = finalize.sessionKey
 					try {
-						// отмечаем пакет как обработанный (глобально)
 						processedRef?.current?.add(`${msg.iv}.${msg.sig}`)
 					} catch {}
 					const sender = chat.members.find(
 						(m: any) => m.user.id === msg.fromUserId
-					)?.user // ищем метаданные пользователя-отправителя
+					)?.user
 					const firstMessage: MessageType = {
-						// собираем первое расшифрованное сообщение
 						id: createId(),
 						text: finalize.decrypted,
 						isEdited: false,
@@ -309,24 +404,23 @@ export const processSecretSubscriptionAction = async (params: {
 					}
 
 					return {
-						sessionKey: currentSession, // вернём ключ
-						newMessage: firstMessage, // и само сообщение
-						needPersistKey: true // нужно сохранить ключ на диск
+						sessionKey: currentSession,
+						newMessage: firstMessage,
+						needPersistKey: true
 					}
 				}
 			} catch (e) {
-				console.warn('[SecretChat][Sub] GSM finalize failed:', e) // финализация не удалась
+				console.warn('[SecretChat][Sub] finalize failed:', e)
 			}
 		}
 	}
 
-	if (!currentSession) return {} // без ключа — выходим
+	if (!currentSession) return {}
 
 	let senderIkPub =
-		(msg as any)?.ikPub || // приоритет — из payload
-		preKeysPub.find(pk => pk.userId === msg.fromUserId)?.ikPub // иначе из preKeys
+		(msg as any)?.ikPub ||
+		preKeysPub.find(pk => pk.userId === msg.fromUserId)?.ikPub
 	if (!senderIkPub && getPreKeys) {
-		// рефреш preKeys при необходимости
 		try {
 			const preKeysResponse = await getPreKeys({ variables: { chatId } })
 			const fresh = preKeysResponse.data?.getPreKeys || []
@@ -335,25 +429,23 @@ export const processSecretSubscriptionAction = async (params: {
 			console.warn('[SecretChat][Sub] getPreKeys refresh failed:', e)
 		}
 	}
-	if (!senderIkPub) return {} // без IK паблика — выходим
+	if (!senderIkPub) return {}
 
 	const { decrypted, sigOk } = await decryptSessionMsgEnvelope({
-		// расшифровка сессионного сообщения
 		sessionKey: currentSession,
 		envelope: { iv: msg.iv, ct: msg.encryptedMessage, sig: msg.sig },
 		senderIkPub
 	})
-	console.log('[SecretChat][Sub] sigOk:', sigOk) // проверка подписи
-	if (!sigOk) return {} // подпись невалидна — выходим
+	console.log('[SecretChat][Sub] sigOk:', sigOk)
+	if (!sigOk) return {}
 	try {
 		processedRef?.current?.add(`${msg.iv}.${msg.sig}`)
 	} catch {}
 
 	const sender = chat.members.find(
 		(m: any) => m.user.id === msg.fromUserId
-	)?.user // метаданные пользователя
+	)?.user
 	const newMessage: MessageType = {
-		// собираем объект сообщения для UI
 		id: createId(),
 		text: decrypted,
 		isEdited: false,
@@ -362,11 +454,12 @@ export const processSecretSubscriptionAction = async (params: {
 		createdAt: new Date().toISOString(),
 		files: []
 	}
-	return { sessionKey: currentSession, newMessage } // возвращаем результат
+	return { sessionKey: currentSession, newMessage }
 }
 
-// 3) Пуллинг секретных сообщений (чистая функция)
-// Пуллинг секретных сообщений: построчные пояснения
+/**
+ * Пуллинг секретных сообщений
+ */
 export const pullSecretMessagesAction = async (params: {
 	chatId: string
 	groupId: string
@@ -384,57 +477,51 @@ export const pullSecretMessagesAction = async (params: {
 	needPersistKey?: boolean
 }> => {
 	const {
-		chatId, // id чата
-		groupId, // id группы
-		userId, // мой id
-		chat, // чат
-		sessionKey, // текущий ключ сессии
-		mySecretPreKey, // мои приватные ключи
-		preKeysPub, // публичные preKeys
-		getSecretMessage, // функция запроса секретного сообщения
-		processedRef // глобальный набор обработанных пакетов
+		chatId,
+		groupId,
+		userId,
+		chat,
+		sessionKey,
+		mySecretPreKey,
+		preKeysPub,
+		getSecretMessage,
+		processedRef
 	} = params
 
-	if (!chat || !(preKeysPub.length === 0) || !mySecretPreKey || !chatId)
-		return { newMessages: [] } // без чата — выходим
+	if (!chat || preKeysPub.length === 0 || !mySecretPreKey || !chatId)
+		return { newMessages: [] }
 
-	let currentSession = sessionKey // локальная копия ключа
-	let needPersistKey = false // флаг сохранения ключа
+	let currentSession = sessionKey
+	let needPersistKey = false
 
 	if (!currentSession) {
-		// если ключа нет — пытаемся восстановить
-		const fromDisk = await loadMyKeys(chatId, groupId) // читаем ключ с диска
+		const fromDisk = await loadMyKeys(chatId, groupId)
 
 		if (fromDisk?.sessionKeyHex) {
-			currentSession = fromDisk.sessionKeyHex // берем ключ из файла
+			currentSession = fromDisk.sessionKeyHex
 		} else if (mySecretPreKey) {
-			// иначе пробуем финализировать
 			try {
-				// запрос GSM для финализации
-				const resMsg = await getSecretMessage({ variables: { chatId } }) // запрос пакета
+				const resMsg = await getSecretMessage({ variables: { chatId } })
 
 				const msg:
 					| GetSecretMessageQuery['getSecretMessage']
-					| undefined = resMsg.data?.getSecretMessage // полезная нагрузка
+					| undefined = resMsg.data?.getSecretMessage
 
 				if (msg && msg.ukm) {
-					// ukm есть — это инициатор
-					const ikPrivHex = mySecretPreKey.ikPriv || '' // IK приватный ключ
-					const spkPrivHex = mySecretPreKey.spkPriv || '' // SPK приватный ключ
+					const ikPrivHex = mySecretPreKey.ikPriv || ''
+					const spkPrivHex = mySecretPreKey.spkPriv || ''
 					if (!ikPrivHex || !spkPrivHex) {
-						// защита от пустых ключей
 						console.warn(
 							'[SecretChat][Pull] mySecretPreKey is missing private keys'
 						)
 						return { newMessages: [] }
 					}
-					const ikPriv = await importPrivateRaw(fromHex(ikPrivHex)) // импорт IK
-					const spkPriv = await importPrivateRaw(fromHex(spkPrivHex)) // импорт SPK
+					const ikPriv = await importPrivateRaw(fromHex(ikPrivHex))
+					const spkPriv = await importPrivateRaw(fromHex(spkPrivHex))
 					let senderIkPub =
 						preKeysPub.find(pk => pk.userId === msg.fromUserId)
-							?.ikPub || undefined // иначе preKeys
+							?.ikPub || undefined
 					if (!senderIkPub && params.getPreKeys) {
-						// рефреш preKeys
 						try {
 							const preKeysResponse = await params.getPreKeys({
 								variables: { chatId }
@@ -451,44 +538,40 @@ export const pullSecretMessagesAction = async (params: {
 						}
 					}
 					if (!senderIkPub) {
-						// без IK паблика финализация невозможна
 						console.warn(
 							'[SecretChat][Pull] senderIkPub missing; abort finalize'
 						)
 						return { newMessages: [] }
 					}
-					const ek = msg.ekPub as string | undefined // efemерный ключ
-					const used = (msg.usedOpk as string | undefined) ?? null // использованный OPK
+					const ek = msg.ekPub as string | undefined
+					const used = (msg.usedOpk as string | undefined) ?? null
 					if (!ek) {
-						// без ekPub не финализируем
 						console.warn(
 							'[SecretChat][Pull] ekPub missing in GSM payload, cannot finalize session'
 						)
 						return { newMessages: [] }
 					}
 					const envelope = {
-						ikAPub: senderIkPub, // IK паблик отправителя
-						ekAPub: ek, // efemерный ключ отправителя
-						usedOpk: used, // использованный OPK
-						ukm: msg.ukm, // ukm для KDF
-						iv: msg.iv, // IV
-						ct: msg.encryptedMessage, // шифртекст
-						sig: msg.sig // подпись
+						ikAPub: senderIkPub,
+						ekAPub: ek,
+						usedOpk: used,
+						ukm: msg.ukm,
+						iv: msg.iv,
+						ct: msg.encryptedMessage,
+						sig: msg.sig
 					}
 					const finalize = await finalizeFromEnvelope({
-						// финализируем сессию
 						bobIKPriv: ikPriv,
 						bobSPKPriv: spkPriv,
 						opkPriv: undefined,
 						envelope
 					})
-					currentSession = finalize.sessionKey // сохраняем ключ
-					needPersistKey = true // отметка о сохранении
+					currentSession = finalize.sessionKey
+					needPersistKey = true
 					const sender = chat.members.find(
 						(m: any) => m.user.id === msg.fromUserId
-					)?.user // метаданные пользователя
+					)?.user
 					const firstMessage: MessageType = {
-						// собираем первое сообщение
 						id: createId(),
 						text: finalize.decrypted,
 						isEdited: false,
@@ -500,27 +583,20 @@ export const pullSecretMessagesAction = async (params: {
 						createdAt: new Date().toISOString(),
 						files: []
 					}
-					// Initialize collected with first
-					const collectedTail: MessageType[] = [firstMessage] // коллекция сообщений для возврата
+					const collectedTail: MessageType[] = [firstMessage]
 					try {
 						processedRef?.current?.add(`${msg.iv}.${msg.sig}`)
 					} catch {}
 					const processedKeys = new Set<string>()
 					processedKeys.add(`${msg.iv}.${msg.sig}`)
-					// Continue tail loop
 					for (let i = 0; i < 20; i++) {
-						// читаем хвост до 10 сообщений
 						const res = await getSecretMessage({
 							variables: { chatId },
 							fetchPolicy: 'network-only'
 						})
 						const nextMsg: any = res.data?.getSecretMessage
 
-						// console.log(
-						// 	'[SecretChat][Pull][GSM] tail payload:',
-						// 	JSON.stringify(nextMsg)
-						// )
-						if (!nextMsg) break // нет сообщений — выходим из хвоста
+						if (!nextMsg) break
 						const key = `${nextMsg.iv}.${nextMsg.sig}`
 						if (processedKeys.has(key)) {
 							continue
@@ -528,7 +604,7 @@ export const pullSecretMessagesAction = async (params: {
 						if (processedRef?.current?.has(key)) {
 							continue
 						}
-						if (!currentSession) break // защита от отсутствия ключа
+						if (!currentSession) break
 						let senderIkPub2 =
 							nextMsg.ikPub ||
 							preKeysPub.find(
@@ -551,7 +627,7 @@ export const pullSecretMessagesAction = async (params: {
 								)
 							}
 						}
-						if (!senderIkPub2) break // без IK паблика — пропуск
+						if (!senderIkPub2) break
 						const { decrypted, sigOk } =
 							await decryptSessionMsgEnvelope({
 								sessionKey: currentSession,
@@ -566,7 +642,7 @@ export const pullSecretMessagesAction = async (params: {
 							'[SecretChat][Pull] tail msg decrypted, sigOk:',
 							sigOk
 						)
-						if (!sigOk) continue // подпись невалидна — пропускаем
+						if (!sigOk) continue
 						processedKeys.add(key)
 						try {
 							processedRef?.current?.add(key)
@@ -594,21 +670,17 @@ export const pullSecretMessagesAction = async (params: {
 					}
 				}
 			} catch (e) {
-				console.warn('[SecretChat][Pull] GSM finalize failed:', e) // финализация не удалась
+				console.warn('[SecretChat][Pull] GSM finalize failed:', e)
 			}
 		}
 	}
 
-	const collected: MessageType[] = [] // набор для обычного хвоста
+	const collected: MessageType[] = []
 	const processedKeys = new Set<string>()
 	for (let i = 0; i < 20; i++) {
 		const res = await getSecretMessage({ variables: { chatId } })
 		const msg: any = res.data?.getSecretMessage
-		// console.log(
-		// 	'[SecretChat][Pull][GSM] tail payload:',
-		// 	JSON.stringify(msg)
-		// )
-		if (!msg) break // нет пакетов — выходим
+		if (!msg) break
 		const key = `${msg.iv}.${msg.sig}`
 		if (processedKeys.has(key)) {
 			continue
@@ -616,7 +688,7 @@ export const pullSecretMessagesAction = async (params: {
 		if (processedRef?.current?.has(key)) {
 			continue
 		}
-		if (!currentSession) break // без ключа — выходим
+		if (!currentSession) break
 		let senderIkPub =
 			msg.ikPub ||
 			preKeysPub.find(pk => pk.userId === msg.fromUserId)?.ikPub
@@ -640,13 +712,12 @@ export const pullSecretMessagesAction = async (params: {
 			continue
 		}
 		const { decrypted, sigOk } = await decryptSessionMsgEnvelope({
-			// расшифровка
 			sessionKey: currentSession!,
 			envelope: { iv: msg.iv, ct: msg.encryptedMessage, sig: msg.sig },
 			senderIkPub
 		})
-		console.log('[SecretChat][Pull] msg decrypted, sigOk:', sigOk) // проверка подписи
-		if (!sigOk) continue // подпись невалидна — пропускаем
+		console.log('[SecretChat][Pull] msg decrypted, sigOk:', sigOk)
+		if (!sigOk) continue
 		processedKeys.add(key)
 		try {
 			processedRef?.current?.add(key)
@@ -655,7 +726,6 @@ export const pullSecretMessagesAction = async (params: {
 			(m: any) => m.user.id === msg.fromUserId
 		)?.user
 		collected.push({
-			// добавляем сообщение в коллекцию
 			id: createId(),
 			text: decrypted,
 			isEdited: false,
@@ -666,13 +736,15 @@ export const pullSecretMessagesAction = async (params: {
 		})
 	}
 	return {
-		sessionKey: currentSession ?? undefined, // возвращаем ключ (если появился)
-		newMessages: collected, // хвостовые сообщения
-		needPersistKey // нужно ли сохранить ключ
+		sessionKey: currentSession ?? undefined,
+		newMessages: collected,
+		needPersistKey
 	}
 }
 
-// 4) Отправка сообщения (чистая функция)
+/**
+ * Отправка секретного сообщения
+ */
 export const sendSecretMessageAction = async (params: {
 	text: string
 	user: FindAllUsersQuery['findAllUsers'][number]
@@ -727,15 +799,15 @@ export const sendSecretMessageAction = async (params: {
 	}
 
 	if (!sessionKey) {
-		const recipientUserId = chat.members.find(
-			(m: any) => m.user.id !== userId
-		)?.user.id
-		if (!recipientUserId) {
-			console.error('Получатель не найден в чате')
-			return { newMessage, errorMessage: 'Получатель не найден в чате' }
+		const recipientUserIds = (chat.members || [])
+			.filter((m: any) => m.user.id !== userId)
+			.map((m: any) => m.user.id) as string[]
+		if (recipientUserIds.length === 0) {
+			console.error('Получатели не найдены в чате')
+			return { newMessage, errorMessage: 'Получатели не найдены в чате' }
 		}
 
-		let existingSessionKey = await loadMyKeys(chat.id, groupId)
+		let existingSessionKey = await loadMyKeys(chatId, groupId)
 		if (existingSessionKey) {
 			let mySecretPreKeyLocal = mySecretPreKey
 			if (!mySecretPreKeyLocal) {
@@ -760,13 +832,13 @@ export const sendSecretMessageAction = async (params: {
 			await sendMessageToClients({
 				variables: {
 					data: {
-						chatId: chat.id,
+						chatId,
 						encryptedMessage: envelope.ct,
 						groupId,
 						iv: envelope.iv,
 						ukm: null,
 						sig: envelope.sig,
-						toUserIds: [recipientUserId]
+						toUserIds: recipientUserIds
 					}
 				}
 			})
@@ -810,7 +882,7 @@ export const sendSecretMessageAction = async (params: {
 		} as const
 
 		let recipientBundle = preKeysPub.find(
-			pk => pk.userId === recipientUserId
+			pk => pk.userId === recipientUserIds[0]
 		)
 		if (!recipientBundle) {
 			try {
@@ -819,7 +891,7 @@ export const sendSecretMessageAction = async (params: {
 				})
 				if (preKeysResponse.data?.getPreKeys) {
 					recipientBundle = preKeysResponse.data.getPreKeys.find(
-						pk => pk.userId === recipientUserId
+						pk => pk.userId === recipientUserIds[0]
 					) as any
 				}
 			} catch {}
@@ -852,14 +924,13 @@ export const sendSecretMessageAction = async (params: {
 			}
 		}
 
-		// Положим параметры начальной сессии в очередь shared-secret-key для получателя
 		try {
 			await sendSharedSecretKey({
 				variables: {
 					data: {
 						chatId,
 						groupId,
-						toUserId: recipientUserId,
+						toUserId: recipientUserIds[0],
 						ikPub: myIkPubHex,
 						ekPub: initEnvelope.ekAPub,
 						usedOpk: initEnvelope.usedOpk ?? null,
@@ -877,25 +948,25 @@ export const sendSecretMessageAction = async (params: {
 		await sendMessageToClients({
 			variables: {
 				data: {
-					chatId: chat.id,
+					chatId,
 					encryptedMessage: initEnvelope.ct,
 					groupId,
 					iv: initEnvelope.iv,
 					sig: initEnvelope.sig,
 					ukm: initEnvelope.ukm,
-					toUserIds: [recipientUserId]
+					toUserIds: recipientUserIds
 				}
 			}
 		})
 
 		return { newMessage, sessionKey: newSessionKey, needPersistKey: true }
 	} else {
-		const recipientUserId = chat.members.find(
-			(m: any) => m.user.id !== userId
-		)?.user.id
-		if (!recipientUserId) {
-			console.error('Получатель не найден в чате')
-			return { newMessage, errorMessage: 'Получатель не найден в чате' }
+		const recipientUserIds = (chat.members || [])
+			.filter((m: any) => m.user.id !== userId)
+			.map((m: any) => m.user.id) as string[]
+		if (recipientUserIds.length === 0) {
+			console.error('Получатели не найдены в чате')
+			return { newMessage, errorMessage: 'Получатели не найдены в чате' }
 		}
 
 		const { envelope } = await buildSessionMsgEnvelope({
@@ -909,13 +980,13 @@ export const sendSecretMessageAction = async (params: {
 		await sendMessageToClients({
 			variables: {
 				data: {
-					chatId: chat.id,
+					chatId,
 					encryptedMessage: envelope.ct,
 					groupId,
 					iv: envelope.iv,
 					ukm: null,
 					sig: envelope.sig,
-					toUserIds: [recipientUserId]
+					toUserIds: recipientUserIds
 				}
 			}
 		})
@@ -923,7 +994,9 @@ export const sendSecretMessageAction = async (params: {
 	}
 }
 
-// 5) Удаление сообщений (чистая функция)
+/**
+ * Удаление сообщений
+ */
 export const deleteMessagesAction = async (params: {
 	messageIds: string[]
 	messagesRef: MutableRefObject<MessageType[]>
@@ -935,7 +1008,9 @@ export const deleteMessagesAction = async (params: {
 	return { nextMessages: next }
 }
 
-// 6) Выбор файла (чистая функция)
+/**
+ * Выбор файла
+ */
 export const pickFileAction = async (): Promise<{
 	newFile?: PickedFile
 	errorMessage?: string
@@ -954,12 +1029,14 @@ export const pickFileAction = async (): Promise<{
 			newFile: { id: createId(), name, size: sizeStr, uri: asset.uri }
 		}
 	} catch (err) {
-		console.error('❌ Ошибка при выборе файла:', err)
+		console.error('Ошибка при выборе файла:', err)
 		return { errorMessage: 'Ошибка выбора файла' }
 	}
 }
 
-// 7) Очистка формы (чистая функция)
+/**
+ * Очистка формы
+ */
 export const clearFormAction = (): {
 	draftText: string
 	files: SendFileType[]
@@ -967,3 +1044,475 @@ export const clearFormAction = (): {
 	draftText: '',
 	files: []
 })
+
+/**
+ * Получение и расшифровка общего ключа Кузнечика при заходе в чат.
+ * Получатель: финализирует X3DH-сессию с инициатором, расшифровывает общий ключ группы.
+ */
+export const receiveGroupKeyAction = async (params: {
+	chatId: string
+	groupId: string
+	userId: string
+	mySecretPreKey: PreKeyBundleClient
+	preKeysPub: GetPreKeysQuery['getPreKeys']
+	getPreKeys?: ReturnType<typeof useGetPreKeysLazyQuery>[0]
+	getSharedSecretKey: ReturnType<typeof useGetSharedSecretKeyLazyQuery>[0]
+}): Promise<{
+	groupKey?: Uint8Array
+	needPersistKey?: boolean
+	errorMessage?: string
+}> => {
+	const {
+		chatId,
+		groupId,
+		userId,
+		mySecretPreKey,
+		preKeysPub,
+		getPreKeys,
+		getSharedSecretKey
+	} = params
+
+	if (!mySecretPreKey) {
+		return { errorMessage: 'Нет приватных ключей' }
+	}
+
+	try {
+		const res = await getSharedSecretKey({ variables: { chatId } })
+		const sharedKeys = res.data?.getSharedSecretKey
+		if (!sharedKeys || sharedKeys.length === 0) {
+			console.log(
+				'[SecretChat][ReceiveGroup] Нет пакетов sharedSecretKey'
+			)
+			return { errorMessage: 'Общий ключ ещё не был передан' }
+		}
+
+		const packet = sharedKeys.find(sk => sk.toUserId === userId)
+		if (!packet) {
+			console.log(
+				'[SecretChat][ReceiveGroup] Нет пакета для текущего юзера'
+			)
+			return { errorMessage: 'Общий ключ ещё не был передан вам' }
+		}
+
+		const ikPrivHex = mySecretPreKey.ikPriv || ''
+		const spkPrivHex = mySecretPreKey.spkPriv || ''
+		if (!ikPrivHex || !spkPrivHex) {
+			return { errorMessage: 'Мои PreKeys не содержат приватных ключей' }
+		}
+		const ikPriv = await importPrivateRaw(fromHex(ikPrivHex))
+		const spkPriv = await importPrivateRaw(fromHex(spkPrivHex))
+
+		const envelope = {
+			ikAPub: packet.ikPub,
+			ekAPub: packet.ekPub,
+			usedOpk: packet.usedOpk ?? null,
+			ukm: packet.ukm,
+			iv: packet.iv,
+			ct: packet.encryptedKey,
+			sig: packet.sig
+		}
+
+		const finalize = await finalizeFromEnvelope({
+			bobIKPriv: ikPriv,
+			bobSPKPriv: spkPriv,
+			opkPriv: undefined,
+			envelope
+		})
+
+		const pairSessionKey = finalize.sessionKey
+
+		const groupKeyBytes = await decryptKuz(
+			pairSessionKey,
+			fromHex(packet.iv),
+			fromHex(packet.encryptedKey)
+		)
+
+		let senderIkPub =
+			packet.ikPub ||
+			preKeysPub.find(pk => pk.userId === packet.fromUserId)?.ikPub
+		if (!senderIkPub && getPreKeys) {
+			try {
+				const preKeysResponse = await getPreKeys({
+					variables: { chatId }
+				})
+				const fresh = preKeysResponse.data?.getPreKeys || []
+				senderIkPub = fresh.find(
+					pk => pk.userId === packet.fromUserId
+				)?.ikPub
+			} catch {}
+		}
+		if (senderIkPub) {
+			const pubKey = await importPublicRaw(fromHex(senderIkPub))
+			const ekAPubRaw = fromHex(packet.ekPub)
+			const ikAPubRaw = fromHex(packet.ikPub)
+			const aad = new Uint8Array([
+				...new TextEncoder().encode('GROUPKEYv1'),
+				...ikAPubRaw,
+				...ekAPubRaw
+			])
+			const sigOk = await verifyBytes(
+				pubKey,
+				new Uint8Array([
+					...aad,
+					...fromHex(packet.iv),
+					...fromHex(packet.encryptedKey)
+				]),
+				fromHex(packet.sig)
+			)
+			if (!sigOk) {
+				console.warn(
+					'[SecretChat][ReceiveGroup] Подпись общего ключа невалидна'
+				)
+				return { errorMessage: 'Подпись общего ключа невалидна' }
+			}
+		}
+
+		console.log(
+			'[SecretChat][ReceiveGroup] Group key received, length:',
+			groupKeyBytes.length
+		)
+
+		return {
+			groupKey: groupKeyBytes,
+			needPersistKey: true
+		}
+	} catch (e) {
+		console.error('[SecretChat][ReceiveGroup] Ошибка получения ключа:', e)
+		return { errorMessage: 'Ошибка получения общего ключа группы' }
+	}
+}
+
+/**
+ * Отправка существующего группового ключа новому участнику (при invite)
+ */
+export const sendGroupKeyToNewMemberAction = async (params: {
+	chatId: string
+	groupId: string
+	userId: string
+	targetUserId: string
+	sessionKey: Uint8Array<ArrayBufferLike>
+	mySecretPreKey: PreKeyBundleClient
+	preKeysPub: GetPreKeysQuery['getPreKeys']
+	getPreKeys: ReturnType<typeof useGetPreKeysLazyQuery>[0]
+	sendSharedSecretKey: ReturnType<typeof useSendSharedSecretKeyMutation>[0]
+}): Promise<{
+	success: boolean
+	errorMessage?: string
+}> => {
+	const {
+		chatId,
+		groupId,
+		userId,
+		targetUserId,
+		sessionKey,
+		mySecretPreKey,
+		preKeysPub,
+		getPreKeys,
+		sendSharedSecretKey
+	} = params
+
+	if (!mySecretPreKey || !sessionKey) {
+		return {
+			success: false,
+			errorMessage: 'Нет приватных ключей или сессионного ключа'
+		}
+	}
+
+	try {
+		const ikPrivRaw = fromHex(mySecretPreKey.ikPriv)
+		let myIkPubHex = preKeysPub.find(pk => pk.userId === userId)?.ikPub
+		if (!myIkPubHex) {
+			try {
+				const preKeysResponse = await getPreKeys({
+					variables: { chatId }
+				})
+				if (preKeysResponse.data?.getPreKeys) {
+					myIkPubHex = preKeysResponse.data.getPreKeys.find(
+						pk => pk.userId === userId
+					)?.ikPub
+				}
+			} catch {}
+		}
+		if (!myIkPubHex) {
+			return { success: false, errorMessage: 'Мой ikPub не найден' }
+		}
+		const ikPubRaw = fromHex(myIkPubHex)
+		const IK = {
+			privateKey: await importPrivateRaw(ikPrivRaw),
+			publicKey: await importPublicRaw(ikPubRaw)
+		} as const
+
+		let recipientBundle = preKeysPub.find(pk => pk.userId === targetUserId)
+		if (!recipientBundle) {
+			try {
+				const preKeysResponse = await getPreKeys({
+					variables: { chatId }
+				})
+				if (preKeysResponse.data?.getPreKeys) {
+					recipientBundle = preKeysResponse.data.getPreKeys.find(
+						pk => pk.userId === targetUserId
+					) as any
+				}
+			} catch {}
+		}
+		if (!recipientBundle) {
+			return {
+				success: false,
+				errorMessage: `PreKeys не найдены для ${targetUserId}`
+			}
+		}
+
+		const aliceEK = await generateEphemeralKeyPair()
+
+		const {
+			sessionKey: pairSessionKey,
+			ukm,
+			verifiedSpk
+		} = await establishSessionX3DH({
+			IK,
+			aliceEK,
+			bobBundle: {
+				ikPub: recipientBundle.ikPub,
+				spkPub: recipientBundle.spkPub,
+				spkSig: recipientBundle.spkSig,
+				opk:
+					recipientBundle.opkPubs[recipientBundle.indexOpkPub] ?? null
+			}
+		})
+
+		if (!verifiedSpk) {
+			return {
+				success: false,
+				errorMessage: `SPK подпись не прошла для ${targetUserId}`
+			}
+		}
+
+		const enc = await encryptKuz(pairSessionKey, sessionKey)
+
+		const ikAPubRaw = await exportPublicRaw(IK.publicKey)
+		const ekAPubRaw = await exportPublicRaw(aliceEK.publicKey)
+		const aad = new Uint8Array([
+			...new TextEncoder().encode('GROUPKEYv1'),
+			...ikAPubRaw,
+			...ekAPubRaw
+		])
+		const signature = await signBytes(
+			IK.privateKey,
+			new Uint8Array([...aad, ...enc.iv, ...enc.ciphertext])
+		)
+
+		await sendSharedSecretKey({
+			variables: {
+				data: {
+					chatId,
+					groupId,
+					toUserId: targetUserId,
+					ikPub: myIkPubHex,
+					ekPub: toHex(ekAPubRaw),
+					usedOpk:
+						recipientBundle.opkPubs[recipientBundle.indexOpkPub] ??
+						null,
+					ukm: toHex(ukm),
+					iv: toHex(enc.iv),
+					encryptedKey: toHex(enc.ciphertext),
+					sig: toHex(signature)
+				}
+			}
+		})
+
+		console.log(
+			`[SecretChat][InviteKey] Общий ключ отправлен новому участнику ${targetUserId}`
+		)
+		return { success: true }
+	} catch (e) {
+		console.error(
+			'[SecretChat][InviteKey] Ошибка отправки ключа новому участнику:',
+			e
+		)
+		return {
+			success: false,
+			errorMessage: 'Ошибка отправки ключа новому участнику'
+		}
+	}
+}
+
+/**
+ * Инициализация группового секретного чата при первом заходе.
+ * Устанавливает попарную X3DH-сессию с каждым участником чата,
+ * генерирует один общий ключ Кузнечика (ГОСТ Р 34.12),
+ * шифрует его каждым попарным сессионным ключом и рассылает участникам.
+ */
+export const initGroupSessionAction = async (params: {
+	chat: any
+	chatId: string
+	groupId: string
+	userId: string
+	mySecretPreKey: PreKeyBundleClient
+	preKeysPub: GetPreKeysQuery['getPreKeys']
+	getPreKeys: ReturnType<typeof useGetPreKeysLazyQuery>[0]
+	sendSharedSecretKey: ReturnType<typeof useSendSharedSecretKeyMutation>[0]
+}): Promise<{
+	groupKey?: Uint8Array
+	groupKeyHex?: string
+	needPersistKey?: boolean
+	errorMessage?: string
+}> => {
+	const {
+		chat,
+		chatId,
+		groupId,
+		userId,
+		mySecretPreKey,
+		preKeysPub,
+		getPreKeys,
+		sendSharedSecretKey
+	} = params
+
+	if (!chat || !mySecretPreKey) {
+		return { errorMessage: 'Нет данных чата или приватных ключей' }
+	}
+
+	const otherMembers = (chat.members || []).filter(
+		(m: any) => m.user.id !== userId
+	)
+	if (otherMembers.length === 0) {
+		return { errorMessage: 'Нет других участников в чате' }
+	}
+
+	try {
+		const { keyBytes: groupKeyBytes, keyHex: groupKeyHex } =
+			await generateKuznechikKey()
+		console.log(
+			'[SecretChat][InitGroup] Kuznechik group key generated, length:',
+			groupKeyBytes.length
+		)
+
+		const ikPrivRaw = fromHex(mySecretPreKey.ikPriv)
+		let myIkPubHex = preKeysPub.find(pk => pk.userId === userId)?.ikPub
+		if (!myIkPubHex) {
+			try {
+				const preKeysResponse = await getPreKeys({
+					variables: { chatId }
+				})
+				if (preKeysResponse.data?.getPreKeys) {
+					myIkPubHex = preKeysResponse.data.getPreKeys.find(
+						pk => pk.userId === userId
+					)?.ikPub
+				}
+			} catch {}
+		}
+		if (!myIkPubHex) {
+			return { errorMessage: 'Мой ikPub не найден в preKeys' }
+		}
+		const ikPubRaw = fromHex(myIkPubHex)
+		const IK = {
+			privateKey: await importPrivateRaw(ikPrivRaw),
+			publicKey: await importPublicRaw(ikPubRaw)
+		} as const
+
+		for (const member of otherMembers) {
+			const recipientUserId = member.user.id
+
+			let recipientBundle = preKeysPub.find(
+				pk => pk.userId === recipientUserId
+			)
+			if (!recipientBundle) {
+				try {
+					const preKeysResponse = await getPreKeys({
+						variables: { chatId }
+					})
+					if (preKeysResponse.data?.getPreKeys) {
+						recipientBundle = preKeysResponse.data.getPreKeys.find(
+							pk => pk.userId === recipientUserId
+						) as any
+					}
+				} catch {}
+			}
+			if (!recipientBundle) {
+				console.warn(
+					`[SecretChat][InitGroup] PreKeys не найдены для ${recipientUserId}, пропускаем`
+				)
+				continue
+			}
+
+			const aliceEK = await generateEphemeralKeyPair()
+
+			const {
+				sessionKey: pairSessionKey,
+				ukm,
+				verifiedSpk
+			} = await establishSessionX3DH({
+				IK,
+				aliceEK,
+				bobBundle: {
+					ikPub: recipientBundle.ikPub,
+					spkPub: recipientBundle.spkPub,
+					spkSig: recipientBundle.spkSig,
+					opk:
+						recipientBundle.opkPubs[recipientBundle.indexOpkPub] ??
+						null
+				}
+			})
+
+			if (!verifiedSpk) {
+				console.warn(
+					`[SecretChat][InitGroup] SPK подпись не прошла для ${recipientUserId}, пропускаем`
+				)
+				continue
+			}
+
+			const enc = await encryptKuz(pairSessionKey, groupKeyBytes)
+
+			const ikAPubRaw = await exportPublicRaw(IK.publicKey)
+			const ekAPubRaw = await exportPublicRaw(aliceEK.publicKey)
+			const aad = new Uint8Array([
+				...new TextEncoder().encode('GROUPKEYv1'),
+				...ikAPubRaw,
+				...ekAPubRaw
+			])
+			const signature = await signBytes(
+				IK.privateKey,
+				new Uint8Array([...aad, ...enc.iv, ...enc.ciphertext])
+			)
+
+			try {
+				await sendSharedSecretKey({
+					variables: {
+						data: {
+							chatId,
+							groupId,
+							toUserId: recipientUserId,
+							ikPub: myIkPubHex,
+							ekPub: toHex(ekAPubRaw),
+							usedOpk:
+								recipientBundle.opkPubs[
+									recipientBundle.indexOpkPub
+								] ?? null,
+							ukm: toHex(ukm),
+							iv: toHex(enc.iv),
+							encryptedKey: toHex(enc.ciphertext),
+							sig: toHex(signature)
+						}
+					}
+				})
+				console.log(
+					`[SecretChat][InitGroup] Общий ключ отправлен ${recipientUserId}`
+				)
+			} catch (e) {
+				console.warn(
+					`[SecretChat][InitGroup] sendSharedSecretKey failed для ${recipientUserId}:`,
+					e
+				)
+			}
+		}
+
+		return {
+			groupKey: groupKeyBytes,
+			groupKeyHex: groupKeyHex,
+			needPersistKey: true
+		}
+	} catch (e) {
+		console.error('[SecretChat][InitGroup] Ошибка инициализации:', e)
+		return { errorMessage: 'Ошибка инициализации группового секрета' }
+	}
+}

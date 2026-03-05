@@ -1,0 +1,12 @@
+query GetMemberChatRole($chatId: String!) {
+	getMemberChatRole(chatId: $chatId) {
+		id
+		name
+		color
+		chatId
+		isCreator
+		permissions
+		createdAt
+		updatedAt
+	}
+}

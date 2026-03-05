@@ -1,4 +1,5 @@
-import React, { FC } from 'react'
+﻿import React, { FC } from 'react'
+import { useTheme } from '@/hooks/useTheme'
 import { Pressable, View } from 'react-native'
 
 import { ForwardedMessageType } from '@/types/forward/forwarded-message.type'
@@ -26,6 +27,7 @@ const ChatMessageItem: FC<ChatMessageItemProp> = ({
 	isSelected,
 	chatId
 }) => {
+	const { colors } = useTheme()
 	const { text, user, files, isEdited } = messageInfo
 
 	const forwardedMessages: ForwardedMessageType[] =
@@ -56,9 +58,13 @@ const ChatMessageItem: FC<ChatMessageItemProp> = ({
 	return (
 		<Pressable
 			onPress={() => handleChooseMessage(messageId)}
-			className={`flex w-full p-2 rounded-lg transition-colors
-				${isSelected ? 'bg-accent' : 'bg-transparent'}
+			className={`flex w-full p-2 rounded-xl transition-colors
 				${isOwnMessage ? 'flex-row-reverse' : 'flex-row'}`}
+			style={{
+				backgroundColor: isSelected
+					? colors.accentMuted
+					: 'transparent'
+			}}
 		>
 			<View
 				className={`flex max-w-[80%] flex-col gap-2
@@ -77,8 +83,13 @@ const ChatMessageItem: FC<ChatMessageItemProp> = ({
 				{messageInfo.repliedToLinks &&
 					messageInfo.repliedToLinks.length > 0 && (
 						<View
-							className={`bg-muted border border-muted/50 rounded-md p-3 space-y-3
+							className={`rounded-lg p-3 space-y-3
 								${isOwnMessage ? 'mr-10' : 'ml-10'}`}
+							style={{
+								backgroundColor: colors.cardHover,
+								borderWidth: 1,
+								borderColor: colors.borderLight
+							}}
 						>
 							<ForwardMessageList
 								chatId={chatId}

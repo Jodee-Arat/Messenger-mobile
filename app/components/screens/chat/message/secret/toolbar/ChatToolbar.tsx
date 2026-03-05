@@ -1,56 +1,70 @@
-import { X } from 'lucide-react-native'
+﻿import { Trash2, X } from 'lucide-react-native'
 import React, { FC } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Text, TouchableOpacity, View } from 'react-native'
 
-import { Button } from '@/components/ui/button/Button'
-
-import ForwardMessageModal from '../list/ForwardMessageModal'
+import { useTheme } from '@/hooks/useTheme'
 
 interface ChatToolbarProp {
 	messageIds?: string[]
 	handleRemoveMessages: () => void
 	handleClearMessagesId: () => void
-	handleAddForwarded: (messageIds: string[]) => void
 	chatId: string
 }
 
 const ChatToolbar: FC<ChatToolbarProp> = ({
-	handleAddForwarded,
 	handleClearMessagesId,
 	handleRemoveMessages,
 	messageIds,
 	chatId
 }) => {
-	return (
-		<View>
-			{messageIds && !!messageIds.length && (
-				<View className='flex items-center justify-end space-x-5 rounded-lg'>
-					<Button onPress={() => handleAddForwarded(messageIds)}>
-						<Text>Reply</Text>
-					</Button>
-					<ForwardMessageModal
-						handleAddForwarded={handleAddForwarded}
-						chatId={chatId}
-						messageIds={messageIds}
-						handleClearMessagesId={handleClearMessagesId}
-					/>
+	const { colors } = useTheme()
+	if (!messageIds || messageIds.length === 0) return null
 
-					<Button onPress={handleRemoveMessages}>
-						<Text>Remove selection</Text>
-					</Button>
-					<Text className='text-sm'>
-						{`message(s) selected: ${messageIds.length}`}
-					</Text>
-					<Button
+	return (
+		<View
+			style={{
+				backgroundColor: colors.backgroundSecondary,
+				borderTopWidth: 1,
+				borderTopColor: colors.borderLight,
+				paddingBottom: 28,
+				paddingTop: 8,
+				paddingHorizontal: 8
+			}}
+		>
+			<View className='flex-row items-center justify-between'>
+				<View className='flex-row items-center'>
+					<TouchableOpacity
 						onPress={handleClearMessagesId}
-						className='p-0'
-						variant='ghost'
-						size='icon'
+						activeOpacity={0.6}
+						className='w-10 h-10 rounded-full items-center justify-center mr-2'
+						style={{ backgroundColor: colors.cardHover }}
 					>
-						<X className='h-7 w-7 py-0.5 px-1' />
-					</Button>
+						<X size={20} color={colors.textSecondary} />
+					</TouchableOpacity>
+					<View
+						className='rounded-full px-3 py-1'
+						style={{ backgroundColor: colors.accent }}
+					>
+						<Text
+							className='text-xs font-bold'
+							style={{ color: '#fff' }}
+						>
+							{messageIds.length}
+						</Text>
+					</View>
 				</View>
-			)}
+
+				<View className='flex-row items-center space-x-1'>
+					<TouchableOpacity
+						onPress={handleRemoveMessages}
+						activeOpacity={0.6}
+						className='w-10 h-10 rounded-full items-center justify-center'
+						style={{ backgroundColor: colors.destructiveMuted }}
+					>
+						<Trash2 size={20} color={colors.destructive} />
+					</TouchableOpacity>
+				</View>
+			</View>
 		</View>
 	)
 }

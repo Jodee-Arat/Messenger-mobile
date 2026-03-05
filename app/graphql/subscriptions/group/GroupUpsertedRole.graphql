@@ -1,0 +1,11 @@
+subscription GroupUpsertedRole($groupId: String!) {
+	groupUpsertedRole(groupId: $groupId) {
+		id
+		name
+		color
+		groupId
+		permissions
+		createdAt
+		updatedAt
+	}
+}

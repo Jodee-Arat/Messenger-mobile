@@ -4,10 +4,12 @@ subscription ChatUpdated($userId: String!) {
 		avatarUrl
 		updatedAt
 		isSecret
+		requireTotp
 		id
 		isGroup
 		groupId
 		members {
+			id
 			user {
 				id
 				username

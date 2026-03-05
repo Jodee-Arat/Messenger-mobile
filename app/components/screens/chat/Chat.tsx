@@ -8,21 +8,25 @@ type RouteParams = {
 	chatId: string
 	chatName: string
 	isSecret: boolean
-	groupId: string
+	groupId?: string
 }
 
 const Chat = () => {
 	const route = useRoute()
 	const { chatId, chatName, isSecret, groupId } = route.params as RouteParams
 
-	return isSecret ? (
-		<SecretChat
-			groupId={groupId}
-			chatId={chatId}
-			chatName={chatName}
-			isSecret={isSecret}
-		/>
-	) : (
+	if (isSecret) {
+		return (
+			<SecretChat
+				groupId={groupId}
+				chatId={chatId}
+				chatName={chatName}
+				isSecret={isSecret}
+			/>
+		)
+	}
+
+	return (
 		<DefaultChat chatId={chatId} chatName={chatName} isSecret={isSecret} />
 	)
 }

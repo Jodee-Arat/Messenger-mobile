@@ -11,7 +11,6 @@ export const useUser = () => {
 
 	const [userId, setUserIdState] = useState<string>(userIdFromStore || '')
 
-	// При монтировании подтягиваем из AsyncStorage, если store пустой
 	useEffect(() => {
 		const init = async () => {
 			if (userIdFromStore === '') {
@@ -38,7 +37,6 @@ export const useUser = () => {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [])
 
-	// Обновление userId и синхронизация store + AsyncStorage
 	const setUserId = useCallback(async (id: string) => {
 		setUserIdStore(id)
 		setUserIdState(id)

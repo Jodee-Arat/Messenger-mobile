@@ -1,0 +1,11 @@
+subscription ChatRemovedRole($chatId: String!) {
+	chatRemovedRole(chatId: $chatId) {
+		id
+		name
+		color
+		chatId
+		permissions
+		createdAt
+		updatedAt
+	}
+}

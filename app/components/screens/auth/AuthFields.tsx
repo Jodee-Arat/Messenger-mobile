@@ -3,6 +3,8 @@ import { Control } from 'react-hook-form'
 
 import Field from '@/components/ui/field/Field'
 
+import { useTranslation } from '@/hooks/useTheme'
+
 import { IAuthFormData } from '@/types/interface/auth.interface'
 
 import { validEmail } from './email.regex'
@@ -14,46 +16,52 @@ interface IAuthFields {
 }
 
 const AuthFields: FC<IAuthFields> = ({ control, isPassRequired, isReg }) => {
+	const { t } = useTranslation()
+
 	return (
 		<>
 			<Field<IAuthFormData>
-				placeholder='Enter login'
+				placeholder={t('enterLogin')}
 				control={control}
 				name='login'
 				rules={{
-					required: 'Login is required!',
+					required: t('loginRequired'),
 					minLength: {
 						value: 3,
-						message: 'Login should be minimum 3 characters long'
+						message: t('loginMin')
 					}
 				}}
 				keyboardType='email-address'
 			/>
 			{isReg && (
 				<Field<IAuthFormData>
-					placeholder='Enter email'
+					placeholder={t('enterEmail')}
 					control={control}
 					name='email'
 					rules={{
-						required: 'Email is required!',
+						required: t('emailRequired'),
 						pattern: {
 							value: validEmail,
-							message: 'Please enter a valid email address'
+							message: t('emailInvalid')
 						}
 					}}
 					keyboardType='email-address'
 				/>
 			)}
 			<Field<IAuthFormData>
-				placeholder='Enter password'
+				placeholder={t('enterPassword')}
 				control={control}
 				name='password'
 				secureTextEntry
 				rules={{
-					required: 'Password is required!',
+					required: t('passwordRequired'),
 					minLength: {
-						value: 6,
-						message: 'Password should be minimum 6 characters long'
+						value: 8,
+						message: t('passwordMin')
+					},
+					pattern: {
+						value: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d\s]).{8,}$/,
+						message: t('passwordPattern')
 					}
 				}}
 			/>

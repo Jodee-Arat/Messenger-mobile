@@ -302,7 +302,38 @@ const errorLink = onError(({ networkError, operation, forward }) => {
 
 export const client = new ApolloClient({
 	link: ApolloLink.from([errorLink, splitLink]),
-	cache: new InMemoryCache()
+	cache: new InMemoryCache({
+		typePolicies: {
+			Query: {
+				fields: {
+					findAllChatsByUser: {
+						merge(_existing = [], incoming: any[]) {
+							return incoming
+						}
+					},
+					findAllChatsByGroup: {
+						merge(_existing = [], incoming: any[]) {
+							return incoming
+						}
+					},
+					getPreKeys: {
+						merge(_existing = [], incoming: any[]) {
+							return incoming
+						}
+					}
+				}
+			},
+			ChatModel: {
+				fields: {
+					members: {
+						merge(_existing = [], incoming: any[]) {
+							return incoming
+						}
+					}
+				}
+			}
+		}
+	})
 })
 
 /* ---------------------------

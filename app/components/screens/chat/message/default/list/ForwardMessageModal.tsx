@@ -1,5 +1,6 @@
-import { zodResolver } from '@hookform/resolvers/zod'
+﻿import { zodResolver } from '@hookform/resolvers/zod'
 import { useNavigation } from '@react-navigation/native'
+import { Share2 } from 'lucide-react-native'
 import React, { FC, useEffect, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import {
@@ -12,13 +13,14 @@ import {
 	TouchableOpacity,
 	View
 } from 'react-native'
-import Toast from 'react-native-toast-message'
 
 import { Button } from '@/components/ui/button/Button'
 import Checkbox from '@/components/ui/checkbox/Checkbox'
 
+import { useTheme, useTranslation } from '@/hooks/useTheme'
+
 import {
-	useFindAllChatsByUserQuery,
+	useFindAllChatsByGroupQuery,
 	useForwardChatMessageMutation
 } from '@/graphql/generated/output'
 import {
@@ -31,30 +33,36 @@ interface ForwardMessageModalProp {
 	messageIds?: string[]
 	handleClearMessagesId: () => void
 	chatId: string
+	groupId: string
 }
 
 const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 	messageIds,
 	handleClearMessagesId,
 	handleAddForwarded,
-	chatId
+	chatId,
+	groupId
 }) => {
+	const { colors } = useTheme()
+	const { t } = useTranslation()
 	const [isOpen, setIsOpen] = useState(false)
 	const navigation = useNavigation()
 
 	const {
 		data: dataChats,
-		loading: isLoadingFindAllChatsByUser,
+		loading: isLoadingFindAllChats,
 		refetch
-	} = useFindAllChatsByUserQuery({
+	} = useFindAllChatsByGroupQuery({
 		skip: !isOpen,
 		variables: {
-			filters: {}
+			filters: {},
+			groupId
 		}
 	})
 
 	const form = useForm<ForwardMessageSchemaType>({
 		resolver: zodResolver(forwardMessageSchema),
+		mode: 'onChange',
 		defaultValues: {
 			text: '',
 			targetChatsId: []
@@ -62,7 +70,9 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 	})
 
 	const { isValid } = form.formState
-	const chats = dataChats?.findAllChatsByUser ?? []
+	const chats = (dataChats?.findAllChatsByGroup ?? []).filter(
+		c => !c.isSecret
+	)
 
 	const [forwardMessage, { loading: isLoadingForwardingMessage }] =
 		useForwardChatMessageMutation({
@@ -73,45 +83,14 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 					// @ts-ignore
 					navigation.navigate('Chat', { chatId: selectedChats[0] })
 				}
-				Toast.show({
-					type: 'success',
-					text1: 'Message forwarded successfully'
-				})
 				form.reset()
 			},
-			onError(error) {
-				Toast.show({
-					type: 'error',
-					text1: 'Error forwarding message',
-					text2: error.message
-				})
-			}
+			onError() {}
 		})
 
 	const onSubmit = (data: ForwardMessageSchemaType) => {
-		if (!messageIds || messageIds.length === 0) {
-			Toast.show({
-				type: 'error',
-				text1: 'No messages selected to forward.'
-			})
-			return
-		}
-
-		if (data.targetChatsId.length === 0) {
-			Toast.show({
-				type: 'error',
-				text1: 'You have to select at least one chat.'
-			})
-			return
-		}
-
-		if (data.text && data.text.trim() === '') {
-			Toast.show({
-				type: 'error',
-				text1: 'Message text cannot be empty.'
-			})
-			return
-		}
+		if (!messageIds || messageIds.length === 0) return
+		if (data.targetChatsId.length === 0) return
 
 		if (
 			data.targetChatsId.length === 1 &&
@@ -123,12 +102,14 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 			return
 		}
 
+		const trimmedText = data.text?.trim() || ''
+
 		forwardMessage({
 			variables: {
 				chatId,
 				data: {
 					forwardedMessageIds: messageIds,
-					text: data.text.trim(),
+					text: trimmedText,
 					fileIds: [],
 					targetChatsId: data.targetChatsId
 				}
@@ -144,13 +125,33 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 
 	return (
 		<>
-			<Button onPress={() => setIsOpen(true)}>Forward</Button>
+			<TouchableOpacity
+				onPress={() => setIsOpen(true)}
+				activeOpacity={0.6}
+				className='w-10 h-10 rounded-full items-center justify-center'
+				style={{ backgroundColor: colors.cardHover }}
+			>
+				<Share2 size={20} color={colors.text} />
+			</TouchableOpacity>
 
 			<Modal visible={isOpen} animationType='slide' transparent>
-				<View className='flex-1 justify-center bg-black/50'>
-					<View className='mx-4 bg-white rounded-2xl p-4 max-h-[80%]'>
-						<Text className='text-xl font-semibold mb-3 text-center'>
-							Forward messages
+				<View
+					className='flex-1 justify-center'
+					style={{ backgroundColor: colors.overlay }}
+				>
+					<View
+						className='mx-4 rounded-2xl p-4 max-h-[80%]'
+						style={{
+							backgroundColor: colors.backgroundTertiary,
+							borderWidth: 1,
+							borderColor: colors.borderLight
+						}}
+					>
+						<Text
+							className='text-xl font-semibold mb-3 text-center'
+							style={{ color: colors.text }}
+						>
+							{t('forwardMessages')}
 						</Text>
 
 						{/* Input for text */}
@@ -159,10 +160,15 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 							name='text'
 							render={({ field }) => (
 								<TextInput
-									className='border border-gray-300 rounded-lg p-2 mb-3'
-									placeholder='Enter message text'
-									multiline
-									editable={!isLoadingForwardingMessage}
+									className='rounded-lg p-2 mb-3'
+									style={{
+										borderWidth: 1,
+										borderColor: colors.borderLight,
+										backgroundColor: colors.inputBg,
+										color: colors.text
+									}}
+									placeholder={t('addMessageOptional')}
+									placeholderTextColor={colors.textMuted}
 									value={field.value}
 									onChangeText={field.onChange}
 								/>
@@ -170,7 +176,7 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 						/>
 
 						{/* Chats list */}
-						{isLoadingFindAllChatsByUser ? (
+						{isLoadingFindAllChats ? (
 							<ActivityIndicator size='small' className='my-3' />
 						) : (
 							<ScrollView className='max-h-[50vh]'>
@@ -239,13 +245,23 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 													className='w-10 h-10 rounded-full ml-3'
 												/>
 												<View className='ml-3 flex-1'>
-													<Text className='text-base font-medium'>
+													<Text
+														className='text-base font-medium'
+														style={{
+															color: colors.text
+														}}
+													>
 														{chat.chatName}
 													</Text>
-													<Text className='text-xs text-gray-500'>
+													<Text
+														className='text-xs'
+														style={{
+															color: colors.textSecondary
+														}}
+													>
 														{chat.lastMessage?.text
 															? `${chat.lastMessage.user.username}: ${chat.lastMessage.text}`
-															: 'No messages'}
+															: t('noMessages')}
 													</Text>
 												</View>
 											</TouchableOpacity>
@@ -261,17 +277,20 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 							disabled={
 								!isValid ||
 								isLoadingForwardingMessage ||
-								isLoadingFindAllChatsByUser
+								isLoadingFindAllChats
 							}
 							className='mt-4'
 						>
-							Forward
+							{t('forward')}
 						</Button>
 
 						{/* Cancel */}
 						<TouchableOpacity onPress={() => setIsOpen(false)}>
-							<Text className='text-center text-red-500 mt-3 font-medium'>
-								Cancel
+							<Text
+								className='text-center mt-3 font-medium'
+								style={{ color: colors.textSecondary }}
+							>
+								{t('cancel')}
 							</Text>
 						</TouchableOpacity>
 					</View>

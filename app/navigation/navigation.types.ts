@@ -3,6 +3,7 @@ import { ComponentType } from 'react'
 export type TypeRootStackParamList = {
 	Auth: undefined
 	Home: undefined
+	DirectMessages: undefined
 	Favorites: undefined
 	Search: undefined
 	Profile: undefined
@@ -15,9 +16,17 @@ export type TypeRootStackParamList = {
 		chatId: string
 		chatName: string
 		isSecret: boolean
-		groupId: string
+		groupId?: string
 	}
 	ChatSettings: { chatId: string }
+	GroupSettings: { groupId: string; groupName: string }
+	FriendProfile: {
+		friendshipId: string
+		username: string
+		avatarUrl?: string | null
+		friendUserId: string
+		friendSince: string
+	}
 	// Thanks: undefined
 	// Category: {
 	// 	slug: string

@@ -7,8 +7,7 @@ export const createChatSchema = z.object({
 	userIds: z.array(z.string()).refine(value => value.some(item => item), {
 		message: 'You have to select at least one user.'
 	}),
-	isSecretChat: z.boolean().optional(),
-	isGroup: z.boolean()
+	isSecretChat: z.boolean().optional()
 })
 
 export type createChatSchemaType = z.infer<typeof createChatSchema>

@@ -1,0 +1,3 @@
+mutation VerifyChatTotp($chatId: String!, $code: String!) {
+	verifyChatTotp(chatId: $chatId, code: $code)
+}

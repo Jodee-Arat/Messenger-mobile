@@ -1,4 +1,5 @@
-import { File, Loader2, X } from 'lucide-react-native'
+﻿import { File, Loader2, X } from 'lucide-react-native'
+import { useTheme } from '@/hooks/useTheme'
 import { FC } from 'react'
 import { Text, View } from 'react-native'
 
@@ -13,25 +14,37 @@ interface FileItemProp {
 }
 
 const FileItem: FC<FileItemProp> = ({ file, isLoadingSend, onDeleteFile }) => {
+	const { colors } = useTheme()
 	return (
 		<View>
 			<View className='flex cursor-grab select-none'>
-				<File className='size-8' />
+				<File color={colors.accent} size={32} />
 
 				<View className='w-15 flex flex-col'>
-					<Text className='truncate text-xs'>{file.name}</Text>
-					<Text className='truncate text-xs text-gray-500'>
+					<Text
+						className='truncate text-xs'
+						style={{ color: colors.text }}
+					>
+						{file.name}
+					</Text>
+					<Text
+						className='truncate text-xs'
+						style={{ color: colors.textSecondary }}
+					>
 						({formatBytes(parseInt(file.size))})
 					</Text>
 				</View>
 				{isLoadingSend ? (
-					<Loader2 className='ml-1 size-5 animate-spin' />
+					<Loader2
+						color={colors.accent}
+						className='ml-1 size-5 animate-spin'
+					/>
 				) : (
 					<Button
 						className='ml-1 size-5 rounded-full p-0'
 						onPress={onDeleteFile}
 					>
-						<X />
+						<X color={colors.textSecondary} />
 					</Button>
 				)}
 			</View>

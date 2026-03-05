@@ -1,0 +1,3 @@
+mutation UpsertChatRole($chatId: String!, $data: UpsertChatRoleInput!) {
+	upsertChatRole(chatId: $chatId, data: $data)
+}

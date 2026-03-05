@@ -1,0 +1,9 @@
+mutation FindOrCreateDirectChat($friendUserId: String!, $isSecret: Boolean) {
+	findOrCreateDirectChat(friendUserId: $friendUserId, isSecret: $isSecret) {
+		id
+		chatName
+		isSecret
+		isGroup
+		groupId
+	}
+}

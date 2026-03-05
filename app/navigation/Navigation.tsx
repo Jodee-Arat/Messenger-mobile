@@ -2,11 +2,11 @@
 import { NavigationContainer } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { FC, useEffect, useState } from 'react'
-import { useColorScheme } from 'react-native'
 
 import BottomMenu from '@/components/layout/bottom-menu/BottomMenu'
 
 import { useAuth } from '@/hooks/useAuth'
+import { useTheme } from '@/hooks/useTheme'
 
 import { navigationRef } from './navigate'
 import { TypeRootStackParamList } from './navigation.types'
@@ -17,7 +17,7 @@ import { routes } from './routes'
 const Stack = createNativeStackNavigator<TypeRootStackParamList>()
 
 const Navigation: FC = () => {
-	const scheme = useColorScheme()
+	const { colors } = useTheme()
 	const { isAuthenticated } = useAuth()
 	const [currentRoute, setCurrentRoute] = useState<string | undefined>(
 		undefined
@@ -33,7 +33,15 @@ const Navigation: FC = () => {
 		}
 	}, [])
 
-	const backgroundColor = scheme === 'dark' ? '#F6F7FB' : '#252136'
+	const backgroundColor = colors.background
+
+	const hideMenu = [
+		'Chat',
+		'Profile',
+		'UserSettings',
+		'ChatSettings',
+		'GroupSettings'
+	]
 
 	return (
 		<>
@@ -50,16 +58,16 @@ const Navigation: FC = () => {
 				</Stack.Navigator>
 			</NavigationContainer>
 
-			{isAuthenticated &&
+			{/* {isAuthenticated &&
 				navigationRef.isReady() &&
-				currentRoute !== 'Chat' && (
+				!hideMenu.includes(currentRoute ?? '') && (
 					<BottomMenu
 						nav={screenName =>
 							navigationRef.navigate(screenName as any)
 						}
 						currentRoute={currentRoute}
 					/>
-				)}
+				)} */}
 		</>
 	)
 }

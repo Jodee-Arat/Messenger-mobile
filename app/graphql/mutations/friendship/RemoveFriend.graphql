@@ -1,0 +1,3 @@
+mutation RemoveFriend($friendshipId: String!) {
+	removeFriend(friendshipId: $friendshipId)
+}

@@ -1,0 +1,8 @@
+query GetMemberRole($groupId: String!) {
+	getMemberRole(groupId: $groupId) {
+		id
+		name
+		permissions
+		isCreator
+	}
+}

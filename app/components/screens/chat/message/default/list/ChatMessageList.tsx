@@ -1,6 +1,8 @@
-import React, { FC, useCallback, useEffect, useState } from 'react'
+﻿import React, { FC, useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, FlatList, Text, View } from 'react-native'
 import Toast from 'react-native-toast-message'
+
+import { useTheme, useTranslation } from '@/hooks/useTheme'
 
 import { ForwardedMessageType } from '@/types/forward/forwarded-message.type'
 import { MessageType } from '@/types/message.type'
@@ -21,22 +23,32 @@ interface ChatMessageListProp {
 	pinnedMessage: MessageType | null
 	setPinnedMessage: (message: MessageType | null) => void
 	chatId: string
+	groupId: string
 	userId: string
 	startEdit: (
 		message: MessageType,
 		forwardedMessages?: ForwardedMessageType[]
 	) => void
 	handleAddForwardedMessage: (messages: MessageType[]) => void
+	canEditMessages?: boolean
+	canDeleteMessages?: boolean
+	canPinMessages?: boolean
 }
 
 const ChatMessageList: FC<ChatMessageListProp> = ({
 	chatId,
+	groupId,
 	pinnedMessage,
 	setPinnedMessage,
 	startEdit,
 	userId,
-	handleAddForwardedMessage
+	handleAddForwardedMessage,
+	canEditMessages = true,
+	canDeleteMessages = true,
+	canPinMessages = true
 }) => {
+	const { colors } = useTheme()
+	const { t } = useTranslation()
 	const [messageIds, setMessageIds] = useState<string[]>([])
 	const [messagesInfo, setMessagesInfo] = useState<MessageType[]>([])
 
@@ -68,14 +80,14 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 			setMessageIds([])
 			Toast.show({
 				type: 'success',
-				text1: ' Message delete successfully.'
+				text1: t('messageDeleteSuccess')
 			})
 		},
 		onError(error) {
 			Toast.show({
 				type: 'error',
-				text1: 'Failed to delete messages.',
-				text2: error.message || 'Something went wrong'
+				text1: t('failedDeleteMessages'),
+				text2: error.message || t('somethingWentWrong')
 			})
 		}
 	})
@@ -128,6 +140,8 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 					message.id === newMessage.id ? newMessage : message
 				)
 			}
+			// Дедупликация при переподключении WebSocket
+			if (prev.some(m => m.id === newMessage.id)) return prev
 			return [...prev, newMessage]
 		})
 	}, [newMessageData])
@@ -163,21 +177,13 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 	if (isLoadingFindAllMessages) {
 		return (
 			<View className='flex-1 justify-center items-center'>
-				<ActivityIndicator size='large' />
+				<ActivityIndicator size='large' color={colors.accent} />
 			</View>
 		)
 	}
 
 	return (
 		<View className='flex-1'>
-			<ChatToolbar
-				chatId={chatId}
-				messageIds={messageIds}
-				handleRemoveMessages={handleRemoveMessages}
-				handleClearMessagesId={handleClearMessagesId}
-				handleAddForwarded={handleAddForwarded}
-			/>
-
 			<PinnedMessage
 				chatId={chatId}
 				pinnedMessage={pinnedMessage}
@@ -191,7 +197,9 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 				contentContainerStyle={{ paddingTop: 8, paddingBottom: 8 }}
 				ListEmptyComponent={() => (
 					<View className='py-4 items-center'>
-						<Text>Пусто</Text>
+						<Text style={{ color: colors.textSecondary }}>
+							{t('empty')}
+						</Text>
 					</View>
 				)}
 				renderItem={({ item, index }) => {
@@ -213,6 +221,9 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 								chatId={chatId}
 								isSelected={isSelected}
 								setPinnedMessage={setPinnedMessage}
+								canEditMessages={canEditMessages}
+								canDeleteMessages={canDeleteMessages}
+								canPinMessages={canPinMessages}
 							/>
 							{item.files && item.files.length > 0 && (
 								<MessageFileList
@@ -224,6 +235,15 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 						</View>
 					)
 				}}
+			/>
+
+			<ChatToolbar
+				chatId={chatId}
+				groupId={groupId}
+				messageIds={messageIds}
+				handleRemoveMessages={handleRemoveMessages}
+				handleClearMessagesId={handleClearMessagesId}
+				handleAddForwarded={handleAddForwarded}
 			/>
 		</View>
 	)

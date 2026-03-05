@@ -3,13 +3,14 @@ import { CommonActions } from '@react-navigation/native'
 import * as SecureStore from 'expo-secure-store'
 import { useEffect, useState } from 'react'
 import { SubmitHandler, useForm } from 'react-hook-form'
-import { Pressable, Text, View } from 'react-native'
+import { Pressable, Text, TextInput, View } from 'react-native'
 import Toast from 'react-native-toast-message'
 
 import Loader from '@/components/ui/Loader'
 import { Button } from '@/components/ui/button/Button'
 
 import { useAuth } from '@/hooks/useAuth'
+import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 import { useUser } from '@/hooks/useUser'
 
@@ -31,10 +32,18 @@ import { generatePreKey } from '@/libs/e2ee/gost'
 
 const Auth = () => {
 	const [isReg, setIsReg] = useState(false)
+	const [totpStep, setTotpStep] = useState(false)
+	const [totpCode, setTotpCode] = useState('')
+	const [savedCredentials, setSavedCredentials] = useState<{
+		login: string
+		password: string
+	} | null>(null)
 
 	const navigation = useTypedNavigation()
 	const { auth, isAuthenticated } = useAuth()
 	const { setUserId } = useUser()
+	const { colors } = useTheme()
+	const { t } = useTranslation()
 
 	useEffect(() => {
 		if (isAuthenticated) {
@@ -52,7 +61,8 @@ const Auth = () => {
 		defaultValues: {
 			login: '',
 			email: '',
-			password: ''
+			password: '',
+			pin: ''
 		}
 	})
 
@@ -101,6 +111,16 @@ const Auth = () => {
 		},
 		onError(error) {
 			console.log(error)
+			if (error.message === 'TOTP code is required') {
+				const values = form.getValues()
+				setSavedCredentials({
+					login: values.login,
+					password: values.password
+				})
+				setTotpStep(true)
+				setTotpCode('')
+				return
+			}
 			Toast.show({
 				type: 'error',
 				text1: 'Login failed',
@@ -130,15 +150,14 @@ const Auth = () => {
 				Toast.show({
 					type: 'success',
 					text1: 'Registration successful',
-					text2: 'Welcome aboard!'
+					text2: 'You can now log in!'
 				})
 				const { toServer, toStore } = await generatePreKey()
 				AsyncStorage.setItem(
 					EnumAsyncStorage.MY_PRE_KEYS,
 					JSON.stringify(toStore)
 				)
-
-				upsertMyPreKeyJSON({ toServer, toStore }) // вот тут мб с типом toStore есть проблема, надо запустить и проверить а также доделать эту функцию саму
+				upsertMyPreKeyJSON({ toServer, toStore })
 				sendPreKey({
 					variables: {
 						data: {
@@ -180,46 +199,143 @@ const Auth = () => {
 			})
 		}
 	}
+
+	const onSubmitTotp = () => {
+		if (!savedCredentials || totpCode.length !== 6) {
+			Toast.show({
+				type: 'error',
+				text1: 'Invalid code',
+				text2: 'Enter the 6-digit code from your authenticator app'
+			})
+			return
+		}
+		login({
+			variables: {
+				data: {
+					login: savedCredentials.login,
+					password: savedCredentials.password,
+					pin: totpCode
+				}
+			}
+		})
+	}
 	const isLoading = false
 
 	return (
-		<View className='mx-2 bg-card-dark justify-center items-center h-full'>
+		<View
+			className='mx-2 justify-center items-center h-full'
+			style={{ backgroundColor: colors.background }}
+		>
 			<View className='w-9/12'>
-				<Text className='text-center text-foreground-dark text-3xl font-medium mb-8'>
-					{isReg ? 'Sign Up' : 'Login'}
-				</Text>
-				{isLoading ? (
-					<Loader />
-				) : (
+				{totpStep ? (
 					<>
-						<AuthFields
-							isReg={isReg}
-							control={form.control}
-							isPassRequired
+						<Text
+							className='text-center text-3xl font-medium mb-4'
+							style={{ color: colors.text }}
+						>
+							TOTP Verification
+						</Text>
+						<Text
+							className='text-center text-sm mb-6'
+							style={{ color: colors.textMuted }}
+						>
+							Enter the 6-digit code from your authenticator app
+						</Text>
+						<TextInput
+							value={totpCode}
+							onChangeText={(text: string) =>
+								setTotpCode(
+									text.replace(/[^0-9]/g, '').slice(0, 6)
+								)
+							}
+							placeholder='000000'
+							placeholderTextColor={colors.textMuted}
+							keyboardType='number-pad'
+							autoCapitalize='none'
+							style={{
+								backgroundColor: colors.inputBg,
+								borderWidth: 1,
+								borderColor: colors.border,
+								borderRadius: 12,
+								paddingVertical: 10,
+								paddingHorizontal: 16,
+								marginVertical: 6,
+								textAlign: 'center',
+								fontSize: 24,
+								letterSpacing: 8,
+								fontFamily: 'monospace',
+								color: colors.text
+							}}
 						/>
-
-						<Button size='sm' onPress={form.handleSubmit(onSubmit)}>
-							{isLoadingCreateUserWEmail ||
-							isLoadingSendPreKey ||
-							isLoadingLogin ? (
-								<Loader />
-							) : isReg ? (
-								'Sign Up'
-							) : (
-								'Login'
-							)}
-						</Button>
-
-						<Pressable onPress={() => setIsReg(!isReg)}>
-							<Text className='text-foreground-dark text-center text-base mt-6'>
-								{isReg
-									? 'Already have an account? '
-									: "Don't have an account? "}
-								<Text className='text-primary-dark'>
-									{isReg ? 'Login' : 'Sign up'}
-								</Text>
+						<View style={{ marginTop: 8 }}>
+							<Button
+								size='sm'
+								onPress={onSubmitTotp}
+								loading={isLoadingLogin}
+							>
+								Verify
+							</Button>
+						</View>
+						<Pressable
+							onPress={() => {
+								setTotpStep(false)
+								setSavedCredentials(null)
+								setTotpCode('')
+							}}
+						>
+							<Text
+								className='text-center text-base mt-6'
+								style={{ color: colors.accent }}
+							>
+								Back to login
 							</Text>
 						</Pressable>
+					</>
+				) : (
+					<>
+						<Text
+							className='text-center text-3xl font-medium mb-8'
+							style={{ color: colors.text }}
+						>
+							{isReg ? t('signUp') : t('login')}
+						</Text>
+						{isLoading ? (
+							<Loader />
+						) : (
+							<>
+								<AuthFields
+									isReg={isReg}
+									control={form.control}
+									isPassRequired
+								/>
+
+								<Button
+									size='sm'
+									onPress={form.handleSubmit(onSubmit)}
+									loading={
+										isLoadingCreateUserWEmail ||
+										isLoadingSendPreKey ||
+										isLoadingLogin
+									}
+								>
+									{isReg ? t('signUp') : t('login')}
+								</Button>
+
+								<Pressable onPress={() => setIsReg(!isReg)}>
+									<Text
+										className='text-center text-base mt-6'
+										style={{ color: colors.text }}
+									>
+										{isReg
+											? t('alreadyHaveAccount')
+											: t('noAccount')}
+										<Text style={{ color: colors.accent }}>
+											{isReg ? t('login') : t('signUp')}
+										</Text>
+									</Text>
+								</Pressable>
+							</>
+						)}
 					</>
 				)}
 			</View>

@@ -1,0 +1,7 @@
+mutation RemoveRoleFromUser(
+	$chatId: String!
+	$roleId: String!
+	$memberId: String!
+) {
+	removeRoleFromUser(chatId: $chatId, roleId: $roleId, memberId: $memberId)
+}

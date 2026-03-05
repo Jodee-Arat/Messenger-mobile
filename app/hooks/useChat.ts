@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Toast from 'react-native-toast-message'
 
 import {
+	useChatUpdatedSubscription,
 	useFindChatByChatIdQuery,
 	useRemoveFileMutation,
 	useSendFileMutation
@@ -13,7 +14,10 @@ import { MessageFileType } from '../types/message-file.type'
 import { MessageType } from '../types/message.type'
 import { SendFileType } from '../types/send-file.type'
 
+import { useUser } from './useUser'
+
 export const useChat = (chatId: string) => {
+	const { userId } = useUser()
 	const [messageId, setMessageId] = useState<string | null>(null)
 
 	const [forwardedMessages, setForwardedMessages] = useState<
@@ -26,14 +30,31 @@ export const useChat = (chatId: string) => {
 
 	const [filesEdited, setFilesEdited] = useState<SendFileType[]>([])
 
-	const { data: chatData, loading: isLoadingFindChat } =
-		useFindChatByChatIdQuery({
-			variables: {
-				chatId
-			},
-			fetchPolicy: 'network-only'
-		})
+	const {
+		data: chatData,
+		loading: isLoadingFindChat,
+		refetch: refetchChat
+	} = useFindChatByChatIdQuery({
+		variables: {
+			chatId
+		},
+		fetchPolicy: 'network-only'
+	})
 	const chat = chatData?.findChatByChatId
+
+	// Подписка на обновления чата (пин, название, аватар, драфты)
+	const { data: chatUpdatedData } = useChatUpdatedSubscription({
+		variables: { userId },
+		skip: !userId
+	})
+
+	useEffect(() => {
+		if (!chatUpdatedData?.chatUpdated) return
+		// Обновляем только если пришло обновление для нашего чата
+		if (chatUpdatedData.chatUpdated.id === chatId) {
+			refetchChat()
+		}
+	}, [chatUpdatedData])
 
 	useEffect(() => {
 		if (!chat) return
@@ -139,8 +160,6 @@ export const useChat = (chatId: string) => {
 				multiple: false
 			})
 
-			// новый формат: { assets: [ { uri, name, size, mimeType, ... } ] }
-			// или старый: fallback через any
 			let asset = undefined as any
 			if (
 				'assets' in res &&
@@ -164,7 +183,6 @@ export const useChat = (chatId: string) => {
 			}
 
 			if (!asset) {
-				// пользователь отменил или что-то не выбрал
 				return
 			}
 
@@ -180,7 +198,6 @@ export const useChat = (chatId: string) => {
 				return
 			}
 
-			// Добавляем временно в UI
 			setFiles(prev => [...prev, { name, size: sizeStr, id: '' }])
 
 			// Создаём ReactNativeFile — apollo-upload-client понимает этот объект
@@ -190,7 +207,6 @@ export const useChat = (chatId: string) => {
 				type: asset.mimeType ?? 'application/octet-stream'
 			})
 
-			// Вызываем GraphQL мутацию sendFile(chatId, file, messageId?)
 			await send({
 				variables: {
 					chatId,
@@ -198,8 +214,6 @@ export const useChat = (chatId: string) => {
 					messageId: messageId ?? 'null'
 				}
 			})
-
-			// в onCompleted мутации обнови UI (заполни id, удалить tmp-элемент и т.д.)
 		} catch (err: any) {
 			console.error('pickAndSend error', err)
 			Toast.show({ type: 'error', text1: 'Failed to pick/send file' })

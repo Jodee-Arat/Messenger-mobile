@@ -81,11 +81,15 @@ export async function createSecretChat(
 		const newChat: FindAllChatsByGroupQuery['findAllChatsByGroup'][0] = {
 			id: chat.id,
 			chatName: chat.chatName,
+			avatarUrl: chat.avatarUrl ?? null,
 			isGroup: chat.isGroup,
 			groupId: chat.groupId,
 			updatedAt: chat.updatedAt,
 			lastMessageAt: chat.lastMessageAt,
 			isSecret: true,
+			requireTotp: (chat as any).requireTotp ?? false,
+			isPinned: (chat as any).isPinned ?? false,
+			pinnedOrder: (chat as any).pinnedOrder ?? null,
 			members: chat.members
 		}
 
@@ -131,7 +135,9 @@ export async function loadAllSecretChats(
 
 			const content = await FileSystem.readAsStringAsync(CHAT_FILE)
 			const chat = JSON.parse(content) as SecretChatData
-			chats.push(chat)
+			chats.push(
+				chat as unknown as FindAllChatsByGroupQuery['findAllChatsByGroup'][0]
+			)
 		}
 
 		return chats
@@ -142,7 +148,24 @@ export async function loadAllSecretChats(
 }
 
 /**
- * 🗑️ Удаление чата (вместе с его папкой)
+ * � Удаление только сессионного ключа (my-keys.json) без удаления всего чата.
+ * Используется при ротации ключей (leave / remove member).
+ */
+export async function deleteMyKeys(chatId: string, groupId: string) {
+	try {
+		const FILE_PATH = `${BASE_DIRECTORY}${groupId}/${chatId}/${FILE.MY_KEYS}`
+		const fileInfo = await FileSystem.getInfoAsync(FILE_PATH)
+		if (fileInfo.exists) {
+			await FileSystem.deleteAsync(FILE_PATH, { idempotent: true })
+			console.log(`[SecretChat] my-keys.json удалён для чата ${chatId}`)
+		}
+	} catch (error) {
+		console.error('[SecretChat] Ошибка при удалении my-keys.json:', error)
+	}
+}
+
+/**
+ * �🗑️ Удаление чата (вместе с его папкой)
  */
 export async function deleteSecretChat(groupId: string, chatId: string) {
 	try {

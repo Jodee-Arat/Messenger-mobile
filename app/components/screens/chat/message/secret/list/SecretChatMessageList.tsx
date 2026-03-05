@@ -1,6 +1,8 @@
-import React, { FC, useCallback, useState } from 'react'
+﻿import React, { FC, useCallback, useState } from 'react'
 import { ActivityIndicator, FlatList, Text, View } from 'react-native'
 import Toast from 'react-native-toast-message'
+
+import { useTheme, useTranslation } from '@/hooks/useTheme'
 
 import { ForwardedMessageType } from '@/types/forward/forwarded-message.type'
 import { MessageType } from '@/types/message.type'
@@ -36,6 +38,8 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 	startEdit = () => {},
 	handleAddForwardedMessage = () => {}
 }) => {
+	const { colors } = useTheme()
+	const { t } = useTranslation()
 	const [messageIds, setMessageIds] = useState<string[]>([])
 	const [isDeleting, setIsDeleting] = useState(false)
 
@@ -44,17 +48,17 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 		if (messageIds.length === 0) return
 		try {
 			setIsDeleting(true)
-				await onDelete(messageIds)
+			await onDelete(messageIds)
 			setMessageIds([])
 			Toast.show({
 				type: 'success',
-				text1: 'Сообщения удалены успешно'
+				text1: t('messagesDeletedSuccess')
 			})
 		} catch (error: any) {
 			Toast.show({
 				type: 'error',
-				text1: 'Ошибка при удалении сообщений',
-				text2: error?.message || 'Что-то пошло не так'
+				text1: t('failedDeleteMessages'),
+				text2: error?.message || t('somethingWentWrong')
 			})
 		} finally {
 			setIsDeleting(false)
@@ -88,22 +92,13 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 	if (isDeleting) {
 		return (
 			<View className='flex-1 justify-center items-center'>
-				<ActivityIndicator size='large' />
+				<ActivityIndicator size='large' color={colors.accent} />
 			</View>
 		)
 	}
 
 	return (
 		<View className='flex-1'>
-			{/* Панель управления сообщениями */}
-			<ChatToolbar
-				chatId={chatId}
-				messageIds={messageIds}
-				handleRemoveMessages={handleRemoveMessages}
-				handleClearMessagesId={handleClearMessagesId}
-				handleAddForwarded={handleAddForwarded}
-			/>
-
 			{/* Прикреплённое сообщение */}
 			{pinnedMessage && (
 				<PinnedMessage
@@ -120,7 +115,9 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 				contentContainerStyle={{ paddingTop: 8, paddingBottom: 8 }}
 				ListEmptyComponent={() => (
 					<View className='py-4 items-center'>
-						<Text>Пусто</Text>
+						<Text style={{ color: colors.textSecondary }}>
+							{t('empty')}
+						</Text>
 					</View>
 				)}
 				renderItem={({ item }) => {
@@ -154,6 +151,14 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 						</View>
 					)
 				}}
+			/>
+
+			{/* Панель управления сообщениями — снизу */}
+			<ChatToolbar
+				chatId={chatId}
+				messageIds={messageIds}
+				handleRemoveMessages={handleRemoveMessages}
+				handleClearMessagesId={handleClearMessagesId}
 			/>
 		</View>
 	)

@@ -1,0 +1,11 @@
+subscription ChatUpsertedRole($chatId: String!) {
+	chatUpsertedRole(chatId: $chatId) {
+		id
+		name
+		color
+		chatId
+		permissions
+		createdAt
+		updatedAt
+	}
+}

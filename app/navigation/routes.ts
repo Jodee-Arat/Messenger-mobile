@@ -2,9 +2,10 @@ import Auth from '@/components/screens/auth/Auth'
 import ChatSettings from '@/components/screens/chat-settings/ChatSettings'
 import Chat from '@/components/screens/chat/Chat'
 import ChatsList from '@/components/screens/chats-list/ChatsList'
-import Favorites from '@/components/screens/favorites/Favorites'
-import Groups from '@/components/screens/groups-list/Groups'
+import DirectMessages from '@/components/screens/direct-messages/DirectMessages'
+import GroupSettings from '@/components/screens/group-settings/GroupSettings'
 import Home from '@/components/screens/home/Home'
+import FriendProfile from '@/components/screens/home/friend/FriendProfile'
 import Profile from '@/components/screens/profile/Profile'
 import UserSettings from '@/components/screens/profile/settings/UserSettings'
 
@@ -23,16 +24,16 @@ export const routes: IRoute[] = [
 		name: 'ChatsList',
 		component: ChatsList
 	},
+
 	{
-		name: 'Groups',
-		component: Groups
+		name: 'DirectMessages',
+		component: DirectMessages
 	},
-	{
-		name: 'Favorites',
-		component: Favorites
-	},
+
 	{ name: 'Chat', component: Chat },
 	{ name: 'ChatSettings', component: ChatSettings },
+	{ name: 'GroupSettings', component: GroupSettings },
+	{ name: 'FriendProfile', component: FriendProfile },
 
 	// {
 	// 	name: 'Search',

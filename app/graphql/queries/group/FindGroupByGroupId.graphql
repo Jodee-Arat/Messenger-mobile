@@ -1,15 +1,22 @@
 query FindGroupByGroupId($groupId: String!) {
-  findGroupByGroupId(groupId: $groupId) {
-    id
-    groupName
-    avatarUrl
-    description
-    members {
-      user {
-        id
-        username
-        avatarUrl
-      }
-    }
-  }
+	findGroupByGroupId(groupId: $groupId) {
+		id
+		groupName
+		avatarUrl
+		description
+		members {
+			isCreator
+			user {
+				id
+				username
+				avatarUrl
+			}
+			roles {
+				id
+				name
+				color
+				permissions
+			}
+		}
+	}
 }

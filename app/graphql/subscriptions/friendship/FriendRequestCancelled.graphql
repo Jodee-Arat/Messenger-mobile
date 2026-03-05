@@ -1,0 +1,20 @@
+subscription FriendRequestCancelled($userId: String!) {
+	friendRequestCancelled(userId: $userId) {
+		id
+		userId
+		friendId
+		status
+		user {
+			id
+			username
+			avatarUrl
+		}
+		friend {
+			id
+			username
+			avatarUrl
+		}
+		createdAt
+		updatedAt
+	}
+}

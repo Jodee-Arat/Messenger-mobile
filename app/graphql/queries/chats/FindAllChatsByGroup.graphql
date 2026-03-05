@@ -4,10 +4,14 @@ query FindAllChatsByGroup($filters: FiltersInput!, $groupId: String!) {
 		avatarUrl
 		updatedAt
 		isSecret
+		requireTotp
 		id
 		isGroup
 		groupId
+		isPinned
+		pinnedOrder
 		members {
+			id
 			user {
 				id
 				username

@@ -1,37 +1,46 @@
-import { Ionicons } from '@expo/vector-icons'
+import { Menu, Search } from 'lucide-react-native'
 import { FC } from 'react'
-import { Pressable, Text, View } from 'react-native'
+import { Text, TouchableOpacity, View } from 'react-native'
 
-import { useAuth } from '@/hooks/useAuth'
-import { useTypedNavigation } from '@/hooks/useTypedNavigation'
+import { useTheme, useTranslation } from '@/hooks/useTheme'
 
-import { loadMyPreKeyJSON } from '@/utils/secret-chat/secretChat'
+interface HeaderProps {
+	onMenuPress: () => void
+}
 
-const Header: FC = () => {
-	const { navigate } = useTypedNavigation()
-	const { exit } = useAuth()
+const Header: FC<HeaderProps> = ({ onMenuPress }) => {
+	const { colors } = useTheme()
+	const { t } = useTranslation()
 
 	return (
-		<View className='flex-row justify-between items-center'>
-			<Text className='font-medium text-2xl text-foreground-dark'>
-				Hello, {'jodee'}!
+		<View
+			className='flex-row items-center justify-between px-5 pt-14 pb-3'
+			style={{
+				backgroundColor: colors.backgroundSecondary,
+				borderBottomWidth: 1,
+				borderBottomColor: colors.border
+			}}
+		>
+			<TouchableOpacity
+				onPress={onMenuPress}
+				activeOpacity={0.6}
+				className='w-10 h-10 rounded-full items-center justify-center'
+				style={{ backgroundColor: colors.backgroundTertiary }}
+			>
+				<Menu size={20} color={colors.text} />
+			</TouchableOpacity>
+
+			<Text className='text-lg font-bold' style={{ color: colors.text }}>
+				{t('friends')}
 			</Text>
 
-			<Pressable
-				onPress={() => {
-					exit()
-					navigate('Auth')
-				}}
+			<TouchableOpacity
+				activeOpacity={0.6}
+				className='w-10 h-10 rounded-full items-center justify-center'
+				style={{ backgroundColor: colors.backgroundTertiary }}
 			>
-				<Text>X</Text>
-			</Pressable>
-
-			<Pressable onPress={() => loadMyPreKeyJSON()}>
-				<Ionicons name='cart' size={26} color='#6d7279' />
-			</Pressable>
-			<Pressable onPress={() => loadMyPreKeyJSON()}>
-				<Ionicons name='cart' size={26} color='#6d7279' />
-			</Pressable>
+				<Search size={20} color={colors.textSecondary} />
+			</TouchableOpacity>
 		</View>
 	)
 }

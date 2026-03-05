@@ -1,0 +1,3 @@
+mutation UpsertGroupRole($groupId: String!, $data: UpsertGroupRoleInput!) {
+	upsertGroupRole(groupId: $groupId, data: $data)
+}

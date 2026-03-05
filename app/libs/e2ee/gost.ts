@@ -54,7 +54,7 @@ if (typeof (globalThis as any).TextDecoder === 'undefined' && FTextDecoder) {
 // Минимальные строительные блоки E2EE на алгоритмах ГОСТ
 // - DH на ГОСТ Р 34.10 (S-256-A)
 // - KDF на ГОСТ Р 34.11 (Стрибог)
-// - Симметричное шифрование: ГОСТ Р 34.12 (Кузнечик) в CTR с имитацией MAC через digest (только для демо)
+// - Симметричное шифрование: ГОСТ Р 34.12 (Кузнечик) в CTR с имитацией MAC через digest
 
 export type Raw = Uint8Array
 
@@ -111,12 +111,10 @@ type GostModule = {
 }
 
 function subtle(): SubtleCryptoLike {
-	// 1) Глобальный gostCrypto
 	const gAny: any = globalThis as any
 	if (gAny.gostCrypto?.subtle)
 		return gAny.gostCrypto.subtle as SubtleCryptoLike
 
-	// 2) Пытаемся подключить модуль 'gost-crypto'
 	let mod: GostModule | null = null
 	try {
 		mod =
@@ -124,7 +122,6 @@ function subtle(): SubtleCryptoLike {
 	} catch {
 		mod = null
 	}
-	// Дополнительные прямые пути-фолбэки для Metro/Hermes
 	if (!mod || (!mod.subtle && !(mod.crypto && mod.crypto.subtle))) {
 		try {
 			mod = require('gost-crypto/lib/index.js') as GostModule
@@ -141,16 +138,13 @@ function subtle(): SubtleCryptoLike {
 		(mod as any)?.default?.subtle ??
 		(mod as any)?.default?.crypto?.subtle
 	if (s) {
-		// кэшируем глобально
 		;(globalThis as any).gostCrypto = { subtle: s }
 		return s
 	}
 
-	// 3) Фолбэк: пакет 'crypto-gost' (альтернативная сборка)
 	try {
 		// eslint-disable-next-line @typescript-eslint/no-var-requires
 		const cg: any = require('crypto-gost')
-		// некоторые сборки экспортируют напрямую, некоторые через default, некоторые кладут в global
 		s =
 			cg?.subtle ||
 			cg?.crypto?.subtle ||
@@ -163,48 +157,46 @@ function subtle(): SubtleCryptoLike {
 			;(globalThis as any).gostCrypto = { subtle: s }
 			return s
 		}
-	} catch {
-		// ignore
-	}
+	} catch {}
 
 	throw new Error(
 		"gost-crypto subtle is not available. Установите одну из библиотек: 'gost-crypto' или 'crypto-gost' (npm install gost-crypto fast-text-encoding --save), перезапустите Expo с -c, и убедитесь, что 'gostEngine' подхватился."
 	)
 }
 
-export function utf8(str: string): Uint8Array {
+export function utf8(str: string) {
 	const GE: any = (globalThis as any).TextEncoder || FTextEncoder
 	if (GE) return new GE().encode(str)
-	// Запасной энкодер
-	// попробовать это убрать
-	const utf8: number[] = []
-	for (let i = 0; i < str.length; i++) {
-		let charcode = str.charCodeAt(i)
-		if (charcode < 0x80) utf8.push(charcode)
-		else if (charcode < 0x800)
-			utf8.push(0xc0 | (charcode >> 6), 0x80 | (charcode & 0x3f))
-		else if (charcode < 0xd800 || charcode >= 0xe000)
-			utf8.push(
-				0xe0 | (charcode >> 12),
-				0x80 | ((charcode >> 6) & 0x3f),
-				0x80 | (charcode & 0x3f)
-			)
-		else {
-			// суррогатная пара
-			i++
-			// UTF-16 кодирует 0x10000-0x10FFFF, вычитая 0x10000 и разбивая на пару
-			charcode =
-				0x10000 +
-				(((charcode & 0x3ff) << 10) | (str.charCodeAt(i) & 0x3ff))
-			utf8.push(
-				0xf0 | (charcode >> 18),
-				0x80 | ((charcode >> 12) & 0x3f),
-				0x80 | ((charcode >> 6) & 0x3f),
-				0x80 | (charcode & 0x3f)
-			)
-		}
-	}
-	return new Uint8Array(utf8)
+	// // Запасной энкодер
+	// // попробовать это убрать
+	// const utf8: number[] = []
+	// for (let i = 0; i < str.length; i++) {
+	// 	let charcode = str.charCodeAt(i)
+	// 	if (charcode < 0x80) utf8.push(charcode)
+	// 	else if (charcode < 0x800)
+	// 		utf8.push(0xc0 | (charcode >> 6), 0x80 | (charcode & 0x3f))
+	// 	else if (charcode < 0xd800 || charcode >= 0xe000)
+	// 		utf8.push(
+	// 			0xe0 | (charcode >> 12),
+	// 			0x80 | ((charcode >> 6) & 0x3f),
+	// 			0x80 | (charcode & 0x3f)
+	// 		)
+	// 	else {
+	// 		// суррогатная пара
+	// 		i++
+	// 		// UTF-16 кодирует 0x10000-0x10FFFF, вычитая 0x10000 и разбивая на пару
+	// 		charcode =
+	// 			0x10000 +
+	// 			(((charcode & 0x3ff) << 10) | (str.charCodeAt(i) & 0x3ff))
+	// 		utf8.push(
+	// 			0xf0 | (charcode >> 18),
+	// 			0x80 | ((charcode >> 12) & 0x3f),
+	// 			0x80 | ((charcode >> 6) & 0x3f),
+	// 			0x80 | (charcode & 0x3f)
+	// 		)
+	// 	}
+	// }
+	// return new Uint8Array(utf8)
 }
 
 export function decodeUtf8(bytes: Uint8Array): string {
@@ -467,6 +459,30 @@ export async function deriveSymKey(
 		ukm,
 		label: label ? utf8(label) : undefined
 	})
+}
+
+// Генерация случайного 256-битного симметричного ключа для Кузнечика (ГОСТ Р 34.12).
+// Ключ проверяется через тестовый импорт в SubtleCrypto, чтобы гарантировать совместимость.
+export async function generateKuznechikKey(): Promise<{
+	keyBytes: Uint8Array
+	keyHex: string
+}> {
+	const keyBytes = new Uint8Array(32)
+	fillRandom(keyBytes)
+
+	// Проверяем, что ключ валиден для Кузнечика (тестовый импорт)
+	const testAlgo = {
+		name: 'GOST R 34.12',
+		block: 'CTR',
+		length: 64,
+		sBox: 'E-Z',
+		iv: new Uint8Array(16)
+	} as const
+	await subtle().importKey('raw', new Uint8Array(keyBytes), testAlgo, false, [
+		'encrypt'
+	])
+
+	return { keyBytes, keyHex: toHex(keyBytes) }
 }
 
 export async function encryptKuz(cipherKey: Uint8Array, plaintext: Uint8Array) {
@@ -965,7 +981,7 @@ const makeHash = async (data: Uint8Array) => {
 	return toHex(new Uint8Array(hashBuf))
 }
 
-const getFingerprint = async (ikPub: string, spkPub: string) => {
+export const getFingerprint = async (ikPub: string, spkPub: string) => {
 	const combined = new Uint8Array(ikPub.length + spkPub.length)
 	combined.set(fromHex(ikPub), 0)
 	combined.set(fromHex(spkPub), fromHex(ikPub).length)

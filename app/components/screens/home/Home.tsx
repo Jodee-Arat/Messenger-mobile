@@ -1,72 +1,131 @@
-import { CommonActions } from '@react-navigation/native'
-import { FC } from 'react'
-import { Text, TouchableOpacity, View } from 'react-native'
+import { MessageCircle, UserPlus } from 'lucide-react-native'
+import { FC, useState } from 'react'
+import { FlatList, Text, TouchableOpacity, View } from 'react-native'
 
-import Layout from '@/components/layout/Layout'
-
-import { useAuth } from '@/hooks/useAuth'
+import { useCurrentUser } from '@/hooks/useCurrentUser'
+import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 
-import { handleLogout } from '@/services/auth/auth.service'
+import { useFriends } from '../../../hooks/useFriends'
+import { TabKey } from '../../../types/tab-key.type'
 
 import Header from './Header'
-
-type MenuItem = {
-	id: string
-	name: string
-	onPress: () => void
-}
+import HomeSkeleton from './HomeSkeleton'
+import QuickActions from './QuickActions'
+import AddFriendModal from './friend/AddFriendModal'
+import FriendsTabContent from './friend/FriendsTabContent'
+import FriendsTabs from './friend/FriendsTabs'
+import GroupsSidebar from './groups/GroupsSidebar'
 
 const Home: FC = () => {
 	const navigation = useTypedNavigation()
+	const { isLoadingProfile, user } = useCurrentUser()
+	const [sidebarVisible, setSidebarVisible] = useState(false)
+	const [activeTab, setActiveTab] = useState<TabKey>('all')
+	const { colors } = useTheme()
+	const { t } = useTranslation()
 
-	const menuItems: MenuItem[] = [
+	const actions = [
 		{
-			id: '1',
-			name: 'Groups',
-			onPress: () => navigation.navigate('Groups')
+			icon: <UserPlus size={20} color={colors.accent} />,
+			label: t('addFriend'),
+			onPress: () => setAddFriendVisible(true)
 		},
 		{
-			id: '2',
-			name: 'Favourites',
-			onPress: () => navigation.navigate('Favorites')
-		},
-		{
-			id: '3',
-			name: 'Profile',
-			onPress: () => navigation.navigate('Profile')
-		},
-		{
-			id: '4',
-			name: 'Search',
-			onPress: () => navigation.navigate('Search')
-		},
-		{
-			id: '5',
-			name: 'Exit',
-			onPress: async () => await handleLogout()
+			icon: <MessageCircle size={20} color={colors.accent} />,
+			label: t('newMessage'),
+			onPress: () => navigation.navigate('DirectMessages')
 		}
 	]
 
-	return (
-		<Layout className='flex-1 bg-gray-100 p-4'>
-			<Header />
-			<Text className='text-xl font-bold mb-6'>Главное меню</Text>
+	const {
+		friends,
+		incoming,
+		outgoing,
+		isLoadingFriends,
+		isLoadingIncoming,
+		isLoadingOutgoing,
+		isSending,
+		addFriendVisible,
+		setAddFriendVisible,
+		friendUsername,
+		setFriendUsername,
+		handleSendRequest,
+		handleAccept,
+		handleDecline,
+		handleCancel,
+		handleRemoveFriend,
+		getFriendUser
+	} = useFriends()
 
-			<View className='flex-row flex-wrap justify-center'>
-				{menuItems.map(item => (
-					<TouchableOpacity
-						key={item.id}
-						onPress={item.onPress}
-						className='w-32 h-32 m-2 bg-white rounded-lg justify-center items-center shadow'
+	if (isLoadingProfile || !user) {
+		return <HomeSkeleton />
+	}
+
+	return (
+		<View className='flex-1' style={{ backgroundColor: colors.background }}>
+			<Header onMenuPress={() => setSidebarVisible(true)} />
+
+			<QuickActions actions={actions} />
+
+			<FriendsTabs activeTab={activeTab} onTabChange={setActiveTab} />
+
+			{/* Friends / Pending content */}
+			{activeTab !== 'all' || friends.length > 0 || isLoadingFriends ? (
+				<FlatList
+					data={[1]}
+					keyExtractor={() => 'friends-tab'}
+					contentContainerStyle={{ paddingBottom: 20 }}
+					showsVerticalScrollIndicator={false}
+					renderItem={() => (
+						<FriendsTabContent
+							activeTab={activeTab}
+							friends={friends}
+							incoming={incoming}
+							outgoing={outgoing}
+							isLoadingFriends={isLoadingFriends}
+							isLoadingIncoming={isLoadingIncoming}
+							isLoadingOutgoing={isLoadingOutgoing}
+							getFriendUser={getFriendUser}
+							handleRemoveFriend={handleRemoveFriend}
+							handleAccept={handleAccept}
+							handleDecline={handleDecline}
+							handleCancel={handleCancel}
+						/>
+					)}
+				/>
+			) : (
+				<View className='py-16 items-center px-8'>
+					<UserPlus size={48} color={colors.borderLight} />
+					<Text
+						className='text-base font-semibold mt-4 text-center'
+						style={{ color: colors.textMuted }}
 					>
-						<Text className='text-center font-semibold text-lg'>
-							{item.name}
-						</Text>
-					</TouchableOpacity>
-				))}
-			</View>
-		</Layout>
+						{t('noFriends')}
+					</Text>
+					<Text
+						className='text-xs mt-2 text-center'
+						style={{ color: colors.textMuted }}
+					>
+						{t('addFriendsHint')}
+					</Text>
+				</View>
+			)}
+
+			<AddFriendModal
+				visible={addFriendVisible}
+				username={friendUsername}
+				isSending={isSending}
+				onChangeUsername={setFriendUsername}
+				onSend={handleSendRequest}
+				onClose={() => setAddFriendVisible(false)}
+			/>
+
+			<GroupsSidebar
+				visible={sidebarVisible}
+				onClose={() => setSidebarVisible(false)}
+			/>
+		</View>
 	)
 }
 

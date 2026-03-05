@@ -2,6 +2,8 @@ import cn from 'clsx'
 import { Controller } from 'react-hook-form'
 import { Text, TextInput, View } from 'react-native'
 
+import { useTheme } from '@/hooks/useTheme'
+
 import { IField } from './field.interface'
 
 const Field = <T extends Record<string, any>>({
@@ -11,6 +13,8 @@ const Field = <T extends Record<string, any>>({
 	className,
 	...rest
 }: IField<T>): JSX.Element => {
+	const { colors } = useTheme()
+
 	return (
 		<Controller
 			control={control}
@@ -23,22 +27,38 @@ const Field = <T extends Record<string, any>>({
 				<>
 					<View
 						className={cn(
-							'bg-white w-full border rounded-lg pb-4 pt-2.5 px-4 my-1.5',
-							error ? 'border-red' : 'border-gray-400'
+							'w-full rounded-lg pb-4 pt-2.5 px-4 my-1.5',
+							className
 						)}
+						style={{
+							backgroundColor: colors.inputBg,
+							borderWidth: 1,
+							borderColor: error
+								? colors.destructive
+								: colors.border,
+							borderRadius: 12
+						}}
 					>
 						<TextInput
 							autoCapitalize='none'
 							onChangeText={onChange}
 							onBlur={onBlur}
 							value={(value || '').toString()}
-							className='text-black text-base'
-							placeholderTextColor='#6A6A6A'
+							style={{ color: colors.text, fontSize: 16 }}
+							placeholderTextColor={colors.textMuted}
 							{...rest}
 						/>
 					</View>
 					{error && (
-						<Text className='text-red-500'>{error.message}</Text>
+						<Text
+							style={{
+								color: colors.destructive,
+								fontSize: 12,
+								marginLeft: 4
+							}}
+						>
+							{error.message}
+						</Text>
 					)}
 				</>
 			)}

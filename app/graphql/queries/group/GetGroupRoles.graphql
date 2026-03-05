@@ -1,0 +1,11 @@
+query GetGroupRoles($groupId: String!) {
+	getGroupRoles(groupId: $groupId) {
+		id
+		name
+		color
+		groupId
+		permissions
+		createdAt
+		updatedAt
+	}
+}

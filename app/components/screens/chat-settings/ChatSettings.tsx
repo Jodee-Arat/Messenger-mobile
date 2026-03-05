@@ -1,8 +1,410 @@
-import React from 'react'
-import { StyleSheet, View } from 'react-native'
+import { useRoute } from '@react-navigation/native'
+import { LogOut, ShieldCheck, Trash2 } from 'lucide-react-native'
+import React, { useState } from 'react'
+import {
+	Alert,
+	ScrollView,
+	Switch,
+	Text,
+	TouchableOpacity,
+	View
+} from 'react-native'
+
+import SettingsSkeleton from '@/components/ui/SettingsSkeleton'
+
+import { useTheme, useTranslation } from '@/hooks/useTheme'
+import { useTypedNavigation } from '@/hooks/useTypedNavigation'
+
+import { chatEvents } from '@/utils/chatEvents'
+
+import {
+	type ChatSettingsRouteParams,
+	getChatPermissions
+} from '../../../types/chat-role.type'
+
+import ChatAssignRoleModal from './ChatAssignRoleModal'
+import ChatCreateRoleModal from './ChatCreateRoleModal'
+import ChatInfoCard from './ChatInfoCard'
+import ChatInviteMemberModal from './ChatInviteMemberModal'
+import ChatMembersSection from './ChatMembersSection'
+import ChatRoleDetailModal from './ChatRoleDetailModal'
+import ChatRolesSection from './ChatRolesSection'
+import ChatSettingsHeader from './ChatSettingsHeader'
+import { useChatSettings } from './useChatSettings'
+import {
+	ChatPermissionEnum,
+	useLeaveChatMutation,
+	useToggleChatRequireTotpMutation
+} from '@/graphql/generated/output'
 
 const ChatSettings = () => {
-	return <View></View>
+	const route = useRoute()
+	const navigation = useTypedNavigation()
+	const { chatId } = route.params as ChatSettingsRouteParams
+
+	const { colors } = useTheme()
+	const { t } = useTranslation()
+	const PERMISSIONS = getChatPermissions(colors, t)
+
+	const [isInviteOpen, setIsInviteOpen] = useState(false)
+	const [leaveChatMutation] = useLeaveChatMutation()
+	const [toggleRequireTotpMutation, { loading: togglingTotp }] =
+		useToggleChatRequireTotpMutation()
+
+	const {
+		chat,
+		members,
+		isLoadingChat,
+		isLoadingMemberRole,
+		currentRole,
+		roles,
+		userRoles,
+		isCreateRoleOpen,
+		setIsCreateRoleOpen,
+		selectedRole,
+		setSelectedRole,
+		assignUserId,
+		setAssignUserId,
+		handleCreateRole,
+		handleDeleteRole,
+		handleTogglePermission,
+		handleAssignRole,
+		handleChangeChatInfo,
+		handleChangeAvatar,
+		handleRemoveAvatar,
+		handleDeleteChat,
+		handleInviteMember,
+		handleRemoveMember,
+		isChangingInfo,
+		isChangingAvatar,
+		isRemovingAvatar,
+		getRoleForUser,
+		getMembersWithRole
+	} = useChatSettings(chatId)
+
+	// ── Permission checks ────────────────────────────────────
+	const isCreator = !!currentRole?.isCreator
+	const isDM = chat && !chat.isGroup
+
+	// In DM chats both members have full permissions
+	const canManageRoles =
+		isDM ||
+		currentRole?.permissions?.includes(ChatPermissionEnum.ManageRoles) ||
+		currentRole?.isCreator
+
+	const canCreateRoles =
+		isDM ||
+		currentRole?.permissions?.includes(ChatPermissionEnum.CreateRoles) ||
+		currentRole?.isCreator
+
+	const canChangeRoleInfo =
+		isDM ||
+		currentRole?.permissions?.includes(ChatPermissionEnum.ChangeRoleInfo) ||
+		currentRole?.isCreator
+
+	const canDeleteRoles =
+		isDM ||
+		currentRole?.permissions?.includes(ChatPermissionEnum.DeleteRoles) ||
+		currentRole?.isCreator
+
+	const canChangeChatInfo =
+		isDM ||
+		currentRole?.permissions?.includes(ChatPermissionEnum.ChangeChatInfo) ||
+		currentRole?.isCreator
+
+	const canChangeChatName =
+		isDM ||
+		currentRole?.permissions?.includes(ChatPermissionEnum.ChangeChatName) ||
+		currentRole?.isCreator
+
+	const canChangeChatAvatar =
+		isDM ||
+		currentRole?.permissions?.includes(
+			ChatPermissionEnum.ChangeChatAvatar
+		) ||
+		currentRole?.isCreator
+
+	const canInviteMembers =
+		isDM ||
+		currentRole?.permissions?.includes(ChatPermissionEnum.InviteMembers) ||
+		currentRole?.isCreator
+
+	const canRemoveMembers =
+		isDM ||
+		currentRole?.permissions?.includes(ChatPermissionEnum.RemoveMembers) ||
+		currentRole?.isCreator
+
+	const isSavingChatInfo =
+		isChangingInfo || isChangingAvatar || isRemovingAvatar
+
+	console.log(
+		canChangeChatInfo,
+		canChangeChatName,
+		canChangeChatAvatar,
+		currentRole
+	)
+
+	const chatName = chat?.chatName ?? t('chatFallback')
+
+	const onDeleteChat = () => {
+		Alert.alert(
+			t('deleteChat') || 'Удалить чат',
+			t('deleteChatConfirm') ||
+				'Вы уверены, что хотите удалить этот чат?',
+			[
+				{ text: t('cancel'), style: 'cancel' },
+				{
+					text: t('deleteChat') || 'Удалить',
+					style: 'destructive',
+					onPress: async () => {
+						const success = await handleDeleteChat()
+						if (success) {
+							navigation.goBack()
+						}
+					}
+				}
+			]
+		)
+	}
+
+	const onLeaveChat = () => {
+		Alert.alert(t('leaveChat'), t('leaveChatConfirm'), [
+			{ text: t('cancel'), style: 'cancel' },
+			{
+				text: t('leaveChat'),
+				style: 'destructive',
+				onPress: async () => {
+					try {
+						await leaveChatMutation({
+							variables: { chatId }
+						})
+						chatEvents.emitLeave(chatId)
+						navigation.goBack()
+					} catch {
+						Alert.alert(t('error') || 'Ошибка', t('leaveChatError'))
+					}
+				}
+			}
+		])
+	}
+
+	return (
+		<View className='flex-1' style={{ backgroundColor: colors.background }}>
+			<ChatSettingsHeader chatName={chatName} />
+			{isLoadingMemberRole || isLoadingChat ? (
+				<SettingsSkeleton />
+			) : (
+				<>
+					<ScrollView
+						className='flex-1'
+						showsVerticalScrollIndicator={false}
+						contentContainerStyle={{ paddingBottom: 40 }}
+					>
+						<ChatInfoCard
+							chat={chat}
+							isLoading={isLoadingChat}
+							membersCount={members.length}
+							canChangeChatInfo={
+								!!(canChangeChatInfo || canChangeChatName)
+							}
+							canChangeChatAvatar={!!canChangeChatAvatar}
+							onSaveInfo={handleChangeChatInfo}
+							onChangeAvatar={handleChangeAvatar}
+							onRemoveAvatar={handleRemoveAvatar}
+							isSaving={isSavingChatInfo}
+						/>
+
+						{/* TOTP Requirement — only creator, only secret chats */}
+						{isCreator && chat?.isSecret && (
+							<View
+								className='mx-4 mt-3 rounded-xl px-4 py-3'
+								style={{
+									backgroundColor: colors.card,
+									borderWidth: 1,
+									borderColor: colors.borderLight
+								}}
+							>
+								<View className='flex-row items-center justify-between'>
+									<View className='flex-1 mr-3'>
+										<View className='flex-row items-center mb-1'>
+											<ShieldCheck
+												size={16}
+												color={colors.accent}
+												style={{ marginRight: 6 }}
+											/>
+											<Text
+												className='font-semibold text-sm'
+												style={{ color: colors.text }}
+											>
+												{t('requireTotpLabel')}
+											</Text>
+										</View>
+										<Text
+											className='text-xs'
+											style={{
+												color: colors.textSecondary
+											}}
+										>
+											{t('requireTotpHint')}
+										</Text>
+									</View>
+									<Switch
+										value={!!chat?.requireTotp}
+										disabled={togglingTotp}
+										onValueChange={async (val: boolean) => {
+											try {
+												await toggleRequireTotpMutation(
+													{
+														variables: {
+															chatId,
+															enable: val
+														},
+														refetchQueries: [
+															'FindChatByChatId'
+														]
+													}
+												)
+											} catch (err: any) {
+												Alert.alert(
+													t('error') || 'Ошибка',
+													err?.message ??
+														t(
+															'requireTotpAllMembers'
+														)
+												)
+											}
+										}}
+										trackColor={{
+											false: colors.borderLight,
+											true: colors.accent
+										}}
+										thumbColor='#fff'
+									/>
+								</View>
+							</View>
+						)}
+
+						<ChatRolesSection
+							roles={roles}
+							permissions={PERMISSIONS}
+							onRolePress={setSelectedRole}
+							onCreatePress={() => setIsCreateRoleOpen(true)}
+							canManageRoles={!!canManageRoles}
+							canCreateRoles={!!canCreateRoles}
+						/>
+
+						<ChatMembersSection
+							members={members}
+							roles={roles}
+							isLoading={isLoadingChat}
+							getRoleForUser={getRoleForUser}
+							onMemberPress={setAssignUserId}
+							canManageRoles={!!canManageRoles}
+							canInviteMembers={!!canInviteMembers}
+							canRemoveMembers={!!canRemoveMembers}
+							onInvitePress={() => setIsInviteOpen(true)}
+							onRemoveMember={handleRemoveMember}
+						/>
+
+						{/* Delete Chat — creator or DM */}
+						{(isCreator || isDM) && (
+							<View className='mt-4 px-4 mb-4'>
+								<TouchableOpacity
+									onPress={onDeleteChat}
+									activeOpacity={0.7}
+									className='flex-row items-center justify-center py-3.5 rounded-xl'
+									style={{
+										backgroundColor:
+											colors.destructiveMuted,
+										borderWidth: 1,
+										borderColor: colors.destructive
+									}}
+								>
+									<Trash2
+										size={18}
+										color={colors.destructive}
+										style={{ marginRight: 8 }}
+									/>
+									<Text
+										className='text-sm font-bold'
+										style={{ color: colors.destructive }}
+									>
+										{t('deleteChat') || 'Удалить чат'}
+									</Text>
+								</TouchableOpacity>
+							</View>
+						)}
+
+						{/* Leave Chat — non-creator, group chats only */}
+						{!isCreator && !isDM && (
+							<View className='mt-4 px-4 mb-4'>
+								<TouchableOpacity
+									onPress={onLeaveChat}
+									activeOpacity={0.7}
+									className='flex-row items-center justify-center py-3.5 rounded-xl'
+									style={{
+										backgroundColor:
+											colors.destructiveMuted,
+										borderWidth: 1,
+										borderColor: colors.destructive
+									}}
+								>
+									<LogOut
+										size={18}
+										color={colors.destructive}
+										style={{ marginRight: 8 }}
+									/>
+									<Text
+										className='text-sm font-bold'
+										style={{ color: colors.destructive }}
+									>
+										{t('leaveChat')}
+									</Text>
+								</TouchableOpacity>
+							</View>
+						)}
+					</ScrollView>
+
+					<ChatCreateRoleModal
+						isOpen={isCreateRoleOpen}
+						onClose={() => setIsCreateRoleOpen(false)}
+						onCreateRole={handleCreateRole}
+					/>
+
+					<ChatRoleDetailModal
+						role={selectedRole}
+						permissions={PERMISSIONS}
+						onClose={() => setSelectedRole(null)}
+						onDeleteRole={handleDeleteRole}
+						onTogglePermission={handleTogglePermission}
+						membersWithRole={
+							selectedRole
+								? getMembersWithRole(selectedRole.id)
+								: []
+						}
+						canDeleteRoles={!!canDeleteRoles}
+						canChangeRoleInfo={!!canChangeRoleInfo}
+					/>
+
+					<ChatAssignRoleModal
+						userId={assignUserId}
+						roles={roles}
+						userRoles={userRoles}
+						members={members}
+						onAssign={handleAssignRole}
+						onClose={() => setAssignUserId(null)}
+					/>
+
+					<ChatInviteMemberModal
+						isOpen={isInviteOpen}
+						onClose={() => setIsInviteOpen(false)}
+						onInvite={handleInviteMember}
+						existingMemberIds={members.map(m => m.user.id)}
+					/>
+				</>
+			)}
+		</View>
+	)
 }
 
 export default ChatSettings

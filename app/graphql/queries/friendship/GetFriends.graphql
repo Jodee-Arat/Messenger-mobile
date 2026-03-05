@@ -1,0 +1,19 @@
+query GetFriends {
+	getFriends {
+		id
+		userId
+		friendId
+		status
+		user {
+			id
+			username
+			avatarUrl
+		}
+		friend {
+			id
+			username
+			avatarUrl
+		}
+		createdAt
+	}
+}

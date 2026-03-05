@@ -1,0 +1,7 @@
+mutation AssignRoleToUser(
+	$chatId: String!
+	$roleId: String!
+	$memberId: String!
+) {
+	assignRoleToUser(chatId: $chatId, roleId: $roleId, memberId: $memberId)
+}

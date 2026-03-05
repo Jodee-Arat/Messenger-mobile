@@ -1,0 +1,3 @@
+mutation InviteMemberToGroup($groupId: String!, $targetUserId: String!) {
+	inviteMemberToGroup(groupId: $groupId, targetUserId: $targetUserId)
+}

@@ -1,0 +1,14 @@
+query GetBlockedUsers {
+	getBlockedUsers {
+		id
+		userId
+		friendId
+		status
+		friend {
+			id
+			username
+			avatarUrl
+		}
+		createdAt
+	}
+}

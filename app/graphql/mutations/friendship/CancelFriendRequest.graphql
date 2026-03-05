@@ -1,0 +1,3 @@
+mutation CancelFriendRequest($friendshipId: String!) {
+	cancelFriendRequest(friendshipId: $friendshipId)
+}

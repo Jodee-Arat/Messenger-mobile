@@ -1,5 +1,5 @@
 import * as ImagePicker from 'expo-image-picker'
-import { styled } from 'nativewind'
+import { Camera, Trash2, Upload } from 'lucide-react-native'
 import { useState } from 'react'
 import {
 	ActivityIndicator,
@@ -10,41 +10,37 @@ import {
 	View
 } from 'react-native'
 
-import EntityAvatar from '@/components/ui/EntityAvatar'
-import Heading from '@/components/ui/Heading'
-import { Button } from '@/components/ui/button/Button'
-
 import { useCurrentUser } from '@/hooks/useCurrentUser'
+import { useTheme, useTranslation } from '@/hooks/useTheme'
+
+import { getMediaSource } from '@/utils/get-media-source'
 
 import {
 	useChangeProfileAvatarMutation,
 	useRemoveProfileAvatarMutation
 } from '@/graphql/generated/output'
 
-const StyledView = styled(View)
-const StyledText = styled(Text)
-
 const ChangeAvatarForm = () => {
 	const { user, isLoadingProfile, refetch } = useCurrentUser()
+	const { colors } = useTheme()
+	const { t } = useTranslation()
 	const [isPicking, setIsPicking] = useState(false)
 
 	const [update, { loading: isUpdating }] = useChangeProfileAvatarMutation({
 		onCompleted() {
 			refetch()
-			Alert.alert('Success', 'Avatar updated successfully')
 		},
 		onError() {
-			Alert.alert('Error', 'Error updating avatar')
+			Alert.alert(t('error'), t('errorUpdatingAvatar'))
 		}
 	})
 
 	const [remove, { loading: isRemoving }] = useRemoveProfileAvatarMutation({
 		onCompleted() {
 			refetch()
-			Alert.alert('Success', 'Avatar removed successfully')
 		},
 		onError() {
-			Alert.alert('Error', 'Error removing avatar')
+			Alert.alert(t('error'), t('errorRemovingAvatar'))
 		}
 	})
 
@@ -73,70 +69,190 @@ const ChangeAvatarForm = () => {
 	}
 
 	const handleRemove = () => {
-		Alert.alert(
-			'Remove Avatar',
-			'Are you sure you want to remove your avatar?',
-			[
-				{ text: 'Cancel', style: 'cancel' },
-				{
-					text: 'Remove',
-					style: 'destructive',
-					onPress: () => remove()
-				}
-			]
-		)
+		Alert.alert(t('removeAvatar'), t('removeAvatarConfirm'), [
+			{ text: t('cancel'), style: 'cancel' },
+			{
+				text: t('remove'),
+				style: 'destructive',
+				onPress: () => remove()
+			}
+		])
 	}
+
+	const busy = isPicking || isUpdating || isRemoving
+	const firstLetter = user?.username?.[0]?.toUpperCase() ?? '?'
 
 	if (isLoadingProfile) {
 		return (
-			<StyledView className='h-52 w-full items-center justify-center'>
-				<ActivityIndicator size='large' />
-			</StyledView>
+			<View
+				style={{
+					height: 120,
+					alignItems: 'center',
+					justifyContent: 'center'
+				}}
+			>
+				<ActivityIndicator size='large' color={colors.accent} />
+			</View>
 		)
 	}
 
 	return (
-		<StyledView className='px-5 pb-5'>
-			<Heading>Change avatar</Heading>
+		<View
+			style={{
+				marginHorizontal: 16,
+				backgroundColor: colors.card,
+				borderRadius: 16,
+				borderWidth: 1,
+				borderColor: colors.border,
+				padding: 20
+			}}
+		>
+			<Text
+				style={{
+					fontSize: 11,
+					fontWeight: '700',
+					letterSpacing: 1,
+					textTransform: 'uppercase',
+					color: colors.textSecondary,
+					marginBottom: 16
+				}}
+			>
+				{t('changeAvatar')}
+			</Text>
 
-			<StyledView className='mt-4 flex-row items-center space-x-6'>
-				<EntityAvatar avatarUrl={user?.avatarUrl} size={'xl'} />
-
-				<StyledView className='flex-1 space-y-3'>
-					<StyledView className='flex-row items-center gap-x-3'>
-						<Button
-							onPress={pickImage}
-							className='bg-blue-500'
-							disabled={isPicking || isUpdating || isRemoving}
-						>
-							<StyledText className='text-white'>
-								{user?.avatarUrl
-									? 'Change Avatar'
-									: 'Upload Avatar'}
-							</StyledText>
-						</Button>
-
-						{user?.avatarUrl && (
-							<TouchableOpacity
-								onPress={handleRemove}
-								disabled={isRemoving || isUpdating}
-								className='p-2'
+			<View
+				style={{
+					flexDirection: 'row',
+					alignItems: 'center'
+				}}
+			>
+				{/* Avatar preview */}
+				<View
+					style={{
+						width: 76,
+						height: 76,
+						borderRadius: 38,
+						borderWidth: 2,
+						borderColor: colors.accent,
+						padding: 2,
+						marginRight: 18
+					}}
+				>
+					<View
+						style={{
+							width: '100%',
+							height: '100%',
+							borderRadius: 36,
+							overflow: 'hidden',
+							backgroundColor: colors.backgroundTertiary,
+							alignItems: 'center',
+							justifyContent: 'center'
+						}}
+					>
+						{user?.avatarUrl ? (
+							<Image
+								source={{
+									uri: getMediaSource(user.avatarUrl)
+								}}
+								style={{ width: '100%', height: '100%' }}
+							/>
+						) : (
+							<Text
+								style={{
+									fontSize: 28,
+									fontWeight: '700',
+									color: colors.accent
+								}}
 							>
-								<StyledText className='text-red-500'>
-									🗑 Remove
-								</StyledText>
-							</TouchableOpacity>
+								{firstLetter}
+							</Text>
 						)}
-					</StyledView>
+					</View>
+				</View>
 
-					<StyledText className='text-gray-500 text-sm'>
-						{user?.avatarUrl
-							? 'Click to change your avatar'
-							: 'Upload a new avatar for your profile'}
-					</StyledText>
-				</StyledView>
-			</StyledView>
-		</StyledView>
+				{/* Actions */}
+				<View style={{ flex: 1, gap: 8 }}>
+					<TouchableOpacity
+						activeOpacity={0.7}
+						onPress={pickImage}
+						disabled={busy}
+						style={{
+							flexDirection: 'row',
+							alignItems: 'center',
+							backgroundColor: colors.accent,
+							borderRadius: 10,
+							paddingVertical: 10,
+							paddingHorizontal: 14,
+							opacity: busy ? 0.5 : 1
+						}}
+					>
+						{isUpdating || isPicking ? (
+							<ActivityIndicator size='small' color='#fff' />
+						) : (
+							<>
+								<Upload
+									size={16}
+									color='#fff'
+									style={{ marginRight: 8 }}
+								/>
+								<Text
+									style={{
+										color: '#fff',
+										fontSize: 13,
+										fontWeight: '600'
+									}}
+								>
+									{user?.avatarUrl
+										? t('changeAvatar')
+										: t('uploadAvatar')}
+								</Text>
+							</>
+						)}
+					</TouchableOpacity>
+
+					{user?.avatarUrl && (
+						<TouchableOpacity
+							activeOpacity={0.7}
+							onPress={handleRemove}
+							disabled={busy}
+							style={{
+								flexDirection: 'row',
+								alignItems: 'center',
+								backgroundColor: 'hsla(0, 80%, 50%, 0.1)',
+								borderRadius: 10,
+								paddingVertical: 10,
+								paddingHorizontal: 14,
+								opacity: busy ? 0.5 : 1
+							}}
+						>
+							{isRemoving ? (
+								<ActivityIndicator
+									size='small'
+									color={colors.destructive}
+								/>
+							) : (
+								<>
+									<Trash2
+										size={16}
+										color={colors.destructive}
+										style={{ marginRight: 8 }}
+									/>
+									<Text
+										style={{
+											color: colors.destructive,
+											fontSize: 13,
+											fontWeight: '600'
+										}}
+									>
+										{t('removeAvatar')}
+									</Text>
+								</>
+							)}
+						</TouchableOpacity>
+					)}
+				</View>
+			</View>
+		</View>
 	)
 }
 

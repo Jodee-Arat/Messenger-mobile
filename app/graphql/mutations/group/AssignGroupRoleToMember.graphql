@@ -1,0 +1,11 @@
+mutation AssignGroupRoleToMember(
+	$groupId: String!
+	$roleId: String!
+	$memberId: String!
+) {
+	assignGroupRoleToMember(
+		groupId: $groupId
+		roleId: $roleId
+		memberId: $memberId
+	)
+}

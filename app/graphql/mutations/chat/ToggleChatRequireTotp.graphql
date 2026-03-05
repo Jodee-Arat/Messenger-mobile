@@ -1,0 +1,3 @@
+mutation ToggleChatRequireTotp($chatId: String!, $enable: Boolean!) {
+	toggleChatRequireTotp(chatId: $chatId, enable: $enable)
+}

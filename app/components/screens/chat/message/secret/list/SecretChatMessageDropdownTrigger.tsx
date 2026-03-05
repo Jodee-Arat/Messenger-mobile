@@ -1,8 +1,24 @@
-import React, { FC, useCallback, useState } from 'react'
-import { Modal, Pressable, Text, View } from 'react-native'
+﻿import {
+	CheckCircle,
+	Clipboard,
+	Pencil,
+	Pin,
+	Trash2,
+	X
+} from 'lucide-react-native'
+import React, { FC, useCallback, useRef, useState } from 'react'
+import {
+	Animated,
+	Dimensions,
+	Modal,
+	Pressable,
+	Text,
+	TouchableOpacity,
+	View
+} from 'react-native'
 import Toast from 'react-native-toast-message'
 
-import { Button } from '@/components/ui/button/Button'
+import { useTheme, useTranslation } from '@/hooks/useTheme'
 
 import { ForwardedMessageType } from '@/types/forward/forwarded-message.type'
 import { MessageType } from '@/types/message.type'
@@ -24,8 +40,10 @@ interface SecretChatMessageDropdownProp {
 		forwardedMessages?: ForwardedMessageType[]
 	) => void
 	onDelete: (id: string[]) => Promise<void>
-	isSelected: boolean // 🔹 Новый проп
+	isSelected: boolean
 }
+
+const SCREEN_HEIGHT = Dimensions.get('window').height
 
 const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 	setPinnedMessage = () => {},
@@ -39,59 +57,131 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 	messageInfo,
 	userId,
 	onDelete,
-	isSelected // 🔹 Получаем новый проп
+	isSelected
 }) => {
+	const { colors } = useTheme()
+	const { t } = useTranslation()
 	const [modalVisible, setModalVisible] = useState(false)
 	const [isDeleting, setIsDeleting] = useState(false)
+	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
 
-	/** Удалить сообщение */
+	const openSheet = () => {
+		setModalVisible(true)
+		Animated.spring(slideAnim, {
+			toValue: 0,
+			useNativeDriver: true,
+			tension: 65,
+			friction: 11
+		}).start()
+	}
+
+	const closeSheet = (cb?: () => void) => {
+		Animated.timing(slideAnim, {
+			toValue: SCREEN_HEIGHT,
+			duration: 200,
+			useNativeDriver: true
+		}).start(() => {
+			setModalVisible(false)
+			cb?.()
+		})
+	}
+
 	const handleRemoveMessage = useCallback(async () => {
 		try {
 			setIsDeleting(true)
-			await onDelete(messageIds)
+			await onDelete([messageId])
 			Toast.show({
 				type: 'success',
-				text1: 'Сообщение удалено'
+				text1: t('messageDeleted')
 			})
 		} catch (err: any) {
 			Toast.show({
 				type: 'error',
-				text1: 'Ошибка при удалении сообщения',
-				text2: err.message || 'Попробуйте снова'
+				text1: t('deleteError'),
+				text2: err.message || t('tryAgain')
 			})
 		} finally {
 			setIsDeleting(false)
-			setModalVisible(false)
+			closeSheet()
 		}
-	}, [onDelete, messageIds])
+	}, [onDelete, messageId])
 
-	/** Добавить как ответ / переслать */
 	const handleAddMessage = useCallback(() => {
 		handleAddForwardedMessage([messageInfo])
 		handleClearMessagesId()
-		setModalVisible(false)
+		closeSheet()
 	}, [messageInfo, handleAddForwardedMessage, handleClearMessagesId])
 
-	/** Закрепить сообщение */
 	const handlePinMessage = useCallback(() => {
 		setPinnedMessage(messageInfo)
 		Toast.show({
 			type: 'success',
-			text1: 'Сообщение закреплено'
+			text1: t('messagePinned')
 		})
-		setModalVisible(false)
+		closeSheet()
 	}, [messageInfo, setPinnedMessage])
+
+	const actions = [
+		{
+			icon: <CheckCircle size={20} color={colors.text} />,
+			label: isSelected ? t('deselect') : t('select'),
+			onPress: () => {
+				handleChooseMessage(messageId)
+				closeSheet()
+			}
+		},
+		{
+			icon: <Clipboard size={20} color={colors.text} />,
+			label: t('copy'),
+			onPress: () => {
+				if (messageInfo.text) {
+					Toast.show({
+						type: 'info',
+						text1: t('copied'),
+						text2: messageInfo.text
+					})
+				}
+				closeSheet()
+			}
+		},
+		{
+			icon: <Pencil size={20} color={colors.text} />,
+			label: t('edit'),
+			onPress: () => {
+				startEdit(
+					messageInfo,
+					messageInfo?.repliedToLinks
+						?.map(link => link?.repliedTo)
+						.filter((msg): msg is ForwardedMessageType => !!msg) ??
+						[]
+				)
+				closeSheet()
+			}
+		},
+		{
+			icon: <Pin size={20} color={colors.text} />,
+			label: t('pin'),
+			onPress: handlePinMessage
+		},
+		{
+			icon: <Trash2 size={20} color={colors.destructive} />,
+			label: isDeleting ? t('deleting') : t('delete'),
+			destructive: true,
+			disabled: isDeleting,
+			onPress: handleRemoveMessage
+		}
+	]
 
 	return (
 		<>
-			<Pressable
-				onLongPress={() => setModalVisible(true)}
-				delayLongPress={300}
-			>
+			<Pressable onLongPress={openSheet} delayLongPress={300}>
 				<View
-					className={`rounded-xl ${
-						isSelected ? 'bg-blue-100 dark:bg-blue-900/40' : ''
-					}`}
+					className='rounded-xl'
+					style={{
+						backgroundColor: isSelected
+							? colors.accentMuted
+							: 'transparent'
+					}}
 				>
 					<ChatMessageItem
 						chatId={chatId}
@@ -100,94 +190,115 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 						messageIds={messageIds}
 						messageInfo={messageInfo}
 						userId={userId}
-						isSelected={isSelected} // 🔹 передаём вниз
+						isSelected={isSelected}
 					/>
 				</View>
 			</Pressable>
 
-			{/* Модалка действий */}
 			<Modal
 				transparent
 				visible={modalVisible}
-				animationType='fade'
-				onRequestClose={() => setModalVisible(false)}
+				animationType='none'
+				onRequestClose={() => closeSheet()}
 			>
-				<Pressable
-					className='flex-1 bg-black/30 justify-center items-center'
-					onPress={() => setModalVisible(false)}
-				>
-					<View className='w-72 bg-white rounded-xl p-4 shadow-lg'>
-						<Text className='text-lg font-bold mb-3 text-center'>
-							Действия с сообщением
-						</Text>
+				<View className='flex-1'>
+					{/* Dimmed backdrop */}
+					<Pressable
+						className='flex-1'
+						style={{ backgroundColor: colors.overlay }}
+						onPress={() => closeSheet()}
+					/>
 
-						<View className='space-y-2'>
-							<Button
-								onPress={() => {
-									handleChooseMessage(messageId)
-									setModalVisible(false)
+					{/* Bottom sheet */}
+					<Animated.View
+						style={{
+							transform: [{ translateY: slideAnim }],
+							backgroundColor: colors.backgroundSecondary,
+							borderTopLeftRadius: 20,
+							borderTopRightRadius: 20,
+							borderTopWidth: 1,
+							borderColor: colors.borderLight,
+							paddingBottom: 34,
+							paddingTop: 8
+						}}
+					>
+						{/* Handle bar */}
+						<View className='items-center mb-2'>
+							<View
+								style={{
+									width: 36,
+									height: 4,
+									borderRadius: 2,
+									backgroundColor: colors.textMuted
 								}}
-							>
-								{isSelected ? 'Отменить выбор' : 'Выбрать'}
-							</Button>
-
-							<Button onPress={handleAddMessage}>Ответить</Button>
-
-							<Button
-								onPress={() => {
-									if (messageInfo.text) {
-										Toast.show({
-											type: 'info',
-											text1: 'Скопировано',
-											text2: messageInfo.text
-										})
-									}
-									setModalVisible(false)
-								}}
-							>
-								Копировать
-							</Button>
-
-							<Button
-								onPress={() => {
-									startEdit(
-										messageInfo,
-										messageInfo?.repliedToLinks
-											?.map(link => link?.repliedTo)
-											.filter(
-												(
-													msg
-												): msg is ForwardedMessageType =>
-													!!msg
-											) ?? []
-									)
-									setModalVisible(false)
-								}}
-							>
-								Редактировать
-							</Button>
-
-							<Button onPress={handlePinMessage}>
-								Закрепить
-							</Button>
-
-							<Button
-								variant='destructive'
-								onPress={handleRemoveMessage}
-								disabled={isDeleting}
-							>
-								{isDeleting ? 'Удаление...' : 'Удалить'}
-							</Button>
-
-							<Button
-								variant='default'
-								onPress={() => setModalVisible(false)}
-							>
-								Отмена
-							</Button>
+							/>
 						</View>
-					</View>
-				</Pressable>
+
+						{/* Preview: sender + text */}
+						<View
+							className='mx-4 mb-3 px-3 py-2 rounded-xl'
+							style={{
+								backgroundColor: colors.cardHover,
+								borderLeftWidth: 3,
+								borderLeftColor: colors.accent
+							}}
+						>
+							<Text
+								className='text-xs font-semibold mb-0.5'
+								style={{ color: colors.accent }}
+							>
+								{messageInfo.user.username}
+							</Text>
+							{messageInfo.text && (
+								<Text
+									numberOfLines={2}
+									className='text-xs'
+									style={{ color: colors.textSecondary }}
+								>
+									{messageInfo.text}
+								</Text>
+							)}
+						</View>
+
+						{/* Action buttons */}
+						<View className='px-3'>
+							{actions.map((action, i) => (
+								<TouchableOpacity
+									key={i}
+									onPress={action.onPress}
+									disabled={action.disabled}
+									activeOpacity={0.6}
+									className='flex-row items-center px-4 py-3 rounded-xl mb-1'
+									style={{
+										backgroundColor: 'transparent',
+										opacity: action.disabled ? 0.4 : 1
+									}}
+								>
+									<View
+										className='w-9 h-9 rounded-full items-center justify-center mr-3'
+										style={{
+											backgroundColor: action.destructive
+												? 'hsla(0, 80%, 50%, 0.15)'
+												: colors.cardHover
+										}}
+									>
+										{action.icon}
+									</View>
+									<Text
+										className='text-sm font-medium'
+										style={{
+											color: action.destructive
+												? colors.destructive
+												: colors.text
+										}}
+									>
+										{action.label}
+									</Text>
+								</TouchableOpacity>
+							))}
+						</View>
+					</Animated.View>
+				</View>
 			</Modal>
 		</>
 	)
