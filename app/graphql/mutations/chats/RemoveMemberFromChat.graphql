@@ -1,0 +1,3 @@
+mutation RemoveMemberFromChat($chatId: String!, $targetUserId: String!) {
+	removeMemberFromChat(chatId: $chatId, targetUserId: $targetUserId)
+}

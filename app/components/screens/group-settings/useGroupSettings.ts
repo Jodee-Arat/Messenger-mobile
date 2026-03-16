@@ -1,4 +1,3 @@
-import { gql, useMutation } from '@apollo/client'
 import { useEffect, useState } from 'react'
 import { Alert } from 'react-native'
 
@@ -18,22 +17,12 @@ import {
 	useGroupDeletedRoleSubscription,
 	useGroupRemovedRoleSubscription,
 	useGroupUpsertedRoleSubscription,
+	useInviteMemberToGroupMutation,
 	useRemoveGroupAvatarMutation,
 	useRemoveGroupRoleFromMemberMutation,
+	useRemoveMemberFromGroupMutation,
 	useUpsertGroupRoleMutation
 } from '@/graphql/generated/output'
-
-const INVITE_MEMBER_MUTATION = gql`
-	mutation InviteMemberToGroup($groupId: String!, $targetUserId: String!) {
-		inviteMemberToGroup(groupId: $groupId, targetUserId: $targetUserId)
-	}
-`
-
-const REMOVE_MEMBER_MUTATION = gql`
-	mutation RemoveMemberFromGroup($groupId: String!, $targetUserId: String!) {
-		removeMemberFromGroup(groupId: $groupId, targetUserId: $targetUserId)
-	}
-`
 
 export function useGroupSettings(groupId: string) {
 	// ── Group members query ──────────────────────────────────
@@ -86,12 +75,10 @@ export function useGroupSettings(groupId: string) {
 	const [deleteGroup, { loading: isDeletingGroup }] = useDeleteGroupMutation()
 
 	// ── Invite / Remove member mutations ─────────────────────
-	const [inviteMemberMutation, { loading: isInviting }] = useMutation(
-		INVITE_MEMBER_MUTATION
-	)
-	const [removeMemberMutation, { loading: isRemovingMember }] = useMutation(
-		REMOVE_MEMBER_MUTATION
-	)
+	const [inviteMemberMutation, { loading: isInviting }] =
+		useInviteMemberToGroupMutation()
+	const [removeMemberMutation, { loading: isRemovingMember }] =
+		useRemoveMemberFromGroupMutation()
 
 	// ── Subscriptions ────────────────────────────────────────
 	useGroupUpsertedRoleSubscription({

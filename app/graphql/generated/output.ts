@@ -394,6 +394,7 @@ export type Mutation = {
   sendPreKey: Scalars['Boolean']['output'];
   sendSecretMessage: QueueSecretMessageModel;
   sendSharedSecretKey: QueueSharedSecretKeyModel;
+  startTyping: Scalars['Boolean']['output'];
   toggleChatRequireTotp: Scalars['Boolean']['output'];
   unPinChat: Scalars['Boolean']['output'];
   unPinMessage: Scalars['Boolean']['output'];
@@ -671,6 +672,11 @@ export type MutationSendSecretMessageArgs = {
 
 export type MutationSendSharedSecretKeyArgs = {
   data: SharedSecretKeyInput;
+};
+
+
+export type MutationStartTypingArgs = {
+  chatId: Scalars['String']['input'];
 };
 
 
@@ -960,6 +966,7 @@ export type Subscription = {
   groupRemovedRole: GroupRoleModel;
   groupUpsertedRole: GroupRoleModel;
   secretKeyRotation: SecretKeyRotationModel;
+  typingStarted: TypingIndicatorModel;
 };
 
 
@@ -1081,10 +1088,23 @@ export type SubscriptionSecretKeyRotationArgs = {
   userId: Scalars['String']['input'];
 };
 
+
+export type SubscriptionTypingStartedArgs = {
+  chatId: Scalars['String']['input'];
+  userId: Scalars['String']['input'];
+};
+
 export type TotpSetupModel = {
   __typename?: 'TotpSetupModel';
   qrCodeUrl: Scalars['String']['output'];
   totpSecret: Scalars['String']['output'];
+};
+
+export type TypingIndicatorModel = {
+  __typename?: 'TypingIndicatorModel';
+  chatId: Scalars['String']['output'];
+  userId: Scalars['String']['output'];
+  username: Scalars['String']['output'];
 };
 
 export type UpsertChatRoleInput = {
@@ -1250,6 +1270,14 @@ export type ForwardChatMessageMutationVariables = Exact<{
 
 export type ForwardChatMessageMutation = { __typename?: 'Mutation', forwardChatMessage: boolean };
 
+export type InviteMemberToChatMutationVariables = Exact<{
+  chatId: Scalars['String']['input'];
+  targetUserId: Scalars['String']['input'];
+}>;
+
+
+export type InviteMemberToChatMutation = { __typename?: 'Mutation', inviteMemberToChat: boolean };
+
 export type LeaveChatMutationVariables = Exact<{
   chatId: Scalars['String']['input'];
 }>;
@@ -1294,6 +1322,14 @@ export type RemoveFileMutationVariables = Exact<{
 
 export type RemoveFileMutation = { __typename?: 'Mutation', removeFile: boolean };
 
+export type RemoveMemberFromChatMutationVariables = Exact<{
+  chatId: Scalars['String']['input'];
+  targetUserId: Scalars['String']['input'];
+}>;
+
+
+export type RemoveMemberFromChatMutation = { __typename?: 'Mutation', removeMemberFromChat: boolean };
+
 export type RemoveMessagesMutationVariables = Exact<{
   chatId: Scalars['String']['input'];
   data: RemoveMessagesInput;
@@ -1335,6 +1371,13 @@ export type SendFileMutationVariables = Exact<{
 
 
 export type SendFileMutation = { __typename?: 'Mutation', sendFile: { __typename?: 'AttachFileModel', chatDraftMessageId: string, fileId: string } };
+
+export type StartTypingMutationVariables = Exact<{
+  chatId: Scalars['String']['input'];
+}>;
+
+
+export type StartTypingMutation = { __typename?: 'Mutation', startTyping: boolean };
 
 export type UnPinChatMutationVariables = Exact<{
   chatId: Scalars['String']['input'];
@@ -1747,6 +1790,14 @@ export type ChatUpsertedRoleSubscriptionVariables = Exact<{
 
 
 export type ChatUpsertedRoleSubscription = { __typename?: 'Subscription', chatUpsertedRole: { __typename?: 'ChatRoleModel', id: string, name: string, color: string, chatId: string, permissions: Array<ChatPermissionEnum>, createdAt: any, updatedAt: any } };
+
+export type TypingStartedSubscriptionVariables = Exact<{
+  chatId: Scalars['String']['input'];
+  userId: Scalars['String']['input'];
+}>;
+
+
+export type TypingStartedSubscription = { __typename?: 'Subscription', typingStarted: { __typename?: 'TypingIndicatorModel', userId: string, username: string, chatId: string } };
 
 export type FriendRemovedSubscriptionVariables = Exact<{
   userId: Scalars['String']['input'];
@@ -2408,6 +2459,38 @@ export function useForwardChatMessageMutation(baseOptions?: Apollo.MutationHookO
 export type ForwardChatMessageMutationHookResult = ReturnType<typeof useForwardChatMessageMutation>;
 export type ForwardChatMessageMutationResult = Apollo.MutationResult<ForwardChatMessageMutation>;
 export type ForwardChatMessageMutationOptions = Apollo.BaseMutationOptions<ForwardChatMessageMutation, ForwardChatMessageMutationVariables>;
+export const InviteMemberToChatDocument = gql`
+    mutation InviteMemberToChat($chatId: String!, $targetUserId: String!) {
+  inviteMemberToChat(chatId: $chatId, targetUserId: $targetUserId)
+}
+    `;
+export type InviteMemberToChatMutationFn = Apollo.MutationFunction<InviteMemberToChatMutation, InviteMemberToChatMutationVariables>;
+
+/**
+ * __useInviteMemberToChatMutation__
+ *
+ * To run a mutation, you first call `useInviteMemberToChatMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useInviteMemberToChatMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [inviteMemberToChatMutation, { data, loading, error }] = useInviteMemberToChatMutation({
+ *   variables: {
+ *      chatId: // value for 'chatId'
+ *      targetUserId: // value for 'targetUserId'
+ *   },
+ * });
+ */
+export function useInviteMemberToChatMutation(baseOptions?: Apollo.MutationHookOptions<InviteMemberToChatMutation, InviteMemberToChatMutationVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useMutation<InviteMemberToChatMutation, InviteMemberToChatMutationVariables>(InviteMemberToChatDocument, options);
+      }
+export type InviteMemberToChatMutationHookResult = ReturnType<typeof useInviteMemberToChatMutation>;
+export type InviteMemberToChatMutationResult = Apollo.MutationResult<InviteMemberToChatMutation>;
+export type InviteMemberToChatMutationOptions = Apollo.BaseMutationOptions<InviteMemberToChatMutation, InviteMemberToChatMutationVariables>;
 export const LeaveChatDocument = gql`
     mutation LeaveChat($chatId: String!) {
   leaveChat(chatId: $chatId)
@@ -2596,6 +2679,38 @@ export function useRemoveFileMutation(baseOptions?: Apollo.MutationHookOptions<R
 export type RemoveFileMutationHookResult = ReturnType<typeof useRemoveFileMutation>;
 export type RemoveFileMutationResult = Apollo.MutationResult<RemoveFileMutation>;
 export type RemoveFileMutationOptions = Apollo.BaseMutationOptions<RemoveFileMutation, RemoveFileMutationVariables>;
+export const RemoveMemberFromChatDocument = gql`
+    mutation RemoveMemberFromChat($chatId: String!, $targetUserId: String!) {
+  removeMemberFromChat(chatId: $chatId, targetUserId: $targetUserId)
+}
+    `;
+export type RemoveMemberFromChatMutationFn = Apollo.MutationFunction<RemoveMemberFromChatMutation, RemoveMemberFromChatMutationVariables>;
+
+/**
+ * __useRemoveMemberFromChatMutation__
+ *
+ * To run a mutation, you first call `useRemoveMemberFromChatMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useRemoveMemberFromChatMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [removeMemberFromChatMutation, { data, loading, error }] = useRemoveMemberFromChatMutation({
+ *   variables: {
+ *      chatId: // value for 'chatId'
+ *      targetUserId: // value for 'targetUserId'
+ *   },
+ * });
+ */
+export function useRemoveMemberFromChatMutation(baseOptions?: Apollo.MutationHookOptions<RemoveMemberFromChatMutation, RemoveMemberFromChatMutationVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useMutation<RemoveMemberFromChatMutation, RemoveMemberFromChatMutationVariables>(RemoveMemberFromChatDocument, options);
+      }
+export type RemoveMemberFromChatMutationHookResult = ReturnType<typeof useRemoveMemberFromChatMutation>;
+export type RemoveMemberFromChatMutationResult = Apollo.MutationResult<RemoveMemberFromChatMutation>;
+export type RemoveMemberFromChatMutationOptions = Apollo.BaseMutationOptions<RemoveMemberFromChatMutation, RemoveMemberFromChatMutationVariables>;
 export const RemoveMessagesDocument = gql`
     mutation RemoveMessages($chatId: String!, $data: RemoveMessagesInput!) {
   removeMessages(chatId: $chatId, data: $data)
@@ -2761,6 +2876,37 @@ export function useSendFileMutation(baseOptions?: Apollo.MutationHookOptions<Sen
 export type SendFileMutationHookResult = ReturnType<typeof useSendFileMutation>;
 export type SendFileMutationResult = Apollo.MutationResult<SendFileMutation>;
 export type SendFileMutationOptions = Apollo.BaseMutationOptions<SendFileMutation, SendFileMutationVariables>;
+export const StartTypingDocument = gql`
+    mutation StartTyping($chatId: String!) {
+  startTyping(chatId: $chatId)
+}
+    `;
+export type StartTypingMutationFn = Apollo.MutationFunction<StartTypingMutation, StartTypingMutationVariables>;
+
+/**
+ * __useStartTypingMutation__
+ *
+ * To run a mutation, you first call `useStartTypingMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useStartTypingMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [startTypingMutation, { data, loading, error }] = useStartTypingMutation({
+ *   variables: {
+ *      chatId: // value for 'chatId'
+ *   },
+ * });
+ */
+export function useStartTypingMutation(baseOptions?: Apollo.MutationHookOptions<StartTypingMutation, StartTypingMutationVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useMutation<StartTypingMutation, StartTypingMutationVariables>(StartTypingDocument, options);
+      }
+export type StartTypingMutationHookResult = ReturnType<typeof useStartTypingMutation>;
+export type StartTypingMutationResult = Apollo.MutationResult<StartTypingMutation>;
+export type StartTypingMutationOptions = Apollo.BaseMutationOptions<StartTypingMutation, StartTypingMutationVariables>;
 export const UnPinChatDocument = gql`
     mutation UnPinChat($chatId: String!) {
   unPinChat(chatId: $chatId)
@@ -5254,6 +5400,39 @@ export function useChatUpsertedRoleSubscription(baseOptions: Apollo.Subscription
       }
 export type ChatUpsertedRoleSubscriptionHookResult = ReturnType<typeof useChatUpsertedRoleSubscription>;
 export type ChatUpsertedRoleSubscriptionResult = Apollo.SubscriptionResult<ChatUpsertedRoleSubscription>;
+export const TypingStartedDocument = gql`
+    subscription TypingStarted($chatId: String!, $userId: String!) {
+  typingStarted(chatId: $chatId, userId: $userId) {
+    userId
+    username
+    chatId
+  }
+}
+    `;
+
+/**
+ * __useTypingStartedSubscription__
+ *
+ * To run a query within a React component, call `useTypingStartedSubscription` and pass it any options that fit your needs.
+ * When your component renders, `useTypingStartedSubscription` returns an object from Apollo Client that contains loading, error, and data properties
+ * you can use to render your UI.
+ *
+ * @param baseOptions options that will be passed into the subscription, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
+ *
+ * @example
+ * const { data, loading, error } = useTypingStartedSubscription({
+ *   variables: {
+ *      chatId: // value for 'chatId'
+ *      userId: // value for 'userId'
+ *   },
+ * });
+ */
+export function useTypingStartedSubscription(baseOptions: Apollo.SubscriptionHookOptions<TypingStartedSubscription, TypingStartedSubscriptionVariables> & ({ variables: TypingStartedSubscriptionVariables; skip?: boolean; } | { skip: boolean; }) ) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useSubscription<TypingStartedSubscription, TypingStartedSubscriptionVariables>(TypingStartedDocument, options);
+      }
+export type TypingStartedSubscriptionHookResult = ReturnType<typeof useTypingStartedSubscription>;
+export type TypingStartedSubscriptionResult = Apollo.SubscriptionResult<TypingStartedSubscription>;
 export const FriendRemovedDocument = gql`
     subscription FriendRemoved($userId: String!) {
   friendRemoved(userId: $userId) {

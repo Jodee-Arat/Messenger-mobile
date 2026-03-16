@@ -45,6 +45,7 @@ interface SendMessageFormProp {
 	filesEdited: SendFileType[]
 	setFilesEdited: (files: SendFileType[]) => void
 	canSendMessages?: boolean
+	onTyping?: () => void
 }
 
 const SendMessageForm: FC<SendMessageFormProp> = ({
@@ -62,7 +63,8 @@ const SendMessageForm: FC<SendMessageFormProp> = ({
 	setEditId,
 	filesEdited,
 	setFilesEdited,
-	canSendMessages = true
+	canSendMessages = true,
+	onTyping
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
@@ -277,7 +279,10 @@ const SendMessageForm: FC<SendMessageFormProp> = ({
 					render={({ field }) => (
 						<TextInput
 							value={field.value ?? ''}
-							onChangeText={field.onChange}
+							onChangeText={text => {
+								field.onChange(text)
+								onTyping?.()
+							}}
 							placeholder={t('writeMessage')}
 							placeholderTextColor={colors.textMuted}
 							multiline

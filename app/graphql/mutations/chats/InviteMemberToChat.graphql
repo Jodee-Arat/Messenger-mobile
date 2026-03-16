@@ -1,0 +1,3 @@
+mutation InviteMemberToChat($chatId: String!, $targetUserId: String!) {
+	inviteMemberToChat(chatId: $chatId, targetUserId: $targetUserId)
+}

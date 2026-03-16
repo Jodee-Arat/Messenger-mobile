@@ -374,6 +374,7 @@ export const useSecretChat = (
 		})()
 	}, [subKeyRotation, chatId, effectiveGroupId])
 
+	// отправка сообщения
 	const sendMessage = async (
 		text: string,
 		user: FindAllUsersQuery['findAllUsers'][number]

@@ -1,4 +1,3 @@
-import { gql, useMutation, useQuery } from '@apollo/client'
 import {
 	ArrowLeft,
 	Lock,
@@ -25,6 +24,8 @@ import { useChat } from '@/hooks/useChat'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
+import { useTypingIndicator } from '@/hooks/useTypingIndicator'
+import { useUser } from '@/hooks/useUser'
 
 import { chatEvents } from '@/utils/chatEvents'
 
@@ -33,27 +34,12 @@ import ChatInviteMemberModal from '../chat-settings/ChatInviteMemberModal'
 import ChatSkeleton from './ChatSkeleton'
 import ChatMessageList from './message/default/list/ChatMessageList'
 import SendMessageForm from './message/default/send/SendMessageForm'
-import { useLeaveChatMutation } from '@/graphql/generated/output'
-
-const GET_MEMBER_CHAT_ROLE = gql`
-	query GetMemberChatRoleForChat($chatId: String!) {
-		getMemberChatRole(chatId: $chatId) {
-			id
-			name
-			isCreator
-			permissions
-		}
-	}
-`
-
-const INVITE_MEMBER_TO_CHAT = gql`
-	mutation InviteMemberToChatFromChat(
-		$chatId: String!
-		$targetUserId: String!
-	) {
-		inviteMemberToChat(chatId: $chatId, targetUserId: $targetUserId)
-	}
-`
+import {
+	ChatPermissionEnum,
+	useGetMemberChatRoleQuery,
+	useInviteMemberToChatMutation,
+	useLeaveChatMutation
+} from '@/graphql/generated/output'
 
 type DefaultChatProps = {
 	chatId: string
@@ -67,9 +53,10 @@ const DefaultChat: FC<DefaultChatProps> = ({ chatId, chatName, isSecret }) => {
 	const { t } = useTranslation()
 	const navigation = useTypedNavigation()
 	const [isInviteOpen, setIsInviteOpen] = useState(false)
+	const { userId } = useUser()
 
 	const [leaveChatMutation] = useLeaveChatMutation()
-	const [inviteMemberMutation] = useMutation(INVITE_MEMBER_TO_CHAT)
+	const [inviteMemberMutation] = useInviteMemberToChatMutation()
 
 	const {
 		filesEdited,
@@ -93,9 +80,11 @@ const DefaultChat: FC<DefaultChatProps> = ({ chatId, chatName, isSecret }) => {
 		chat
 	} = useChat(chatId)
 
+	const { typingUsernames, sendTyping } = useTypingIndicator(chatId, userId)
+
 	const isGroup = !!(chat as any)?.isGroup
 
-	const { data: roleData } = useQuery(GET_MEMBER_CHAT_ROLE, {
+	const { data: roleData } = useGetMemberChatRoleQuery({
 		variables: { chatId },
 		skip: !isGroup
 	})
@@ -126,12 +115,14 @@ const DefaultChat: FC<DefaultChatProps> = ({ chatId, chatName, isSecret }) => {
 				canPinMessages: true
 			}
 		}
-		const perms: string[] = role.permissions ?? []
+		const perms = role.permissions ?? []
 		return {
-			canSendMessages: perms.includes('SEND_MESSAGES'),
-			canEditMessages: perms.includes('EDIT_MESSAGES'),
-			canDeleteMessages: perms.includes('DELETE_MESSAGES'),
-			canPinMessages: perms.includes('PIN_MESSAGES')
+			canSendMessages: perms.includes(ChatPermissionEnum.SendMessages),
+			canEditMessages: perms.includes(ChatPermissionEnum.EditMessages),
+			canDeleteMessages: perms.includes(
+				ChatPermissionEnum.DeleteMessages
+			),
+			canPinMessages: perms.includes(ChatPermissionEnum.PinMessages)
 		}
 	}, [isGroup, roleData])
 
@@ -140,7 +131,7 @@ const DefaultChat: FC<DefaultChatProps> = ({ chatId, chatName, isSecret }) => {
 		isGroup &&
 		(isCreator ||
 			(roleData?.getMemberChatRole?.permissions ?? []).includes(
-				'INVITE_MEMBERS'
+				ChatPermissionEnum.InviteMembers
 			))
 
 	const members = (chat as any)?.members ?? []
@@ -236,6 +227,18 @@ const DefaultChat: FC<DefaultChatProps> = ({ chatId, chatName, isSecret }) => {
 							>
 								{chatName}
 							</Text>
+							{typingUsernames.length > 0 ? (
+								<Text
+									numberOfLines={1}
+									style={{
+										color: colors.accent,
+										fontSize: 11,
+										marginTop: 1
+									}}
+								>
+									{typingUsernames.join(', ') + ' ' + t('typing')}
+								</Text>
+							) : null}
 						</View>
 					</TouchableOpacity>
 
@@ -296,6 +299,7 @@ const DefaultChat: FC<DefaultChatProps> = ({ chatId, chatName, isSecret }) => {
 							filesEdited={filesEdited}
 							setFilesEdited={setFilesEdited}
 							canSendMessages={messagePermissions.canSendMessages}
+							onTyping={sendTyping}
 						/>
 					</View>
 				</KeyboardAvoidingView>

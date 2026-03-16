@@ -1,6 +1,6 @@
 import * as DocumentPicker from 'expo-document-picker'
 import { ReactNativeFile } from 'extract-files'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Toast from 'react-native-toast-message'
 
 import {
@@ -50,11 +50,29 @@ export const useChat = (chatId: string) => {
 
 	useEffect(() => {
 		if (!chatUpdatedData?.chatUpdated) return
-		// Обновляем только если пришло обновление для нашего чата
-		if (chatUpdatedData.chatUpdated.id === chatId) {
+		const updated = chatUpdatedData.chatUpdated
+		if (updated.id !== chatId) return
+
+		// Рефетчим только при структурных изменениях (не при каждом новом сообщении)
+		const nameChanged = chat && updated.chatName !== chat.chatName
+		const avatarChanged = chat && updated.avatarUrl !== chat.avatarUrl
+		const secretChanged = chat && updated.isSecret !== chat.isSecret
+		const totpChanged = chat && updated.requireTotp !== chat.requireTotp
+		const membersChanged =
+			chat && updated.members.length !== chat.members.length
+
+		if (
+			nameChanged ||
+			avatarChanged ||
+			secretChanged ||
+			totpChanged ||
+			membersChanged
+		) {
 			refetchChat()
 		}
 	}, [chatUpdatedData])
+
+	const draftRestoredRef = useRef(false)
 
 	useEffect(() => {
 		if (!chat) return
@@ -62,6 +80,10 @@ export const useChat = (chatId: string) => {
 		if (chat.pinnedMessage) {
 			setPinnedMessage(chat.pinnedMessage)
 		}
+
+		// Восстанавливаем черновик только при первой загрузке
+		if (draftRestoredRef.current) return
+		draftRestoredRef.current = true
 
 		const draft = chat.draftMessages?.[0]
 		if (!draft) return

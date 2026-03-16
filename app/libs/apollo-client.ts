@@ -5,7 +5,6 @@ import {
 	InMemoryCache,
 	Observable,
 	Operation,
-	gql,
 	split
 } from '@apollo/client'
 import { onError } from '@apollo/client/link/error'
@@ -337,12 +336,6 @@ export const client = new ApolloClient({
 })
 
 /* ---------------------------
-   Простой ME-запрос, который можно использовать в AuthProvider
+   ME-запрос — используем сгенерированный FindProfileDocument
    --------------------------- */
-export const ME_QUERY = gql`
-	query Me {
-		me {
-			id
-		}
-	}
-`
+export { FindProfileDocument as ME_QUERY } from '@/graphql/generated/output'

@@ -28,7 +28,7 @@ export type MyKeys = {
 	sessionKeyHex: Uint8Array<ArrayBufferLike>
 }
 // тут можно продумать ещё мб чтобы как-то сохранялись ключи при перезаходе в юзеровский аккаунт
-// 💾 Сохранение моего PreKey в файл JSON
+//  Сохранение моего PreKey в файл JSON
 export async function upsertMyPreKeyJSON(preKey: PreKeyBundle) {
 	const PRE_KEY_FILE = `${BASE_DIRECTORY}/${FILE.PRE_KEYS}`
 
@@ -50,7 +50,7 @@ export async function loadMyPreKeyJSON(): Promise<PreKeyBundle | null> {
 }
 
 /**
- * 📁 Создание нового секретного чата (в отдельной папке внутри группы)
+ *  Создание нового секретного чата (в отдельной папке внутри группы)
  */
 export async function createSecretChat(
 	chat: FindAllChatsByGroupQuery['findAllChatsByGroup'][0]
@@ -111,7 +111,7 @@ export async function createSecretChat(
 }
 
 /**
- * 📂 Загрузка всех чатов конкретной группы
+ *  Загрузка всех чатов конкретной группы
  */
 export async function loadAllSecretChats(
 	groupId: string
@@ -148,7 +148,7 @@ export async function loadAllSecretChats(
 }
 
 /**
- * � Удаление только сессионного ключа (my-keys.json) без удаления всего чата.
+ *  Удаление только сессионного ключа (my-keys.json) без удаления всего чата.
  * Используется при ротации ключей (leave / remove member).
  */
 export async function deleteMyKeys(chatId: string, groupId: string) {
@@ -165,7 +165,7 @@ export async function deleteMyKeys(chatId: string, groupId: string) {
 }
 
 /**
- * �🗑️ Удаление чата (вместе с его папкой)
+ *  Удаление чата (вместе с его папкой)
  */
 export async function deleteSecretChat(groupId: string, chatId: string) {
 	try {
@@ -334,7 +334,7 @@ export async function addMessages(
 }
 
 /**
- * 📥 Загрузка сообщений чата из локального файла
+ *  Загрузка сообщений чата из локального файла
  */
 export async function loadMessages(
 	chatId: string,
@@ -360,7 +360,7 @@ export async function loadMessages(
 }
 
 /**
- * 💾 Полная перезапись сообщений чата в локальный файл
+ *  Полная перезапись сообщений чата в локальный файл
  */
 export async function saveMessages(
 	messages: MessageType[],

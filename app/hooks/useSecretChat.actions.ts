@@ -35,6 +35,7 @@ import {
 	establishSessionX3DH,
 	exportPublicRaw,
 	finalizeFromEnvelope,
+	finalizeSessionX3DH,
 	fromHex,
 	generateEphemeralKeyPair,
 	generateKuznechikKey,
@@ -226,6 +227,7 @@ export const loadChatAction = async (params: {
 			}
 		} else {
 			const mySessionKeys = await loadMyKeys(chatId, groupId)
+
 			console.log(
 				'[SecretChat] loaded existing sessionKey:',
 				!!mySessionKeys?.sessionKeyHex
@@ -1102,24 +1104,17 @@ export const receiveGroupKeyAction = async (params: {
 		const ikPriv = await importPrivateRaw(fromHex(ikPrivHex))
 		const spkPriv = await importPrivateRaw(fromHex(spkPrivHex))
 
-		const envelope = {
-			ikAPub: packet.ikPub,
-			ekAPub: packet.ekPub,
-			usedOpk: packet.usedOpk ?? null,
-			ukm: packet.ukm,
-			iv: packet.iv,
-			ct: packet.encryptedKey,
-			sig: packet.sig
-		}
-
-		const finalize = await finalizeFromEnvelope({
+		const { sessionKey: pairSessionKey } = await finalizeSessionX3DH({
 			bobIKPriv: ikPriv,
 			bobSPKPriv: spkPriv,
 			opkPriv: undefined,
-			envelope
+			envelope: {
+				ikAPub: packet.ikPub,
+				ekAPub: packet.ekPub,
+				usedOpk: packet.usedOpk ?? null,
+				ukm: packet.ukm
+			}
 		})
-
-		const pairSessionKey = finalize.sessionKey
 
 		const groupKeyBytes = await decryptKuz(
 			pairSessionKey,

@@ -1,4 +1,3 @@
-import { gql, useMutation, useQuery } from '@apollo/client'
 import {
 	ArrowLeft,
 	Fingerprint,
@@ -39,29 +38,12 @@ import FingerprintVerificationModal from './FingerprintVerificationModal'
 import SecretChatMessageList from './message/secret/list/SecretChatMessageList'
 import SecretSendMessageForm from './message/secret/send/SecretSendMessageForm'
 import {
+	ChatPermissionEnum,
+	useGetMemberChatRoleQuery,
+	useInviteMemberToChatMutation,
 	useLeaveChatMutation,
 	useVerifyChatTotpMutation
 } from '@/graphql/generated/output'
-
-const GET_MEMBER_CHAT_ROLE_SECRET = gql`
-	query GetMemberChatRoleForSecretChat($chatId: String!) {
-		getMemberChatRole(chatId: $chatId) {
-			id
-			name
-			isCreator
-			permissions
-		}
-	}
-`
-
-const INVITE_MEMBER_TO_CHAT_SECRET = gql`
-	mutation InviteMemberToChatFromSecretChat(
-		$chatId: String!
-		$targetUserId: String!
-	) {
-		inviteMemberToChat(chatId: $chatId, targetUserId: $targetUserId)
-	}
-`
 
 type SecretChatProps = {
 	chatId: string
@@ -94,9 +76,9 @@ const SecretChat: FC<SecretChatProps> = ({
 	const [leaveChatMutation] = useLeaveChatMutation()
 	const [verifyChatTotpMutation, { loading: totpLoading }] =
 		useVerifyChatTotpMutation()
-	const [inviteMemberMutation] = useMutation(INVITE_MEMBER_TO_CHAT_SECRET)
+	const [inviteMemberMutation] = useInviteMemberToChatMutation()
 
-	const { data: roleData } = useQuery(GET_MEMBER_CHAT_ROLE_SECRET, {
+	const { data: roleData } = useGetMemberChatRoleQuery({
 		variables: { chatId },
 		skip: isDM
 	})
@@ -106,7 +88,7 @@ const SecretChat: FC<SecretChatProps> = ({
 		!isDM &&
 		(isCreator ||
 			(roleData?.getMemberChatRole?.permissions ?? []).includes(
-				'INVITE_MEMBERS'
+				ChatPermissionEnum.InviteMembers
 			))
 
 	const {

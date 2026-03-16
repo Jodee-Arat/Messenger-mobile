@@ -1,4 +1,3 @@
-import { gql, useMutation, useQuery } from '@apollo/client'
 import { useEffect, useState } from 'react'
 import { Alert } from 'react-native'
 
@@ -22,23 +21,12 @@ import {
 	useFindChatByChatIdQuery,
 	useGetChatRolesQuery,
 	useGetMemberChatRoleQuery,
+	useInviteMemberToChatMutation,
 	useRemoveChatAvatarMutation,
+	useRemoveMemberFromChatMutation,
 	useRemoveRoleFromUserMutation,
 	useUpsertChatRoleMutation
 } from '@/graphql/generated/output'
-
-// добавть graphql
-const INVITE_MEMBER_TO_CHAT = gql`
-	mutation InviteMemberToChat($chatId: String!, $targetUserId: String!) {
-		inviteMemberToChat(chatId: $chatId, targetUserId: $targetUserId)
-	}
-`
-
-const REMOVE_MEMBER_FROM_CHAT = gql`
-	mutation RemoveMemberFromChat($chatId: String!, $targetUserId: String!) {
-		removeMemberFromChat(chatId: $chatId, targetUserId: $targetUserId)
-	}
-`
 
 export function useChatSettings(chatId: string) {
 	const { userId } = useUser()
@@ -111,12 +99,10 @@ export function useChatSettings(chatId: string) {
 	const [deleteChat, { loading: isDeletingChat }] = useDeleteChatMutation()
 
 	// ── Invite / Remove member mutations ─────────────────────
-	const [inviteMemberMutation, { loading: isInviting }] = useMutation(
-		INVITE_MEMBER_TO_CHAT
-	)
-	const [removeMemberMutation, { loading: isRemovingMember }] = useMutation(
-		REMOVE_MEMBER_FROM_CHAT
-	)
+	const [inviteMemberMutation, { loading: isInviting }] =
+		useInviteMemberToChatMutation()
+	const [removeMemberMutation, { loading: isRemovingMember }] =
+		useRemoveMemberFromChatMutation()
 
 	// ── Subscriptions ────────────────────────────────────────
 	useChatUpsertedRoleSubscription({

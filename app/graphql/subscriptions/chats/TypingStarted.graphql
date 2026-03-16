@@ -1,0 +1,7 @@
+subscription TypingStarted($chatId: String!, $userId: String!) {
+	typingStarted(chatId: $chatId, userId: $userId) {
+		userId
+		username
+		chatId
+	}
+}

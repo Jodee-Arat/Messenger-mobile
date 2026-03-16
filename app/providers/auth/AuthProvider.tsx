@@ -60,7 +60,7 @@ const AuthProvider: FC<PropsWithChildren<unknown>> = ({ children }) => {
 					fetchPolicy: 'network-only' // обязательно сетевой запрос, чтобы сервер проверил токен
 				})
 
-				const meId = (res?.data as any)?.me?.id
+				const meId = (res?.data as any)?.findProfile?.id
 
 				if (meId) {
 					setUserId(meId)
