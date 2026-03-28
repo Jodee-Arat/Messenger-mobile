@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system'
+import { Directory, File, Paths } from 'expo-file-system'
 
 import { SecretChatData } from '@/hooks/useSecretChat'
 
@@ -6,7 +6,7 @@ import { MessageType } from '@/types/message.type'
 
 import {
 	FindAllChatsByGroupQuery,
-	GetPreKeysQuery
+	FindChatByChatIdQuery
 } from '@/graphql/generated/output'
 import { PreKeyBundleClient, PreKeyBundleServer } from '@/libs/e2ee/gost'
 
@@ -18,7 +18,7 @@ export const FILE = {
 	PRE_KEYS: 'pre-keys.json'
 }
 
-const BASE_DIRECTORY = FileSystem.documentDirectory
+const BASE_DIRECTORY = Paths.document
 
 export type PreKeyBundle = {
 	toServer: PreKeyBundleServer
@@ -27,83 +27,102 @@ export type PreKeyBundle = {
 export type MyKeys = {
 	sessionKeyHex: Uint8Array<ArrayBufferLike>
 }
-// тут можно продумать ещё мб чтобы как-то сохранялись ключи при перезаходе в юзеровский аккаунт
+
+const getGroupDirectory = (groupId: string) =>
+	new Directory(BASE_DIRECTORY, groupId)
+
+const getChatDirectory = (groupId: string, chatId: string) =>
+	new Directory(getGroupDirectory(groupId), chatId)
+
+const getSecretChatFile = (groupId: string, chatId: string) =>
+	new File(getChatDirectory(groupId, chatId), `${chatId}.json`)
+
+const getChatFile = (groupId: string, chatId: string, fileName: string) =>
+	new File(getChatDirectory(groupId, chatId), fileName)
+
+const getRootFile = (fileName: string) => new File(BASE_DIRECTORY, fileName)
+
+const ensureDirectory = (directory: Directory) => {
+	if (!directory.exists) {
+		directory.create({ intermediates: true, idempotent: true })
+	}
+}
+
+const writeJson = (file: File, data: unknown) => {
+	file.create({ intermediates: true, overwrite: true })
+	file.write(JSON.stringify(data, null, 2))
+}
+
+const readJson = async <T>(file: File): Promise<T | null> => {
+	if (!file.exists) {
+		return null
+	}
+
+	return JSON.parse(await file.text()) as T
+}
+
+// тут можно продумать еще мб чтобы как-то сохранялись ключи при перезаходе в юзеровский аккаунт
 //  Сохранение моего PreKey в файл JSON
 export async function upsertMyPreKeyJSON(preKey: PreKeyBundle) {
-	const PRE_KEY_FILE = `${BASE_DIRECTORY}/${FILE.PRE_KEYS}`
-
-	await FileSystem.writeAsStringAsync(
-		PRE_KEY_FILE,
-		JSON.stringify(preKey, null, 2)
-	)
+	writeJson(getRootFile(FILE.PRE_KEYS), preKey)
 }
 
 export async function loadMyPreKeyJSON(): Promise<PreKeyBundle | null> {
-	const PRE_KEY_FILE = `${BASE_DIRECTORY}/${FILE.PRE_KEYS}`
-	const fileInfo = await FileSystem.getInfoAsync(PRE_KEY_FILE)
-	if (!fileInfo.exists) {
-		return null
-	}
-	const content = await FileSystem.readAsStringAsync(PRE_KEY_FILE)
-
-	return JSON.parse(content)
+	return readJson<PreKeyBundle>(getRootFile(FILE.PRE_KEYS))
 }
 
 /**
  *  Создание нового секретного чата (в отдельной папке внутри группы)
  */
 export async function createSecretChat(
-	chat: FindAllChatsByGroupQuery['findAllChatsByGroup'][0]
+	chat:
+		| FindAllChatsByGroupQuery['findAllChatsByGroup'][0]
+		| FindChatByChatIdQuery['findChatByChatId'],
+	overwrite = false
 ) {
 	try {
-		const GROUP_DIRECTORY = `${BASE_DIRECTORY}${chat.groupId}`
-
-		// Проверяем, что директория группы существует
-		await FileSystem.makeDirectoryAsync(GROUP_DIRECTORY, {
-			intermediates: true
-		})
-
-		const CHAT_DIRECTORY = `${GROUP_DIRECTORY}/${chat.id}`
-
-		const isDirectoryExists = await FileSystem.getInfoAsync(CHAT_DIRECTORY)
-		if (isDirectoryExists.exists) {
-			return
+		const groupId = chat.groupId
+		const chatId = chat.id
+		if (!groupId || !chatId) {
+			throw new Error('Secret chat metadata is incomplete')
 		}
 
-		await FileSystem.makeDirectoryAsync(CHAT_DIRECTORY, {
-			intermediates: true
-		})
+		const groupDirectory = getGroupDirectory(groupId)
+		ensureDirectory(groupDirectory)
 
-		// Файл с данными чата
-		const CHAT_FILE = `${CHAT_DIRECTORY}/${chat.id}.json`
+		const chatDirectory = getChatDirectory(groupId, chatId)
+		if (chatDirectory.exists && !overwrite) {
+			return
+		}
+		ensureDirectory(chatDirectory)
 
-		// Формируем объект чата
-		const newChat: FindAllChatsByGroupQuery['findAllChatsByGroup'][0] = {
+		const newChat = {
 			id: chat.id,
 			chatName: chat.chatName,
 			avatarUrl: chat.avatarUrl ?? null,
 			isGroup: chat.isGroup,
 			groupId: chat.groupId,
 			updatedAt: chat.updatedAt,
-			lastMessageAt: chat.lastMessageAt,
+			lastMessageAt: (chat as any).lastMessageAt ?? null,
 			isSecret: true,
 			requireTotp: (chat as any).requireTotp ?? false,
+			description: (chat as any).description ?? null,
 			isPinned: (chat as any).isPinned ?? false,
 			pinnedOrder: (chat as any).pinnedOrder ?? null,
-			members: chat.members
+			members: chat.members,
+			lastMessage: (chat as any).lastMessage ?? null,
+			draftMessages: (chat as any).draftMessages ?? []
 		}
 
-		// Записываем чат в файл
-		await FileSystem.writeAsStringAsync(
-			CHAT_FILE,
-			JSON.stringify(newChat, null, 2)
-		)
+		writeJson(getSecretChatFile(groupId, chatId), newChat)
 
 		console.log(
-			`Новый секретный чат создан в группе ${chat.groupId}:`,
+			`Новый секретный чат создан в группе ${groupId}:`,
 			newChat
 		)
-		return newChat
+		return newChat as unknown as
+			| FindAllChatsByGroupQuery['findAllChatsByGroup'][0]
+			| FindChatByChatIdQuery['findChatByChatId']
 	} catch (error) {
 		console.error('Ошибка при создании чата:', error)
 		throw 'Ошибка при создании чата:' + error
@@ -117,24 +136,22 @@ export async function loadAllSecretChats(
 	groupId: string
 ): Promise<FindAllChatsByGroupQuery['findAllChatsByGroup']> {
 	try {
-		const GROUP_DIRECTORY = `${BASE_DIRECTORY}${groupId}`
+		const groupDirectory = getGroupDirectory(groupId)
 
-		const groupInfo = await FileSystem.getInfoAsync(GROUP_DIRECTORY)
-		if (!groupInfo.exists) return []
+		if (!groupDirectory.exists) return []
 
-		// Получаем список всех подпапок (каждая — это чат)
-		const chatFolders = await FileSystem.readDirectoryAsync(GROUP_DIRECTORY)
+		const chatFolders = groupDirectory
+			.list()
+			.filter((entry): entry is Directory => entry instanceof Directory)
 		const chats: FindAllChatsByGroupQuery['findAllChatsByGroup'] = []
 
-		for (const folderName of chatFolders) {
-			const CHAT_DIRECTORY = `${GROUP_DIRECTORY}/${folderName}`
-			const CHAT_FILE = `${CHAT_DIRECTORY}/${folderName}.json`
+		for (const chatFolder of chatFolders) {
+			const chatFile = new File(chatFolder, `${chatFolder.name}.json`)
+			const chat = await readJson<SecretChatData>(chatFile)
+			if (!chat) {
+				continue
+			}
 
-			const fileInfo = await FileSystem.getInfoAsync(CHAT_FILE)
-			if (!fileInfo.exists) continue
-
-			const content = await FileSystem.readAsStringAsync(CHAT_FILE)
-			const chat = JSON.parse(content) as SecretChatData
 			chats.push(
 				chat as unknown as FindAllChatsByGroupQuery['findAllChatsByGroup'][0]
 			)
@@ -153,11 +170,10 @@ export async function loadAllSecretChats(
  */
 export async function deleteMyKeys(chatId: string, groupId: string) {
 	try {
-		const FILE_PATH = `${BASE_DIRECTORY}${groupId}/${chatId}/${FILE.MY_KEYS}`
-		const fileInfo = await FileSystem.getInfoAsync(FILE_PATH)
-		if (fileInfo.exists) {
-			await FileSystem.deleteAsync(FILE_PATH, { idempotent: true })
-			console.log(`[SecretChat] my-keys.json удалён для чата ${chatId}`)
+		const file = getChatFile(groupId, chatId, FILE.MY_KEYS)
+		if (file.exists) {
+			file.delete()
+			console.log(`[SecretChat] my-keys.json удален для чата ${chatId}`)
 		}
 	} catch (error) {
 		console.error('[SecretChat] Ошибка при удалении my-keys.json:', error)
@@ -169,16 +185,15 @@ export async function deleteMyKeys(chatId: string, groupId: string) {
  */
 export async function deleteSecretChat(groupId: string, chatId: string) {
 	try {
-		const CHAT_DIRECTORY = `${BASE_DIRECTORY}${groupId}/${chatId}`
-		const dirInfo = await FileSystem.getInfoAsync(CHAT_DIRECTORY)
+		const chatDirectory = getChatDirectory(groupId, chatId)
 
-		if (!dirInfo.exists) {
+		if (!chatDirectory.exists) {
 			console.warn(`Папка чата ${chatId} не найдена в группе ${groupId}`)
 			return
 		}
 
-		await FileSystem.deleteAsync(CHAT_DIRECTORY, { idempotent: true })
-		console.log(`Секретный чат ${chatId} удалён из группы ${groupId}`)
+		chatDirectory.delete()
+		console.log(`Секретный чат ${chatId} удален из группы ${groupId}`)
 	} catch (error) {
 		console.error('Ошибка при удалении чата:', error)
 	}
@@ -189,27 +204,21 @@ export async function updateSecretChatUpdatedAt(
 	chatId: string
 ) {
 	try {
-		const CHAT_DIRECTORY = `${BASE_DIRECTORY}${groupId}/${chatId}`
-		const CHAT_FILE = `${CHAT_DIRECTORY}/${chatId}.json`
-		const fileInfo = await FileSystem.getInfoAsync(CHAT_FILE)
-		if (!fileInfo.exists) {
+		const chatFile = getSecretChatFile(groupId, chatId)
+		if (!chatFile.exists) {
 			console.warn(`Файл чата ${chatId} не найден в группе ${groupId}`)
 			return
 		}
 
-		await FileSystem.writeAsStringAsync(
-			CHAT_FILE,
-			JSON.stringify(
-				{
-					...JSON.parse(
-						await FileSystem.readAsStringAsync(CHAT_FILE)
-					),
-					updatedAt: new Date().toISOString()
-				},
-				null,
-				2
-			)
-		)
+		const existingChat = await readJson<Record<string, unknown>>(chatFile)
+		if (!existingChat) {
+			return
+		}
+
+		writeJson(chatFile, {
+			...existingChat,
+			updatedAt: new Date().toISOString()
+		})
 	} catch (error) {
 		console.error('Ошибка при обновлении чата:', error)
 	}
@@ -220,14 +229,7 @@ export async function fileExist(
 	groupId: string,
 	fileName: string
 ) {
-	const CHAT_DIRECTORY = `${BASE_DIRECTORY}${groupId}/${chatId}`
-	const FILE_PATH = `${CHAT_DIRECTORY}/${fileName}`
-	const fileInfo = await FileSystem.getInfoAsync(FILE_PATH)
-	if (!fileInfo.exists) {
-		return false
-	} else {
-		return true
-	}
+	return getChatFile(groupId, chatId, fileName).exists
 }
 
 export async function createMyKey(
@@ -236,18 +238,11 @@ export async function createMyKey(
 	userId: string,
 	sessionKey: Uint8Array<ArrayBufferLike>
 ) {
-	const CHAT_DIRECTORY = `${BASE_DIRECTORY}${groupId}/${chatId}`
-	const FILE_PATH = `${CHAT_DIRECTORY}/${FILE.MY_KEYS}`
+	ensureDirectory(getChatDirectory(groupId, chatId))
 
-	await FileSystem.writeAsStringAsync(
-		FILE_PATH,
-		// Храним как массив чисел, чтобы корректно восстановить Uint8Array
-		JSON.stringify(
-			{ sessionKeyHex: Array.from(sessionKey as Uint8Array) },
-			null,
-			2
-		)
-	)
+	writeJson(getChatFile(groupId, chatId, FILE.MY_KEYS), {
+		sessionKeyHex: Array.from(sessionKey as Uint8Array)
+	})
 }
 
 // сессионный ключ
@@ -255,17 +250,12 @@ export async function loadMyKeys(
 	chatId: string,
 	groupId: string
 ): Promise<MyKeys | null> {
-	const CHAT_DIRECTORY = `${BASE_DIRECTORY}${groupId}/${chatId}`
-	const FILE_PATH = `${CHAT_DIRECTORY}/${FILE.MY_KEYS}`
-	const fileInfo = await FileSystem.getInfoAsync(FILE_PATH)
-	if (!fileInfo.exists) {
-		// console.warn(`Файл ключей ${FILE.MY_KEYS} не найден в чате ${chatId}`)
+	const parsed = await readJson<any>(getChatFile(groupId, chatId, FILE.MY_KEYS))
+	if (!parsed) {
 		return null
 	}
 
-	const content = await FileSystem.readAsStringAsync(FILE_PATH)
 	try {
-		const parsed = JSON.parse(content) as any
 		let arr: number[] | null = null
 
 		if (Array.isArray(parsed?.sessionKeyHex)) {
@@ -285,8 +275,7 @@ export async function loadMyKeys(
 		}
 
 		if (arr && arr.length > 0) {
-			const u8 = new Uint8Array(arr)
-			return { sessionKeyHex: u8 }
+			return { sessionKeyHex: new Uint8Array(arr) }
 		}
 
 		return null
@@ -300,16 +289,13 @@ export async function loadChatData(
 	chatId: string,
 	groupId: string
 ): Promise<SecretChatData | null> {
-	const CHAT_DIRECTORY = `${BASE_DIRECTORY}${groupId}/${chatId}`
-	const CHAT_FILE = `${CHAT_DIRECTORY}/${FILE.CHAT}`
-	const fileInfo = await FileSystem.getInfoAsync(CHAT_FILE)
-	if (!fileInfo.exists) {
+	const chatFile = getChatFile(groupId, chatId, FILE.CHAT)
+	if (!chatFile.exists) {
 		console.warn(`Файл чата ${chatId} не найден в группе ${groupId}`)
 		return null
 	}
 
-	const content = await FileSystem.readAsStringAsync(CHAT_FILE)
-	return JSON.parse(content)
+	return readJson<SecretChatData>(chatFile)
 }
 
 export async function addMessages(
@@ -317,20 +303,11 @@ export async function addMessages(
 	chatId: string,
 	groupId: string
 ) {
-	const CHAT_DIRECTORY = `${BASE_DIRECTORY}${groupId}/${chatId}`
-	const FILE_PATH = `${CHAT_DIRECTORY}/${FILE.MESSAGES}`
-	let existingMessages: MessageType[] = []
-	const fileInfo = await FileSystem.getInfoAsync(FILE_PATH)
-	if (fileInfo.exists) {
-		const content = await FileSystem.readAsStringAsync(FILE_PATH)
-		existingMessages = JSON.parse(content) as MessageType[]
-	}
+	const file = getChatFile(groupId, chatId, FILE.MESSAGES)
+	const existingMessages = (await readJson<MessageType[]>(file)) ?? []
 	const updatedMessages = [...existingMessages, ...messages]
 
-	await FileSystem.writeAsStringAsync(
-		FILE_PATH,
-		JSON.stringify(updatedMessages, null, 2)
-	)
+	writeJson(file, updatedMessages)
 }
 
 /**
@@ -340,18 +317,14 @@ export async function loadMessages(
 	chatId: string,
 	groupId: string
 ): Promise<MessageType[]> {
-	const CHAT_DIRECTORY = `${BASE_DIRECTORY}${groupId}/${chatId}`
-	const FILE_PATH = `${CHAT_DIRECTORY}/${FILE.MESSAGES}`
+	const file = getChatFile(groupId, chatId, FILE.MESSAGES)
 
-	const fileInfo = await FileSystem.getInfoAsync(FILE_PATH)
-
-	if (!fileInfo.exists) {
+	if (!file.exists) {
 		return []
 	}
-	try {
-		const content = await FileSystem.readAsStringAsync(FILE_PATH)
-		const messages = JSON.parse(content) as MessageType[]
 
+	try {
+		const messages = await readJson<MessageType[]>(file)
 		return Array.isArray(messages) ? messages : []
 	} catch (e) {
 		console.warn('Не удалось прочитать сообщения из файла:', e)
@@ -367,18 +340,6 @@ export async function saveMessages(
 	chatId: string,
 	groupId: string
 ) {
-	const CHAT_DIRECTORY = `${BASE_DIRECTORY}${groupId}/${chatId}`
-	const FILE_PATH = `${CHAT_DIRECTORY}/${FILE.MESSAGES}`
-
-	const dirInfo = await FileSystem.getInfoAsync(CHAT_DIRECTORY)
-	if (!dirInfo.exists) {
-		await FileSystem.makeDirectoryAsync(CHAT_DIRECTORY, {
-			intermediates: true
-		})
-	}
-
-	await FileSystem.writeAsStringAsync(
-		FILE_PATH,
-		JSON.stringify(messages, null, 2)
-	)
+	ensureDirectory(getChatDirectory(groupId, chatId))
+	writeJson(getChatFile(groupId, chatId, FILE.MESSAGES), messages)
 }

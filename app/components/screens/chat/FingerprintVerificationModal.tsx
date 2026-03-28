@@ -1,15 +1,18 @@
 import * as Clipboard from 'expo-clipboard'
 import { Copy, Fingerprint, ShieldCheck, X } from 'lucide-react-native'
-import React, { FC, useEffect, useState } from 'react'
+import React, { FC, useEffect, useRef, useState } from 'react'
 import {
 	ActivityIndicator,
-	Modal,
+	Pressable,
 	ScrollView,
 	Text,
 	TouchableOpacity,
-	View
+	View,
+	Animated,
+	Dimensions
 } from 'react-native'
 
+import AppModal from '@/components/ui/AppModal'
 import EntityAvatar from '@/components/ui/EntityAvatar'
 
 import { useTheme, useTranslation } from '@/hooks/useTheme'
@@ -42,6 +45,8 @@ const formatFingerprint = (hex: string): string => {
 	return blocks.join(' ')
 }
 
+const SCREEN_HEIGHT = Dimensions.get('window').height
+
 const FingerprintVerificationModal: FC<FingerprintVerificationModalProps> = ({
 	visible,
 	onClose,
@@ -57,6 +62,19 @@ const FingerprintVerificationModal: FC<FingerprintVerificationModalProps> = ({
 	const [loading, setLoading] = useState(true)
 	const [copiedId, setCopiedId] = useState<string | null>(null)
 	const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
+
+	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+
+	const closeSheet = (cb?: () => void) => {
+		Animated.timing(slideAnim, {
+			toValue: SCREEN_HEIGHT,
+			duration: 200,
+			useNativeDriver: true
+		}).start(() => {
+			onClose()
+			cb?.()
+		})
+	}
 
 	useEffect(() => {
 		if (!visible || preKeysPub.length === 0) return
@@ -85,6 +103,17 @@ const FingerprintVerificationModal: FC<FingerprintVerificationModalProps> = ({
 		computeFingerprints()
 	}, [visible, preKeysPub])
 
+	useEffect(() => {
+		if (visible) {
+			Animated.spring(slideAnim, {
+				toValue: 0,
+				useNativeDriver: true,
+				tension: 65,
+				friction: 11
+			}).start()
+		}
+	}, [visible])
+
 	const handleCopy = async (userId: string, fp: string) => {
 		await Clipboard.setStringAsync(formatFingerprint(fp))
 		setCopiedId(userId)
@@ -103,19 +132,22 @@ const FingerprintVerificationModal: FC<FingerprintVerificationModalProps> = ({
 	const selectedFp = selectedUserId ? fingerprints.get(selectedUserId) : null
 
 	return (
-		<Modal
+		<AppModal
 			visible={visible}
-			animationType='slide'
+			animationType='none'
 			transparent
-			onRequestClose={onClose}
+			onRequestClose={() => closeSheet()}
 		>
-			<View
-				className='flex-1 justify-end'
-				style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
-			>
-				<View
+			<View className='flex-1 justify-end'>
+				<Pressable
+					className='flex-1'
+					style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.5)' }}
+					onPress={() => closeSheet()}
+				/>
+				<Animated.View
 					className='rounded-t-3xl'
 					style={{
+						transform: [{ translateY: slideAnim }],
 						backgroundColor: colors.background,
 						maxHeight: '85%'
 					}}
@@ -153,7 +185,7 @@ const FingerprintVerificationModal: FC<FingerprintVerificationModalProps> = ({
 							</View>
 						</View>
 						<TouchableOpacity
-							onPress={onClose}
+							onPress={() => closeSheet()}
 							className='w-9 h-9 rounded-full items-center justify-center'
 							style={{ backgroundColor: colors.cardHover }}
 							activeOpacity={0.7}
@@ -304,7 +336,6 @@ const FingerprintVerificationModal: FC<FingerprintVerificationModalProps> = ({
 							contentContainerStyle={{ paddingBottom: 40 }}
 							showsVerticalScrollIndicator={false}
 						>
-							{/* Description */}
 							<View
 								className='mt-4 p-3 rounded-xl mb-4'
 								style={{
@@ -442,9 +473,9 @@ const FingerprintVerificationModal: FC<FingerprintVerificationModalProps> = ({
 							})}
 						</ScrollView>
 					)}
-				</View>
+				</Animated.View>
 			</View>
-		</Modal>
+		</AppModal>
 	)
 }
 

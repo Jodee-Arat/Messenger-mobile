@@ -1,13 +1,15 @@
-import { useRoute } from '@react-navigation/native'
-import { Pin } from 'lucide-react-native'
-import { FC, useCallback, useState } from 'react'
-import { FlatList, Text, View } from 'react-native'
-import DraggableFlatList, {
-	RenderItemParams,
-	ScaleDecorator
-} from 'react-native-draggable-flatlist'
+import { useFocusEffect, useRoute } from '@react-navigation/native'
+import { FC, useCallback, useEffect, useRef, useState } from 'react'
+import { Text, View } from 'react-native'
+import DraggableFlatList from 'react-native-draggable-flatlist'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useTheme, useTranslation } from '@/hooks/useTheme'
+import {
+	isGroupMembershipRevokedError
+} from '@/hooks/useBlockedUsers'
+import { useUser } from '@/hooks/useUser'
+import { resetToHome } from '@/navigation/navigate'
 
 import ChatDropdownTrigger from './ChatDropdownTrigger'
 import ChatsFloatingActions from './ChatsFloatingActions'
@@ -16,8 +18,9 @@ import ChatsListSkeleton from './ChatsListSkeleton'
 import CreateChatModal from './CreateChatModal'
 import { useGroupChats } from './useGroupChats'
 import {
-	FindAllChatsByGroupQuery,
 	GroupPermissionEnum,
+	useGroupDeletedSubscription,
+	useFindGroupByGroupIdQuery,
 	useGetMemberRoleQuery
 } from '@/graphql/generated/output'
 
@@ -26,27 +29,51 @@ type RouteParams = {
 	groupName: string
 }
 
-type ChatItem = FindAllChatsByGroupQuery['findAllChatsByGroup'][0]
+const SEARCH_DEBOUNCE_MS = 500
 
 const ChatsList: FC = () => {
 	const [isCreateOpen, setIsCreateOpen] = useState(false)
+	const [isSearchVisible, setIsSearchVisible] = useState(false)
+	const [searchQuery, setSearchQuery] = useState('')
+	const [debouncedSearch, setDebouncedSearch] = useState('')
 	const route = useRoute()
 	const { groupId, groupName } = route.params as RouteParams
+	const { userId } = useUser()
+	const handledAccessLossRef = useRef(false)
 
 	const { colors } = useTheme()
 	const { t } = useTranslation()
+	const { bottom } = useSafeAreaInsets()
+
+	// Debounce search query
+	useEffect(() => {
+		const timer = setTimeout(() => {
+			setDebouncedSearch(searchQuery)
+		}, SEARCH_DEBOUNCE_MS)
+		return () => clearTimeout(timer)
+	}, [searchQuery])
+
+	const {
+		data: groupData,
+		error: groupError,
+		refetch: refetchGroup
+	} = useFindGroupByGroupIdQuery({
+		variables: { groupId },
+		fetchPolicy: 'network-only'
+	})
 
 	const {
 		allChats,
 		pinnedChats,
-		unpinnedChats,
 		setAllChats,
 		isLoadingFindAllChats,
+		isRefreshingChats,
+		handleRefreshChats,
 		handleDeleteChat,
 		handlePinChat,
 		handleUnPinChat,
 		handleReorderPinnedChats
-	} = useGroupChats(groupId)
+	} = useGroupChats(groupId, debouncedSearch)
 
 	const { data: currentRoleData, loading: isLoadingGetMemberRole } =
 		useGetMemberRoleQuery({
@@ -55,23 +82,37 @@ const ChatsList: FC = () => {
 		})
 
 	const currentRole = currentRoleData?.getMemberRole
+	const groupPermissions = currentRole?.permissions ?? []
+	const isCreator = !!currentRole?.isCreator
+	const resolvedGroupName = groupData?.findGroupByGroupId?.groupName ?? groupName
+	const resolvedGroupAvatarUrl =
+		groupData?.findGroupByGroupId?.avatarUrl ?? null
 
-	const renderPinnedItem = useCallback(
-		({ item, drag, isActive }: RenderItemParams<ChatItem>) => (
-			<ScaleDecorator>
-				<ChatDropdownTrigger
-					groupId={groupId}
-					chat={item}
-					deleteChat={handleDeleteChat}
-					onPinChat={handlePinChat}
-					onUnPinChat={handleUnPinChat}
-					onDrag={drag}
-					isActive={isActive}
-				/>
-			</ScaleDecorator>
-		),
-		[groupId, handleDeleteChat, handlePinChat, handleUnPinChat]
+	const handleGroupAccessLoss = useCallback(() => {
+		if (handledAccessLossRef.current) return
+		handledAccessLossRef.current = true
+		resetToHome()
+	}, [])
+
+	useEffect(() => {
+		if (!isGroupMembershipRevokedError(groupError)) return
+		handleGroupAccessLoss()
+	}, [groupError, handleGroupAccessLoss])
+
+	useFocusEffect(
+		useCallback(() => {
+			void refetchGroup()
+		}, [refetchGroup])
 	)
+
+	useGroupDeletedSubscription({
+		variables: { userId },
+		skip: !userId,
+		onData: ({ data }) => {
+			if (data.data?.groupDeleted.id !== groupId) return
+			handleGroupAccessLoss()
+		}
+	})
 
 	if (isLoadingFindAllChats || isLoadingGetMemberRole) {
 		return <ChatsListSkeleton />
@@ -81,85 +122,73 @@ const ChatsList: FC = () => {
 		<View className='flex-1' style={{ backgroundColor: colors.background }}>
 			<ChatsListHeader
 				groupId={groupId}
-				groupName={groupName}
+				groupName={resolvedGroupName}
+				avatarUrl={resolvedGroupAvatarUrl}
 				chatCount={allChats.length}
+				isSearchVisible={isSearchVisible}
+				searchQuery={searchQuery}
+				onSearchToggle={() => {
+					if (isSearchVisible) {
+						setSearchQuery('')
+						setDebouncedSearch('')
+					}
+					setIsSearchVisible(!isSearchVisible)
+				}}
+				onSearchChange={setSearchQuery}
 			/>
 
-			<FlatList
-				data={[{ key: 'content' }]}
-				keyExtractor={item => item.key}
+			<DraggableFlatList
+				data={allChats}
+				keyExtractor={item => item.id}
 				showsVerticalScrollIndicator={false}
-				contentContainerStyle={{ paddingTop: 4, paddingBottom: 100 }}
-				renderItem={() => (
-					<View>
-						{/* ── Pinned Section (Draggable) ── */}
-						{pinnedChats.length > 0 && (
-							<View>
-								<View className='flex-row items-center px-4 py-2'>
-									<Pin
-										size={14}
-										color={colors.accent}
-										style={{ marginRight: 6 }}
-									/>
-									<Text
-										className='text-xs font-semibold uppercase tracking-wider'
-										style={{ color: colors.textMuted }}
-									>
-										{t('pinnedChats') || 'Закреплённые'}
-									</Text>
-								</View>
-								<DraggableFlatList
-									data={pinnedChats}
-									keyExtractor={item => item.id}
-									renderItem={renderPinnedItem}
-									onDragEnd={({ data }) =>
-										handleReorderPinnedChats(data)
-									}
-									scrollEnabled={false}
-								/>
-								<View
-									className='mx-4 my-1'
-									style={{
-										height: 1,
-										backgroundColor: colors.borderLight
-									}}
-								/>
-							</View>
-						)}
-
-						{/* ── Unpinned Section ── */}
-						{unpinnedChats.map(item => (
-							<ChatDropdownTrigger
-								key={item.id}
-								groupId={groupId}
-								chat={item}
-								deleteChat={handleDeleteChat}
-								onPinChat={handlePinChat}
-								onUnPinChat={handleUnPinChat}
-							/>
-						))}
-
-						{allChats.length === 0 && (
-							<View className='py-16 items-center'>
-								<Text
-									className='text-base'
-									style={{ color: colors.textMuted }}
-								>
-									{t('noChats')}
-								</Text>
-							</View>
-						)}
+				bounces
+				alwaysBounceVertical
+				overScrollMode='always'
+				contentContainerStyle={{
+					flexGrow: 1,
+					paddingTop: 4,
+					paddingBottom: bottom + 104
+				}}
+				refreshing={isRefreshingChats}
+				onRefresh={() => void handleRefreshChats()}
+				onDragEnd={({ data }) => {
+					const reorderedPinned = data.filter(chat => chat.isPinned)
+					if (reorderedPinned.length > 1) {
+						void handleReorderPinnedChats(reorderedPinned)
+					}
+				}}
+				ListEmptyComponent={
+					<View className='py-16 items-center'>
+						<Text
+							className='text-base'
+							style={{ color: colors.textMuted }}
+						>
+							{t('noChats')}
+						</Text>
 					</View>
+				}
+				renderItem={({ item, drag, isActive }) => (
+					<ChatDropdownTrigger
+						key={item.id}
+						groupId={groupId}
+						chat={item}
+						deleteChat={handleDeleteChat}
+						onPinChat={handlePinChat}
+						onUnPinChat={handleUnPinChat}
+						onDrag={
+							item.isPinned && pinnedChats.length > 1
+								? drag
+								: undefined
+						}
+						isActive={isActive}
+					/>
 				)}
 			/>
 
-			{(currentRole?.permissions.includes(
-				GroupPermissionEnum.CreateChats
-			) ||
-				currentRole?.isCreator) && (
-				<View>
+			{(groupPermissions.includes(GroupPermissionEnum.CreateChats) ||
+				isCreator) && (
+				<>
 					<ChatsFloatingActions
-						groupId={groupId}
 						onCreatePress={() => setIsCreateOpen(true)}
 					/>
 
@@ -169,7 +198,7 @@ const ChatsList: FC = () => {
 						isOpen={isCreateOpen}
 						setIsOpen={setIsCreateOpen}
 					/>
-				</View>
+				</>
 			)}
 		</View>
 	)

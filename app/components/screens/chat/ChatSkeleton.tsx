@@ -1,5 +1,9 @@
 import React from 'react'
-import { SafeAreaView, View } from 'react-native'
+import { View } from 'react-native'
+import {
+	SafeAreaView,
+	useSafeAreaInsets
+} from 'react-native-safe-area-context'
 
 import {
 	SkeletonBox,
@@ -15,13 +19,17 @@ import { useTheme } from '@/hooks/useTheme'
  */
 const ChatSkeleton = () => {
 	const { colors } = useTheme()
+	const { bottom, top } = useSafeAreaInsets()
 
 	return (
-		<SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+		<SafeAreaView
+			edges={['left', 'right']}
+			style={{ flex: 1, backgroundColor: colors.background }}
+		>
 			<View
 				style={{
 					flex: 1,
-					paddingTop: 32,
+					paddingTop: top + 8,
 					backgroundColor: colors.backgroundTertiary
 				}}
 			>
@@ -127,6 +135,7 @@ const ChatSkeleton = () => {
 						alignItems: 'center',
 						paddingHorizontal: 12,
 						paddingVertical: 10,
+						paddingBottom: bottom + 10,
 						borderTopWidth: 1,
 						borderTopColor: colors.borderLight
 					}}

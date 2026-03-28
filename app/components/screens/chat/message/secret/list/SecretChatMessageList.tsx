@@ -10,15 +10,14 @@ import { MessageType } from '@/types/message.type'
 import ChatToolbar from '../toolbar/ChatToolbar'
 
 import PinnedMessage from './PinnedMessage'
-import ChatMessageDropdownTrigger from './SecretChatMessageDropdownTrigger'
 import SecretChatMessageDropdownTrigger from './SecretChatMessageDropdownTrigger'
-import MessageFileList from './file/MessageFileList'
 
 interface SecretChatMessageListProp {
 	messages: MessageType[]
 	chatId: string
 	userId: string
 	onDelete: (id: string[]) => Promise<void>
+	onRefresh?: () => Promise<void> | void
 	pinnedMessage?: MessageType | null
 	setPinnedMessage?: (message: MessageType | null) => void
 	startEdit?: (
@@ -32,6 +31,7 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 	messages,
 	userId,
 	onDelete,
+	onRefresh,
 	chatId,
 	pinnedMessage = null,
 	setPinnedMessage = () => {},
@@ -42,6 +42,7 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 	const { t } = useTranslation()
 	const [messageIds, setMessageIds] = useState<string[]>([])
 	const [isDeleting, setIsDeleting] = useState(false)
+	const [isRefreshing, setIsRefreshing] = useState(false)
 
 	/** Удаление сообщений */
 	const handleRemoveMessages = useCallback(async () => {
@@ -89,6 +90,15 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 		[messages, handleAddForwardedMessage]
 	)
 
+	const handleRefresh = useCallback(async () => {
+		try {
+			setIsRefreshing(true)
+			await Promise.resolve(onRefresh?.())
+		} finally {
+			setIsRefreshing(false)
+		}
+	}, [onRefresh])
+
 	if (isDeleting) {
 		return (
 			<View className='flex-1 justify-center items-center'>
@@ -96,6 +106,8 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 			</View>
 		)
 	}
+
+	const isSelectionMode = messageIds.length > 0
 
 	return (
 		<View className='flex-1'>
@@ -113,6 +125,8 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 				data={messages}
 				keyExtractor={item => item.id}
 				contentContainerStyle={{ paddingTop: 8, paddingBottom: 8 }}
+				refreshing={isRefreshing}
+				onRefresh={handleRefresh}
 				ListEmptyComponent={() => (
 					<View className='py-4 items-center'>
 						<Text style={{ color: colors.textSecondary }}>
@@ -120,12 +134,17 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 						</Text>
 					</View>
 				)}
-				renderItem={({ item }) => {
+				renderItem={({ item, index }) => {
 					const isSelected = messageIds.includes(item.id)
+					const prevItem = messages[index - 1] ?? null
+					const nextItem = messages[index + 1] ?? null
+					const isFirstInGroup =
+						!prevItem || prevItem.user.id !== item.user.id
+					const isLastInGroup =
+						!nextItem || nextItem.user.id !== item.user.id
 					return (
-						<View className='mb-2'>
+						<View style={{ marginBottom: isLastInGroup ? 8 : 2 }}>
 							<SecretChatMessageDropdownTrigger
-								startEdit={startEdit}
 								handleAddForwardedMessage={
 									handleAddForwardedMessage
 								}
@@ -137,17 +156,14 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 								chatId={chatId}
 								messageId={item.id}
 								messageIds={messageIds}
+								isSelectionMode={isSelectionMode}
 								setPinnedMessage={setPinnedMessage}
+								pinnedMessageId={pinnedMessage?.id ?? null}
 								onDelete={onDelete}
 								isSelected={isSelected}
+								isFirstInGroup={isFirstInGroup}
+								isLastInGroup={isLastInGroup}
 							/>
-							{item.files && item.files.length > 0 && (
-								<MessageFileList
-									files={item.files}
-									chatId={chatId}
-									isSelected={isSelected}
-								/>
-							)}
 						</View>
 					)
 				}}

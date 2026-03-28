@@ -1,5 +1,5 @@
 import { Globe, MapPin, Monitor, Smartphone } from 'lucide-react-native'
-import { FC } from 'react'
+import { FC, useEffect } from 'react'
 import { ActivityIndicator, Text, View } from 'react-native'
 
 import { useTheme, useTranslation } from '@/hooks/useTheme'
@@ -187,14 +187,28 @@ const SessionRow: FC<SessionRowProps> = ({
 	)
 }
 
-const SessionsList: FC = () => {
+interface SessionsListProps {
+	refreshSignal?: number
+}
+
+const SessionsList: FC<SessionsListProps> = ({ refreshSignal = 0 }) => {
 	const { colors } = useTheme()
 	const { t, language } = useTranslation()
 
-	const { data: sessionsData, loading: loadingSessions } =
-		useFindSessionsByUserQuery()
-	const { data: currentData, loading: loadingCurrent } =
-		useFindCurrentSessionQuery()
+	const {
+		data: sessionsData,
+		loading: loadingSessions,
+		refetch: refetchSessions
+	} = useFindSessionsByUserQuery()
+	const {
+		data: currentData,
+		loading: loadingCurrent,
+		refetch: refetchCurrentSession
+	} = useFindCurrentSessionQuery()
+
+	useEffect(() => {
+		void Promise.allSettled([refetchSessions(), refetchCurrentSession()])
+	}, [refreshSignal, refetchCurrentSession, refetchSessions])
 
 	const sessions = (sessionsData?.findSessionsByUser ?? []) as SessionData[]
 	const currentSession = currentData?.findCurrentSession as

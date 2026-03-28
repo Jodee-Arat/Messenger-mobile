@@ -1,5 +1,6 @@
 import {
 	ArrowLeft,
+	ChevronRight,
 	Check,
 	Globe,
 	Monitor,
@@ -9,16 +10,18 @@ import {
 	Sun,
 	User
 } from 'lucide-react-native'
-import { useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import {
 	Animated,
 	Dimensions,
 	Pressable,
+	RefreshControl,
 	ScrollView,
 	Text,
 	TouchableOpacity,
 	View
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
@@ -36,12 +39,25 @@ type Tab = 'profile' | 'appearance' | 'security' | 'sessions'
 
 const UserSettings = () => {
 	const navigation = useTypedNavigation()
-	const { isLoadingProfile, user } = useCurrentUser()
+	const { isLoadingProfile, user, refetch } = useCurrentUser()
 	const { colors, isDark, theme, setTheme, language, setLanguage } =
 		useTheme()
 	const { t } = useTranslation()
+	const { top } = useSafeAreaInsets()
 
 	const [activeTab, setActiveTab] = useState<Tab>('profile')
+	const [isRefreshing, setIsRefreshing] = useState(false)
+	const [refreshSignal, setRefreshSignal] = useState(0)
+
+	const handleRefresh = useCallback(async () => {
+		try {
+			setIsRefreshing(true)
+			await refetch()
+			setRefreshSignal(prev => prev + 1)
+		} finally {
+			setIsRefreshing(false)
+		}
+	}, [refetch])
 
 	const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
 		{
@@ -114,7 +130,7 @@ const UserSettings = () => {
 					backgroundColor: colors.backgroundSecondary,
 					borderBottomWidth: 1,
 					borderBottomColor: colors.border,
-					paddingTop: 52,
+					paddingTop: top + 8,
 					paddingBottom: 0
 				}}
 			>
@@ -203,6 +219,15 @@ const UserSettings = () => {
 				className='flex-1'
 				showsVerticalScrollIndicator={false}
 				contentContainerStyle={{ paddingBottom: 40 }}
+				refreshControl={
+					<RefreshControl
+						refreshing={isRefreshing}
+						onRefresh={handleRefresh}
+						tintColor={colors.accent}
+						colors={[colors.accent]}
+						progressBackgroundColor={colors.card}
+					/>
+				}
 			>
 				{activeTab === 'profile' && (
 					<View style={{ paddingTop: 20 }}>
@@ -561,13 +586,72 @@ const UserSettings = () => {
 
 				{activeTab === 'security' && (
 					<View style={{ paddingTop: 20 }}>
-						<TotpSettingsForm />
+						<TotpSettingsForm refreshSignal={refreshSignal} />
+						<View style={{ paddingHorizontal: 16, marginTop: 8 }}>
+							<TouchableOpacity
+								activeOpacity={0.7}
+								onPress={() => navigation.navigate('BlockedUsers')}
+								style={{
+									backgroundColor: colors.card,
+									borderRadius: 16,
+									borderWidth: 1,
+									borderColor: colors.border,
+									paddingHorizontal: 18,
+									paddingVertical: 16,
+									flexDirection: 'row',
+									alignItems: 'center'
+								}}
+							>
+								<View
+									style={{
+										width: 42,
+										height: 42,
+										borderRadius: 12,
+										backgroundColor:
+											'hsla(0, 80%, 50%, 0.12)',
+										alignItems: 'center',
+										justifyContent: 'center',
+										marginRight: 14
+									}}
+								>
+									<Shield
+										size={20}
+										color={colors.destructive}
+									/>
+								</View>
+								<View style={{ flex: 1 }}>
+									<Text
+										style={{
+											fontSize: 15,
+											fontWeight: '600',
+											color: colors.text
+										}}
+									>
+										{t('blockedUsers')}
+									</Text>
+									<Text
+										style={{
+											fontSize: 12,
+											color: colors.textMuted,
+											marginTop: 2
+										}}
+										numberOfLines={2}
+									>
+										{t('blockedUsersHint')}
+									</Text>
+								</View>
+								<ChevronRight
+									size={18}
+									color={colors.textMuted}
+								/>
+							</TouchableOpacity>
+						</View>
 					</View>
 				)}
 
 				{activeTab === 'sessions' && (
 					<View style={{ paddingTop: 20, paddingHorizontal: 16 }}>
-						<SessionsList />
+						<SessionsList refreshSignal={refreshSignal} />
 					</View>
 				)}
 			</ScrollView>

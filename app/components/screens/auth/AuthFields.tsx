@@ -31,7 +31,9 @@ const AuthFields: FC<IAuthFields> = ({ control, isPassRequired, isReg }) => {
 						message: t('loginMin')
 					}
 				}}
-				keyboardType='email-address'
+				keyboardType='default'
+				autoComplete='username'
+				textContentType='username'
 			/>
 			{isReg && (
 				<Field<IAuthFormData>
@@ -46,6 +48,8 @@ const AuthFields: FC<IAuthFields> = ({ control, isPassRequired, isReg }) => {
 						}
 					}}
 					keyboardType='email-address'
+					autoComplete='email'
+					textContentType='emailAddress'
 				/>
 			)}
 			<Field<IAuthFormData>
@@ -53,6 +57,8 @@ const AuthFields: FC<IAuthFields> = ({ control, isPassRequired, isReg }) => {
 				control={control}
 				name='password'
 				secureTextEntry
+				autoComplete='password'
+				textContentType='password'
 				rules={{
 					required: t('passwordRequired'),
 					minLength: {

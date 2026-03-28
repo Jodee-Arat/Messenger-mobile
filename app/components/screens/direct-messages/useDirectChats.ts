@@ -1,9 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useFocusEffect } from '@react-navigation/native'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Toast from 'react-native-toast-message'
 
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useUser } from '@/hooks/useUser'
 
 import { chatEvents } from '@/utils/chatEvents'
+import {
+	forgetStartedDirectChat,
+	loadStartedDirectChats
+} from '@/utils/direct-chat-visibility'
 
 import {
 	FindAllChatsByUserQuery,
@@ -19,33 +25,84 @@ type ChatItem = FindAllChatsByUserQuery['findAllChatsByUser'][0]
 
 function sortChatsWithPinned(chats: ChatItem[]): ChatItem[] {
 	const pinned = chats
-		.filter(c => c.isPinned)
+		.filter(chat => chat.isPinned)
 		.sort((a, b) => (a.pinnedOrder ?? 0) - (b.pinnedOrder ?? 0))
-	const unpinned = chats.filter(c => !c.isPinned)
+	const unpinned = chats.filter(chat => !chat.isPinned)
 	return [...pinned, ...unpinned]
 }
 
-export function useDirectChats() {
+function normalizeDirectChat(chat: ChatItem, userId: string): ChatItem {
+	const otherMember =
+		chat.members.find(member => member.user.id !== userId)?.user ??
+		chat.members[0]?.user
+
+	if (!otherMember) {
+		return chat
+	}
+
+	return {
+		...chat,
+		chatName: otherMember.username || chat.chatName,
+		avatarUrl: otherMember.avatarUrl ?? chat.avatarUrl ?? null
+	}
+}
+
+function upsertDirectChat(chats: ChatItem[], nextChat: ChatItem): ChatItem[] {
+	const remainingPinned = chats
+		.filter(chat => chat.isPinned && chat.id !== nextChat.id)
+		.sort((a, b) => (a.pinnedOrder ?? 0) - (b.pinnedOrder ?? 0))
+	const remainingUnpinned = chats.filter(
+		chat => !chat.isPinned && chat.id !== nextChat.id
+	)
+
+	if (nextChat.isPinned) {
+		return sortChatsWithPinned([
+			...remainingPinned,
+			nextChat,
+			...remainingUnpinned
+		])
+	}
+
+	return [...remainingPinned, nextChat, ...remainingUnpinned]
+}
+
+function hasDirectChatActivity(chat: ChatItem) {
+	return !!chat.lastMessage || !!chat.draftMessages?.length
+}
+
+export function useDirectChats(searchQuery = '') {
 	const [allChats, setAllChats] = useState<ChatItem[]>([])
+	const [startedDirectChatIds, setStartedDirectChatIds] = useState<string[]>(
+		[]
+	)
+	const [isRefreshingChats, setIsRefreshingChats] = useState(false)
 	const { userId } = useUser()
 
-	// ── Query ────────────────────────────────────────────────
+	const normalizedSearchTerm = searchQuery.trim()
+	const debouncedSearchTerm = useDebouncedValue(normalizedSearchTerm, 3000)
+	const chatFilters = useMemo(
+		() =>
+			debouncedSearchTerm
+				? { searchTerm: debouncedSearchTerm, take: 10 }
+				: { take: 10 },
+		[debouncedSearchTerm]
+	)
+
 	const {
 		data: allChatsData,
 		loading: isLoadingChats,
 		refetch: refetchChats
 	} = useFindAllChatsByUserQuery({
-		variables: { filters: {} },
+		variables: { filters: chatFilters },
+		skip: !userId,
 		fetchPolicy: 'network-only'
 	})
 
-	// ── Subscription ─────────────────────────────────────────
 	const { data: updateChatData } = useChatUpdatedSubscription({
 		variables: { userId },
 		skip: !userId
 	})
 
-	// ── Mutations ────────────────────────────────────────────
 	const [deleteChatMutation] = useDeleteChatMutation({
 		onCompleted() {
 			Toast.show({ type: 'success', text1: 'Chat deleted' })
@@ -63,20 +120,20 @@ export function useDirectChats() {
 	const [unPinChatMutation] = useUnPinChatMutation()
 	const [updatePinnedChatsOrderMutation] = useUpdatePinnedChatsOrderMutation()
 
-	// ── Handlers ─────────────────────────────────────────────
 	const handleDeleteChat = (chatId: string) => {
 		deleteChatMutation({ variables: { chatId } })
-		setAllChats(prev => prev.filter(c => c.id !== chatId))
+		setAllChats(prev => prev.filter(chat => chat.id !== chatId))
+		void forgetStartedDirectChat(userId, chatId)
 	}
 
 	const handlePinChat = async (chatId: string) => {
 		try {
 			await pinChatMutation({ variables: { chatId } })
 			setAllChats(prev => {
-				const updated = prev.map(c =>
-					c.id === chatId
-						? { ...c, isPinned: true, pinnedOrder: 0 }
-						: c
+				const updated = prev.map(chat =>
+					chat.id === chatId
+						? { ...chat, isPinned: true, pinnedOrder: 0 }
+						: chat
 				)
 				return sortChatsWithPinned(updated)
 			})
@@ -93,10 +150,10 @@ export function useDirectChats() {
 		try {
 			await unPinChatMutation({ variables: { chatId } })
 			setAllChats(prev => {
-				const updated = prev.map(c =>
-					c.id === chatId
-						? { ...c, isPinned: false, pinnedOrder: null }
-						: c
+				const updated = prev.map(chat =>
+					chat.id === chatId
+						? { ...chat, isPinned: false, pinnedOrder: null }
+						: chat
 				)
 				return sortChatsWithPinned(updated)
 			})
@@ -110,17 +167,17 @@ export function useDirectChats() {
 	}
 
 	const handleReorderPinnedChats = async (reorderedPinned: ChatItem[]) => {
-		const unpinned = allChats.filter(c => !c.isPinned)
-		const updatedPinned = reorderedPinned.map((c, i) => ({
-			...c,
-			pinnedOrder: i
+		const unpinned = allChats.filter(chat => !chat.isPinned)
+		const updatedPinned = reorderedPinned.map((chat, index) => ({
+			...chat,
+			pinnedOrder: index
 		}))
 		setAllChats([...updatedPinned, ...unpinned])
 
 		try {
 			await updatePinnedChatsOrderMutation({
 				variables: {
-					chatIds: reorderedPinned.map(c => c.id)
+					chatIds: reorderedPinned.map(chat => chat.id)
 				}
 			})
 		} catch (error) {
@@ -133,49 +190,102 @@ export function useDirectChats() {
 		}
 	}
 
-	// ── Effects ──────────────────────────────────────────────
+	const handleRefreshChats = useCallback(async () => {
+		if (!userId) return
+		setIsRefreshingChats(true)
+		try {
+			await Promise.all([
+				refetchChats({ filters: chatFilters }),
+				loadStartedDirectChats(userId).then(setStartedDirectChatIds)
+			])
+		} finally {
+			setIsRefreshingChats(false)
+		}
+	}, [chatFilters, refetchChats, userId])
+
+	useEffect(() => {
+		setAllChats([])
+		setStartedDirectChatIds([])
+	}, [userId])
+
+	useEffect(() => {
+		if (!userId) return
+
+		const loadStarted = async () => {
+			setStartedDirectChatIds(await loadStartedDirectChats(userId))
+		}
+
+		void loadStarted()
+	}, [userId])
+
 	useEffect(() => {
 		if (!allChatsData?.findAllChatsByUser) return
-		const dmChats = allChatsData.findAllChatsByUser.filter(c => !c.isGroup)
-		setAllChats(sortChatsWithPinned(dmChats))
-	}, [allChatsData])
 
-	// Remove chat from local state when the current user leaves
+		const directChats = allChatsData.findAllChatsByUser
+			.filter(chat => !chat.isGroup)
+			.filter(
+				chat =>
+					hasDirectChatActivity(chat) ||
+					startedDirectChatIds.includes(chat.id)
+			)
+			.map(chat => normalizeDirectChat(chat, userId))
+
+		setAllChats(sortChatsWithPinned(directChats))
+	}, [allChatsData, startedDirectChatIds, userId])
+
+	useFocusEffect(
+		useCallback(() => {
+			void handleRefreshChats()
+		}, [handleRefreshChats])
+	)
+
 	useEffect(() => {
 		return chatEvents.onLeave(leftChatId => {
-			setAllChats(prev => prev.filter(c => c.id !== leftChatId))
+			setAllChats(prev => prev.filter(chat => chat.id !== leftChatId))
 		})
 	}, [])
 
 	useEffect(() => {
 		if (!updateChatData?.chatUpdated) return
-		const { members: _m, ...updatedFields } = updateChatData.chatUpdated
-		if (updatedFields.isGroup) return // skip group chats
+		if (updateChatData.chatUpdated.isGroup) return
 
 		setAllChats(prev => {
-			const exists = prev.some(c => c.id === updatedFields.id)
-			if (exists) {
-				return sortChatsWithPinned(
-					prev.map(c =>
-						c.id === updatedFields.id
-							? { ...c, ...updatedFields }
-							: c
-					)
-				)
-			}
-			refetchChats()
-			return prev
-		})
-	}, [updateChatData])
+			const previousChat = prev.find(
+				chat => chat.id === updateChatData.chatUpdated.id
+			)
 
-	const pinnedChats = allChats.filter(c => c.isPinned)
-	const unpinnedChats = allChats.filter(c => !c.isPinned)
+			if (!previousChat) {
+				refetchChats()
+				return prev
+			}
+
+			return upsertDirectChat(
+				prev,
+				normalizeDirectChat(
+					{
+						...previousChat,
+						...updateChatData.chatUpdated,
+						members:
+							updateChatData.chatUpdated.members?.length
+								? updateChatData.chatUpdated.members
+								: previousChat.members
+					},
+					userId
+				)
+			)
+		})
+	}, [refetchChats, updateChatData, userId])
+
+	const pinnedChats = allChats.filter(chat => chat.isPinned)
+	const unpinnedChats = allChats.filter(chat => !chat.isPinned)
 
 	return {
 		allChats,
 		pinnedChats,
 		unpinnedChats,
 		isLoadingChats,
+		isRefreshingChats,
+		handleRefreshChats,
 		handleDeleteChat,
 		handlePinChat,
 		handleUnPinChat,

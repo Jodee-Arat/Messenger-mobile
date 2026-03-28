@@ -1,4 +1,9 @@
 import { FindAllMessagesByChatQuery } from '../graphql/generated/output'
 
-export type MessageType =
-	FindAllMessagesByChatQuery['findAllMessagesByChat'][number]
+import { MessageFileType } from './message-file.type'
+
+type BaseMessageType = FindAllMessagesByChatQuery['findAllMessagesByChat'][number]
+
+export type MessageType = Omit<BaseMessageType, 'files'> & {
+	files?: MessageFileType[] | null
+}

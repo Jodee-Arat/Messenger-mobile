@@ -1,20 +1,25 @@
-﻿import { zodResolver } from '@hookform/resolvers/zod'
-import { useNavigation } from '@react-navigation/native'
-import React, { FC, useEffect, useState } from 'react'
+import { zodResolver } from '@hookform/resolvers/zod'
+import React, { FC, useEffect, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import {
 	ActivityIndicator,
 	Image,
-	Modal,
 	ScrollView,
 	Text,
 	TextInput,
 	TouchableOpacity,
-	View
+	View,
+	Animated,
+	Dimensions,
+	Pressable
 } from 'react-native'
 import Toast from 'react-native-toast-message'
 
+import AppModal from '@/components/ui/AppModal'
+import { useCenteredModalLayout } from '@/hooks/useModalLayout'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
+import { useUser } from '@/hooks/useUser'
+import { navigate } from '@/navigation/navigate'
 
 import { Button } from '@/components/ui/button/Button'
 import Checkbox from '@/components/ui/checkbox/Checkbox'
@@ -35,6 +40,28 @@ interface ForwardMessageModalProp {
 	chatId: string
 }
 
+type ChatItem = NonNullable<
+	ReturnType<typeof useFindAllChatsByUserQuery>['data']
+>['findAllChatsByUser'][0]
+
+function getChatPreview(chat: ChatItem, userId: string) {
+	if (!chat.isGroup) {
+		const otherMember =
+			chat.members.find(member => member.user.id !== userId)?.user ??
+			chat.members[0]?.user
+
+		return {
+			title: otherMember?.username || chat.chatName || 'Direct message'
+		}
+	}
+
+	return {
+		title: chat.chatName || 'Chat'
+	}
+}
+
+const SCREEN_HEIGHT = Dimensions.get('window').height
+
 const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 	messageIds,
 	handleClearMessagesId,
@@ -43,8 +70,22 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
+	const { userId } = useUser()
+	const { cardMarginBottom, cardMaxHeight } = useCenteredModalLayout(0.8)
 	const [isOpen, setIsOpen] = useState(false)
-	const navigation = useNavigation()
+
+	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+
+	const closeSheet = (cb?: () => void) => {
+		Animated.timing(slideAnim, {
+			toValue: SCREEN_HEIGHT,
+			duration: 200,
+			useNativeDriver: true
+		}).start(() => {
+			setIsOpen(false)
+			cb?.()
+		})
+	}
 
 	const {
 		data: dataChats,
@@ -71,17 +112,29 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 	const [forwardMessage, { loading: isLoadingForwardingMessage }] =
 		useForwardChatMessageMutation({
 			onCompleted() {
-				setIsOpen(false)
-				const selectedChats = form.getValues('targetChatsId')
-				if (selectedChats.length === 1) {
-					// @ts-ignore
-					navigation.navigate('Chat', { chatId: selectedChats[0] })
-				}
-				Toast.show({
-					type: 'success',
-					text1: t('messageForwarded')
+				closeSheet(() => {
+					const selectedChats = form.getValues('targetChatsId')
+					if (selectedChats.length === 1) {
+						const selectedChat = chats.find(
+							chat => chat.id === selectedChats[0]
+						)
+
+						if (selectedChat) {
+							const preview = getChatPreview(selectedChat, userId)
+							navigate('Chat', {
+								chatId: selectedChat.id,
+								chatName: preview.title,
+								isSecret: selectedChat.isSecret,
+								groupId: selectedChat.groupId || undefined
+							})
+						}
+					}
+					Toast.show({
+						type: 'success',
+						text1: t('messageForwarded')
+					})
+					form.reset()
 				})
-				form.reset()
 			},
 			onError(error) {
 				Toast.show({
@@ -123,7 +176,7 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 		) {
 			handleAddForwarded(messageIds)
 			handleClearMessagesId()
-			setIsOpen(false)
+			closeSheet()
 			return
 		}
 
@@ -143,24 +196,45 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 	}
 
 	useEffect(() => {
-		if (isOpen) refetch()
+		if (isOpen) {
+			refetch()
+			Animated.spring(slideAnim, {
+				toValue: 0,
+				useNativeDriver: true,
+				tension: 65,
+				friction: 11
+			}).start()
+		}
 	}, [isOpen])
 
 	return (
 		<>
 			<Button onPress={() => setIsOpen(true)}>{t('forward')}</Button>
 
-			<Modal visible={isOpen} animationType='slide' transparent>
+			<AppModal
+				visible={isOpen}
+				animationType='none'
+				transparent
+				statusBarTranslucent
+				navigationBarTranslucent
+			>
 				<View
 					className='flex-1 justify-center'
-					style={{ backgroundColor: colors.overlay }}
 				>
-					<View
+					<Pressable 
+						className='flex-1' 
+						style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: colors.overlay }} 
+						onPress={() => closeSheet()} 
+					/>
+					<Animated.View
 						className='mx-4 rounded-2xl p-4 max-h-[80%]'
 						style={{
+							transform: [{ translateY: slideAnim }],
 							backgroundColor: colors.backgroundTertiary,
 							borderWidth: 1,
-							borderColor: colors.borderLight
+							borderColor: colors.borderLight,
+							maxHeight: cardMaxHeight,
+							marginBottom: cardMarginBottom
 						}}
 					>
 						<Text
@@ -183,6 +257,8 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 									}}
 									placeholder={t('addMessageOptional')}
 									placeholderTextColor={colors.textMuted}
+									value={field.value}
+									onChangeText={field.onChange}
 								/>
 							)}
 						/>
@@ -287,15 +363,15 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 						</Button>
 
 						{/* Cancel */}
-						<TouchableOpacity onPress={() => setIsOpen(false)}>
+						<TouchableOpacity onPress={() => closeSheet()}>
 							<Text
 								className='text-center mt-3 font-medium'
 								style={{ color: colors.textSecondary }}
 							>{t('cancel')}</Text>
 						</TouchableOpacity>
-					</View>
+					</Animated.View>
 				</View>
-			</Modal>
+			</AppModal>
 		</>
 	)
 }

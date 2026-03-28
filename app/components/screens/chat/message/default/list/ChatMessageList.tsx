@@ -11,7 +11,6 @@ import ChatToolbar from '../toolbar/ChatToolbar'
 
 import ChatMessageDropdownTrigger from './ChatMessageDropdownTrigger'
 import PinnedMessage from './PinnedMessage'
-import MessageFileList from './file/MessageFileList'
 import {
 	useChatMessageAddedSubscription,
 	useChatMessageRemovedSubscription,
@@ -23,21 +22,24 @@ interface ChatMessageListProp {
 	pinnedMessage: MessageType | null
 	setPinnedMessage: (message: MessageType | null) => void
 	chatId: string
-	groupId: string
 	userId: string
 	startEdit: (
 		message: MessageType,
 		forwardedMessages?: ForwardedMessageType[]
 	) => void
-	handleAddForwardedMessage: (messages: MessageType[]) => void
+	handleAddForwardedMessage: (
+		messages: MessageType[],
+		initialText?: string
+	) => void
 	canEditMessages?: boolean
 	canDeleteMessages?: boolean
 	canPinMessages?: boolean
+	groupId?: string | null
+	onRefresh?: () => Promise<void> | void
 }
 
 const ChatMessageList: FC<ChatMessageListProp> = ({
 	chatId,
-	groupId,
 	pinnedMessage,
 	setPinnedMessage,
 	startEdit,
@@ -45,21 +47,27 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 	handleAddForwardedMessage,
 	canEditMessages = true,
 	canDeleteMessages = true,
-	canPinMessages = true
+	canPinMessages = true,
+	groupId,
+	onRefresh
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
 	const [messageIds, setMessageIds] = useState<string[]>([])
 	const [messagesInfo, setMessagesInfo] = useState<MessageType[]>([])
+	const [isRefreshingMessages, setIsRefreshingMessages] = useState(false)
 
-	const { data: allMessagesData, loading: isLoadingFindAllMessages } =
-		useFindAllMessagesByChatQuery({
-			variables: {
-				chatId,
-				filters: {}
-			},
-			fetchPolicy: 'network-only'
-		})
+	const {
+		data: allMessagesData,
+		loading: isLoadingFindAllMessages,
+		refetch: refetchMessages
+	} = useFindAllMessagesByChatQuery({
+		variables: {
+			chatId,
+			filters: {}
+		},
+		fetchPolicy: 'network-only'
+	})
 
 	const { data: newMessageData } = useChatMessageAddedSubscription({
 		variables: {
@@ -117,13 +125,25 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 	}, [])
 
 	const handleAddForwarded = useCallback(
-		(ids: string[], reply = true) => {
+		(ids: string[], initialText?: string) => {
 			const messages = messagesInfo.filter(m => ids.includes(m.id))
-			handleAddForwardedMessage(messages)
+			handleAddForwardedMessage(messages, initialText)
 			setMessageIds([])
 		},
 		[messagesInfo, handleAddForwardedMessage]
 	)
+
+	const handleRefreshMessages = useCallback(async () => {
+		try {
+			setIsRefreshingMessages(true)
+			await Promise.allSettled([
+				refetchMessages(),
+				Promise.resolve(onRefresh?.())
+			])
+		} finally {
+			setIsRefreshingMessages(false)
+		}
+	}, [onRefresh, refetchMessages])
 
 	useEffect(() => {
 		if (!allMessagesData || !allMessagesData.findAllMessagesByChat) return
@@ -182,6 +202,13 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 		)
 	}
 
+	const selectedMessages = messagesInfo.filter(message =>
+		messageIds.includes(message.id)
+	)
+	const isSelectionMode = messageIds.length > 0
+	const selectedMessage =
+		selectedMessages.length === 1 ? selectedMessages[0] : null
+
 	return (
 		<View className='flex-1'>
 			<PinnedMessage
@@ -195,6 +222,8 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 				keyExtractor={item => item.id}
 				inverted={false}
 				contentContainerStyle={{ paddingTop: 8, paddingBottom: 8 }}
+				refreshing={isRefreshingMessages}
+				onRefresh={handleRefreshMessages}
 				ListEmptyComponent={() => (
 					<View className='py-4 items-center'>
 						<Text style={{ color: colors.textSecondary }}>
@@ -204,8 +233,14 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 				)}
 				renderItem={({ item, index }) => {
 					const isSelected = messageIds.includes(item.id)
+					const prevItem = messagesInfo[index - 1] ?? null
+					const nextItem = messagesInfo[index + 1] ?? null
+					const isFirstInGroup =
+						!prevItem || prevItem.user.id !== item.user.id
+					const isLastInGroup =
+						!nextItem || nextItem.user.id !== item.user.id
 					return (
-						<View className='mb-2'>
+						<View style={{ marginBottom: isLastInGroup ? 8 : 2 }}>
 							<ChatMessageDropdownTrigger
 								startEdit={startEdit}
 								handleAddForwardedMessage={
@@ -218,20 +253,17 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 								key={item.id}
 								messageId={item.id}
 								messageIds={messageIds}
+								isSelectionMode={isSelectionMode}
 								chatId={chatId}
 								isSelected={isSelected}
 								setPinnedMessage={setPinnedMessage}
+								pinnedMessageId={pinnedMessage?.id ?? null}
 								canEditMessages={canEditMessages}
 								canDeleteMessages={canDeleteMessages}
 								canPinMessages={canPinMessages}
+								isFirstInGroup={isFirstInGroup}
+								isLastInGroup={isLastInGroup}
 							/>
-							{item.files && item.files.length > 0 && (
-								<MessageFileList
-									chatId={chatId}
-									files={item.files}
-									isSelected={isSelected}
-								/>
-							)}
 						</View>
 					)
 				}}
@@ -239,11 +271,19 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 
 			<ChatToolbar
 				chatId={chatId}
-				groupId={groupId}
 				messageIds={messageIds}
+				selectedMessages={selectedMessages}
 				handleRemoveMessages={handleRemoveMessages}
 				handleClearMessagesId={handleClearMessagesId}
 				handleAddForwarded={handleAddForwarded}
+				selectedMessage={selectedMessage}
+				pinnedMessageId={pinnedMessage?.id ?? null}
+				setPinnedMessage={setPinnedMessage}
+				startEdit={startEdit}
+				userId={userId}
+				groupId={groupId}
+				canEditMessages={canEditMessages}
+				canPinMessages={canPinMessages}
 			/>
 		</View>
 	)

@@ -1,8 +1,9 @@
 ﻿import React, { FC } from 'react'
 import { Text, View } from 'react-native'
 
-import { useTheme, useTranslation } from '@/hooks/useTheme'
 import EntityAvatar from '@/components/ui/EntityAvatar'
+
+import { useTheme, useTranslation } from '@/hooks/useTheme'
 
 import { MessageFileType } from '@/types/message-file.type'
 
@@ -20,6 +21,9 @@ interface MessageFormProp {
 	text?: string | null
 	files?: MessageFileType[] | null | undefined
 	isSelected: boolean
+	isFirstInGroup: boolean
+	isLastInGroup: boolean
+	createdAt: string
 }
 
 const MessageForm: FC<MessageFormProp> = ({
@@ -29,60 +33,119 @@ const MessageForm: FC<MessageFormProp> = ({
 	files,
 	isSelected,
 	text,
-	isEdited
+	isEdited,
+	isFirstInGroup,
+	isLastInGroup,
+	createdAt
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
 	const isOwnMessage = user.id === userId
 
-	return (
-		<View className='flex'>
-			<View
-				className={`flex items-start gap-3 ${
-					isOwnMessage ? 'flex-row-reverse' : 'flex-row'
-				}`}
-			>
-				<View className='mt-1'>
-					<EntityAvatar
-						name={user.username}
-						avatarUrl={user.avatarUrl}
-						size='default'
-					/>
-				</View>
+	const timeString = (() => {
+		try {
+			const d = new Date(createdAt)
+			return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+		} catch {
+			return ''
+		}
+	})()
 
-				<View className='flex-2 flex-col'>
+	const bubbleBg = isOwnMessage ? colors.accent : colors.backgroundSecondary
+	const textColor = isOwnMessage ? '#fff' : colors.text
+	const timeColor = isOwnMessage ? 'rgba(255,255,255,0.65)' : colors.textMuted
+
+	return (
+		<View
+			style={{
+				flexDirection: isOwnMessage ? 'row-reverse' : 'row',
+				alignItems: 'flex-end'
+			}}
+		>
+			{!isOwnMessage && (
+				<View
+					style={{
+						width: 36,
+						marginRight: 6,
+						alignItems: 'center',
+						justifyContent: 'flex-end'
+					}}
+				>
+					{isLastInGroup ? (
+						<EntityAvatar
+							name={user.username}
+							avatarUrl={user.avatarUrl}
+							size='sm'
+						/>
+					) : (
+						<View style={{ width: 28, height: 28 }} />
+					)}
+				</View>
+			)}
+
+			<View
+				style={{
+					backgroundColor: bubbleBg,
+					borderRadius: 16,
+					borderBottomRightRadius: isOwnMessage ? 4 : 16,
+					borderBottomLeftRadius: isOwnMessage ? 16 : 4,
+					paddingHorizontal: 12,
+					paddingVertical: 8,
+					maxWidth: '100%'
+				}}
+			>
+				{isFirstInGroup && !isOwnMessage && (
 					<Text
-						className={`font-semibold ${
-							isOwnMessage ? 'text-right' : 'text-left'
-						}`}
-						style={{ color: colors.accent }}
+						style={{
+							fontSize: 12,
+							fontWeight: '600',
+							color: colors.accent,
+							marginBottom: 2
+						}}
 					>
 						{user.username}
 					</Text>
+				)}
 
+				{text != null && text !== '' && text !== 'null' && (
+					<Text
+						style={{
+							color: textColor,
+							fontSize: 14,
+							lineHeight: 20
+						}}
+					>
+						{text}
+					</Text>
+				)}
+
+				<MessageFileList
+					isSelected={isSelected}
+					files={files ?? []}
+					chatId={chatId}
+				/>
+
+				<View
+					style={{
+						flexDirection: 'row',
+						justifyContent: 'flex-end',
+						marginTop: 4
+					}}
+				>
 					{isEdited && (
 						<Text
-							className='text-xs'
-							style={{ color: colors.textSecondary }}
-						>{t('edited')}</Text>
-					)}
-
-					{text !== '' && text !== 'null' && (
-						<Text
-							className={`break-words text-sm ${
-								isOwnMessage ? 'text-right' : 'text-left'
-							}`}
-							style={{ color: colors.text }}
+							style={{
+								fontSize: 10,
+								color: timeColor,
+								marginRight: 4
+							}}
 						>
-							{text}
+							{t('edited')} ·
 						</Text>
 					)}
-
-					<MessageFileList
-						isSelected={isSelected}
-						files={files ?? []}
-						chatId={chatId}
-					/>
+					<Text style={{ fontSize: 10, color: timeColor }}>
+						{timeString}
+					</Text>
 				</View>
 			</View>
 		</View>

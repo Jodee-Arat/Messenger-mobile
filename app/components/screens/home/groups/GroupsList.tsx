@@ -3,6 +3,7 @@ import { FC } from 'react'
 import {
 	ActivityIndicator,
 	Pressable,
+	RefreshControl,
 	ScrollView,
 	Text,
 	TouchableOpacity,
@@ -12,7 +13,8 @@ import {
 import EntityAvatar from '@/components/ui/EntityAvatar'
 
 import { useTheme, useTranslation } from '@/hooks/useTheme'
-import { useTypedNavigation } from '@/hooks/useTypedNavigation'
+
+import { navigate } from '@/navigation/navigate'
 
 import GroupsListSkeleton from './GroupsListSkeleton'
 import {
@@ -27,6 +29,8 @@ type GroupItem = FindAllGroupsByUserQuery['findAllGroupsByUser'][0]
 interface GroupsListProps {
 	groups: GroupItem[]
 	isLoading: boolean
+	isRefreshing: boolean
+	onRefresh: () => void
 	onCreatePress: () => void
 	onLongPress: (group: GroupItem) => void
 	onClose: () => void
@@ -35,18 +39,19 @@ interface GroupsListProps {
 const GroupsList: FC<GroupsListProps> = ({
 	groups,
 	isLoading,
+	isRefreshing,
+	onRefresh,
 	onCreatePress,
 	onLongPress,
 	onClose
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
-	const navigation = useTypedNavigation()
 
 	const handleGroupPress = (group: GroupItem) => {
 		onClose()
 		setTimeout(() => {
-			navigation.navigate('ChatsList', {
+			navigate('ChatsList', {
 				groupId: group.id,
 				groupName: group.groupName
 			})
@@ -80,6 +85,15 @@ const GroupsList: FC<GroupsListProps> = ({
 				<ScrollView
 					showsVerticalScrollIndicator={false}
 					contentContainerStyle={{ paddingBottom: 16 }}
+					refreshControl={
+						<RefreshControl
+							refreshing={isRefreshing}
+							onRefresh={onRefresh}
+							tintColor={colors.accent}
+							colors={[colors.accent]}
+							progressBackgroundColor={colors.backgroundSecondary}
+						/>
+					}
 				>
 					{groups.length === 0 && (
 						<Text
@@ -101,9 +115,11 @@ const GroupsList: FC<GroupsListProps> = ({
 
 								const currentRole =
 									currentRoleData?.getMemberRole
+								const groupPermissions =
+									currentRole?.permissions ?? []
 
 								const canDeleteGroup =
-									currentRole?.permissions.includes(
+									groupPermissions.includes(
 										GroupPermissionEnum.DeleteGroup
 									) || currentRole?.isCreator
 								if (canDeleteGroup) {

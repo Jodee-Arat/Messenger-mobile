@@ -3,17 +3,18 @@ import React, { FC, useRef, useState } from 'react'
 import {
 	Animated,
 	Dimensions,
-	Modal,
 	Pressable,
 	Text,
 	TouchableOpacity,
 	View
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import AppModal from '@/components/ui/AppModal'
 import ChatItemRow from '@/components/ui/ChatItemRow'
 
 import { useTheme, useTranslation } from '@/hooks/useTheme'
-import { useTypedNavigation } from '@/hooks/useTypedNavigation'
+import { navigate } from '@/navigation/navigate'
 
 import { FindAllChatsByUserQuery } from '@/graphql/generated/output'
 
@@ -42,10 +43,10 @@ const DMChatDropdownTrigger: FC<DMChatDropdownTriggerProps> = ({
 	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
 	const { colors } = useTheme()
 	const { t } = useTranslation()
-	const navigation = useTypedNavigation()
+	const { bottom } = useSafeAreaInsets()
 
 	const handleChatPress = () => {
-		navigation.navigate('Chat', {
+		navigate('Chat', {
 			chatId: chat.id,
 			chatName: chat.chatName!,
 			isSecret: chat.isSecret,
@@ -93,21 +94,19 @@ const DMChatDropdownTrigger: FC<DMChatDropdownTriggerProps> = ({
 			<ChatItemRow
 				chat={chat}
 				onPress={handleChatPress}
-				onLongPress={() => {
-					if (chat.isPinned && onDrag) {
-						onDrag()
-					} else {
-						openSheet()
-					}
-				}}
+				onLongPress={openSheet}
+				onDrag={onDrag}
+				isActive={isActive}
 				showOnlineIndicator
 				showSecretIcon={true}
 			/>
 
-			<Modal
+			<AppModal
 				transparent
 				visible={modalVisible}
 				animationType='none'
+				statusBarTranslucent
+				navigationBarTranslucent
 				onRequestClose={() => closeSheet()}
 			>
 				<View className='flex-1'>
@@ -127,7 +126,7 @@ const DMChatDropdownTrigger: FC<DMChatDropdownTriggerProps> = ({
 							borderTopRightRadius: 20,
 							borderTopWidth: 1,
 							borderColor: colors.borderLight,
-							paddingBottom: 34,
+							paddingBottom: bottom + 20,
 							paddingTop: 8
 						}}
 					>
@@ -224,7 +223,7 @@ const DMChatDropdownTrigger: FC<DMChatDropdownTriggerProps> = ({
 						</View>
 					</Animated.View>
 				</View>
-			</Modal>
+			</AppModal>
 		</View>
 	)
 }

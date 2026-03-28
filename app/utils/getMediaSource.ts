@@ -1,5 +1,5 @@
-import { SERVER_URL } from '@/config/api.config'
+import { MEDIA_URL } from '@/libs/constants/url.constant'
 
 export const getMediaSource = (path: string) => ({
-	uri: SERVER_URL + path
+	uri: MEDIA_URL + path
 })

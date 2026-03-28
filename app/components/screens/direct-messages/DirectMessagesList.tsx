@@ -1,10 +1,7 @@
-import { Pin, Users } from 'lucide-react-native'
-import { FC, useCallback } from 'react'
-import { FlatList, Text, View } from 'react-native'
-import DraggableFlatList, {
-	RenderItemParams,
-	ScaleDecorator
-} from 'react-native-draggable-flatlist'
+import { Users } from 'lucide-react-native'
+import { FC } from 'react'
+import { Text, View } from 'react-native'
+import DraggableFlatList from 'react-native-draggable-flatlist'
 
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
@@ -12,117 +9,82 @@ import ChatsListSkeleton from '../chats-list/ChatsListSkeleton'
 
 import DMChatDropdownTrigger from './DMChatDropdownTrigger'
 import { useDirectChats } from './useDirectChats'
-import { FindAllChatsByUserQuery } from '@/graphql/generated/output'
 
-type ChatItem = FindAllChatsByUserQuery['findAllChatsByUser'][0]
+interface DirectMessagesListProps {
+	searchQuery: string
+}
 
-const DirectMessagesList: FC = () => {
+const DirectMessagesList: FC<DirectMessagesListProps> = ({ searchQuery }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
 
 	const {
 		allChats,
 		pinnedChats,
-		unpinnedChats,
 		isLoadingChats,
+		isRefreshingChats,
+		handleRefreshChats,
 		handleDeleteChat,
 		handlePinChat,
 		handleUnPinChat,
 		handleReorderPinnedChats
-	} = useDirectChats()
+	} = useDirectChats(searchQuery)
 
-	const renderPinnedItem = useCallback(
-		({ item, drag, isActive }: RenderItemParams<ChatItem>) => (
-			<ScaleDecorator>
+	if (isLoadingChats && allChats.length === 0) {
+		return <ChatsListSkeleton />
+	}
+
+	const isSearching = searchQuery.trim().length > 0
+
+	return (
+		<DraggableFlatList
+			data={allChats}
+			keyExtractor={item => item.id}
+			showsVerticalScrollIndicator={false}
+			contentContainerStyle={{ paddingTop: 4, paddingBottom: 100 }}
+			refreshing={isRefreshingChats}
+			onRefresh={() => void handleRefreshChats()}
+			onDragEnd={({ data }) => {
+				const reorderedPinned = data.filter(chat => chat.isPinned)
+				if (reorderedPinned.length > 1) {
+					void handleReorderPinnedChats(reorderedPinned)
+				}
+			}}
+			ListEmptyComponent={
+				<View className='py-16 items-center px-8'>
+					<Users size={48} color={colors.borderLight} />
+					<Text
+						className='text-base font-semibold mt-4 text-center'
+						style={{ color: colors.textMuted }}
+					>
+						{isSearching
+							? t('noSearchResults')
+							: t('noDirectMessages')}
+					</Text>
+					<Text
+						className='text-xs mt-2 text-center'
+						style={{ color: colors.textMuted }}
+					>
+						{isSearching
+							? t('tryDifferentQuery')
+							: t('addFriendsHint')}
+					</Text>
+				</View>
+			}
+			renderItem={({ item, drag, isActive }) => (
 				<DMChatDropdownTrigger
+					key={item.id}
 					chat={item}
 					deleteChat={handleDeleteChat}
 					onPinChat={handlePinChat}
 					onUnPinChat={handleUnPinChat}
-					onDrag={drag}
+					onDrag={
+						item.isPinned && pinnedChats.length > 1
+							? drag
+							: undefined
+					}
 					isActive={isActive}
 				/>
-			</ScaleDecorator>
-		),
-		[handleDeleteChat, handlePinChat, handleUnPinChat]
-	)
-
-	if (isLoadingChats) {
-		return <ChatsListSkeleton />
-	}
-
-	return (
-		<FlatList
-			data={[{ key: 'content' }]}
-			keyExtractor={item => item.key}
-			showsVerticalScrollIndicator={false}
-			contentContainerStyle={{ paddingTop: 4, paddingBottom: 100 }}
-			renderItem={() => (
-				<View>
-					{/* ── Pinned Section (Draggable) ── */}
-					{pinnedChats.length > 0 && (
-						<View>
-							<View className='flex-row items-center px-4 py-2'>
-								<Pin
-									size={14}
-									color={colors.accent}
-									style={{ marginRight: 6 }}
-								/>
-								<Text
-									className='text-xs font-semibold uppercase tracking-wider'
-									style={{ color: colors.textMuted }}
-								>
-									{t('pinnedChats') || 'Закреплённые'}
-								</Text>
-							</View>
-							<DraggableFlatList
-								data={pinnedChats}
-								keyExtractor={item => item.id}
-								renderItem={renderPinnedItem}
-								onDragEnd={({ data }) =>
-									handleReorderPinnedChats(data)
-								}
-								scrollEnabled={false}
-							/>
-							<View
-								className='mx-4 my-1'
-								style={{
-									height: 1,
-									backgroundColor: colors.borderLight
-								}}
-							/>
-						</View>
-					)}
-
-					{/* ── Unpinned Section ── */}
-					{unpinnedChats.map(item => (
-						<DMChatDropdownTrigger
-							key={item.id}
-							chat={item}
-							deleteChat={handleDeleteChat}
-							onPinChat={handlePinChat}
-							onUnPinChat={handleUnPinChat}
-						/>
-					))}
-
-					{allChats.length === 0 && (
-						<View className='py-16 items-center px-8'>
-							<Users size={48} color={colors.borderLight} />
-							<Text
-								className='text-base font-semibold mt-4 text-center'
-								style={{ color: colors.textMuted }}
-							>
-								{t('noDirectMessages')}
-							</Text>
-							<Text
-								className='text-xs mt-2 text-center'
-								style={{ color: colors.textMuted }}
-							>
-								{t('addFriendsHint')}
-							</Text>
-						</View>
-					)}
-				</View>
 			)}
 		/>
 	)

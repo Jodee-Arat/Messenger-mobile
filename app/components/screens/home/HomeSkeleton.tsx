@@ -1,5 +1,6 @@
 import React from 'react'
 import { View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import {
 	SkeletonBox,
@@ -11,6 +12,7 @@ import { useTheme } from '@/hooks/useTheme'
 
 const HomeSkeleton = () => {
 	const { colors } = useTheme()
+	const { top } = useSafeAreaInsets()
 
 	return (
 		<View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -20,7 +22,7 @@ const HomeSkeleton = () => {
 					alignItems: 'center',
 					justifyContent: 'space-between',
 					paddingHorizontal: 20,
-					paddingTop: 56,
+					paddingTop: top + 12,
 					paddingBottom: 12
 				}}
 			>

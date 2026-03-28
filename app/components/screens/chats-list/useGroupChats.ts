@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useFocusEffect } from '@react-navigation/native'
+import { useCallback, useEffect, useState } from 'react'
 import Toast from 'react-native-toast-message'
 
 import { useUser } from '@/hooks/useUser'
@@ -11,6 +12,7 @@ import {
 } from '@/utils/secret-chat/secretChat'
 
 import {
+	ChatUpdatedSubscription,
 	FindAllChatsByGroupQuery,
 	useChatAddedSubscription,
 	useChatDeletedSubscription,
@@ -23,6 +25,7 @@ import {
 } from '@/graphql/generated/output'
 
 type ChatItem = FindAllChatsByGroupQuery['findAllChatsByGroup'][0]
+type ChatUpdatedItem = ChatUpdatedSubscription['chatUpdated']
 
 function sortChatsWithPinned(chats: ChatItem[]): ChatItem[] {
 	const pinned = chats
@@ -32,8 +35,22 @@ function sortChatsWithPinned(chats: ChatItem[]): ChatItem[] {
 	return [...pinned, ...unpinned]
 }
 
-export function useGroupChats(groupId: string) {
+function mergeUpdatedChat(
+	previousChat: ChatItem,
+	updatedChat: ChatUpdatedItem
+): ChatItem {
+	return {
+		...previousChat,
+		...updatedChat,
+		members: updatedChat.members?.length
+			? updatedChat.members
+			: previousChat.members
+	}
+}
+
+export function useGroupChats(groupId: string, searchTerm?: string) {
 	const [allChats, setAllChats] = useState<ChatItem[]>([])
+	const [isRefreshingChats, setIsRefreshingChats] = useState(false)
 	const { userId } = useUser()
 
 	// ── Queries ──────────────────────────────────────────────
@@ -42,7 +59,10 @@ export function useGroupChats(groupId: string) {
 		loading: isLoadingFindAllChats,
 		refetch: refetchChats
 	} = useFindAllChatsByGroupQuery({
-		variables: { filters: {}, groupId },
+		variables: {
+			filters: { searchTerm: searchTerm || undefined },
+			groupId
+		},
 		fetchPolicy: 'network-only'
 	})
 
@@ -151,12 +171,28 @@ export function useGroupChats(groupId: string) {
 		}
 	}
 
+	const handleRefreshChats = useCallback(async () => {
+		if (!groupId) return
+		setIsRefreshingChats(true)
+		try {
+			await refetchChats()
+		} finally {
+			setIsRefreshingChats(false)
+		}
+	}, [groupId, refetchChats])
+
 	// ── Effects ──────────────────────────────────────────────
 
 	useEffect(() => {
 		if (!allChatsData?.findAllChatsByGroup) return
 		setAllChats(sortChatsWithPinned(allChatsData.findAllChatsByGroup))
 	}, [allChatsData])
+
+	useFocusEffect(
+		useCallback(() => {
+			void handleRefreshChats()
+		}, [handleRefreshChats])
+	)
 
 	useEffect(() => {
 		if (!newChatData?.chatAdded) return
@@ -210,6 +246,7 @@ export function useGroupChats(groupId: string) {
 
 	useEffect(() => {
 		if (!updateChatData?.chatUpdated) return
+		if (updateChatData.chatUpdated.groupId !== groupId) return
 
 		const handleUpdate = async () => {
 			try {
@@ -230,13 +267,27 @@ export function useGroupChats(groupId: string) {
 			handleUpdate()
 		}
 
-		setAllChats(prev =>
-			sortChatsWithPinned([
-				updateChatData.chatUpdated,
-				...prev.filter(c => c.id !== updateChatData.chatUpdated.id)
+		setAllChats(prev => {
+			const previousChat = prev.find(
+				c => c.id === updateChatData.chatUpdated.id
+			)
+
+			if (!previousChat) {
+				void refetchChats()
+				return prev
+			}
+
+			const nextChat = mergeUpdatedChat(
+				previousChat,
+				updateChatData.chatUpdated
+			)
+
+			return sortChatsWithPinned([
+				nextChat,
+				...prev.filter(c => c.id !== nextChat.id)
 			])
-		)
-	}, [updateChatData])
+		})
+	}, [groupId, refetchChats, updateChatData])
 
 	const pinnedChats = allChats.filter(c => c.isPinned)
 	const unpinnedChats = allChats.filter(c => !c.isPinned)
@@ -254,6 +305,8 @@ export function useGroupChats(groupId: string) {
 		unpinnedChats,
 		setAllChats,
 		isLoadingFindAllChats,
+		isRefreshingChats,
+		handleRefreshChats,
 		handleDeleteChat,
 		isLoadingDeleteChat,
 		handlePinChat,

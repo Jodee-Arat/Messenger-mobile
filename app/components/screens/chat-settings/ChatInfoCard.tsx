@@ -1,4 +1,5 @@
 import * as ImagePicker from 'expo-image-picker'
+import type { ReactNativeFile } from 'extract-files'
 import { Camera, Loader2, Pencil, Save, Trash2 } from 'lucide-react-native'
 import { FC, useEffect, useState } from 'react'
 import {
@@ -14,6 +15,8 @@ import EntityAvatar from '@/components/ui/EntityAvatar'
 
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
+import { createImageUploadFile } from '@/utils/create-image-upload-file'
+
 import { FindChatByChatIdQuery } from '@/graphql/generated/output'
 
 interface ChatInfoCardProps {
@@ -22,9 +25,12 @@ interface ChatInfoCardProps {
 	membersCount: number
 	canChangeChatInfo?: boolean
 	canChangeChatAvatar?: boolean
-	onSaveInfo?: (chatName: string, description: string) => void
-	onChangeAvatar?: (file: any) => void
-	onRemoveAvatar?: () => void
+	onSaveInfo?: (
+		chatName: string,
+		description: string
+	) => Promise<boolean> | boolean
+	onChangeAvatar?: (file: ReactNativeFile) => Promise<void> | void
+	onRemoveAvatar?: () => Promise<void> | void
 	isSaving?: boolean
 }
 
@@ -44,6 +50,7 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 	const [isEditing, setIsEditing] = useState(false)
 	const [editName, setEditName] = useState('')
 	const [editDescription, setEditDescription] = useState('')
+	const [isPickingAvatar, setIsPickingAvatar] = useState(false)
 
 	useEffect(() => {
 		if (chat) {
@@ -56,25 +63,33 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 		editName !== (chat?.chatName || '') ||
 		editDescription !== (chat?.description || '')
 
-	const handleSave = () => {
-		if (!editName.trim()) return
-		onSaveInfo?.(editName.trim(), editDescription.trim())
-		setIsEditing(false)
+	const handleSave = async () => {
+		if (!editName.trim() || isSaving) return
+		const isSaved = await onSaveInfo?.(
+			editName.trim(),
+			editDescription.trim()
+		)
+		if (isSaved !== false) {
+			setIsEditing(false)
+		}
 	}
 
 	const handlePickAvatar = async () => {
-		const result = await ImagePicker.launchImageLibraryAsync({
-			mediaTypes: ['images'],
-			allowsEditing: true,
-			aspect: [1, 1],
-			quality: 0.8
-		})
-		if (!result.canceled && result.assets?.[0]) {
-			const asset = result.assets[0]
-			const uri = asset.uri
-			const name = uri.split('/').pop() || 'avatar.jpg'
-			const type = asset.mimeType || 'image/jpeg'
-			onChangeAvatar?.({ uri, name, type })
+		setIsPickingAvatar(true)
+		try {
+			const result = await ImagePicker.launchImageLibraryAsync({
+				mediaTypes: ['images'],
+				allowsEditing: true,
+				aspect: [1, 1],
+				quality: 0.8
+			})
+
+			if (result.canceled || !result.assets?.[0]) return
+
+			const file = createImageUploadFile(result.assets[0], 'avatar.jpg')
+			await onChangeAvatar?.(file)
+		} finally {
+			setIsPickingAvatar(false)
 		}
 	}
 
@@ -124,21 +139,29 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 					className='w-14 h-14 rounded-2xl items-center justify-center mr-4'
 					onPress={canChangeChatAvatar ? handlePickAvatar : undefined}
 					activeOpacity={canChangeChatAvatar ? 0.7 : 1}
+					disabled={isPickingAvatar || isSaving}
 				>
-					<EntityAvatar
-						avatarUrl={chat?.avatarUrl}
-						name={chatName}
-						size={'lg'}
-					/>
-					{canChangeChatAvatar && (
-						<View
-							className='absolute bottom-0 right-0 w-5 h-5 rounded-full items-center justify-center'
-							style={{
-								backgroundColor: colors.backgroundSecondary
-							}}
-						>
-							<Camera size={12} color={colors.text} />
-						</View>
+					{isPickingAvatar ? (
+						<ActivityIndicator size='small' color={colors.text} />
+					) : (
+						<>
+							<EntityAvatar
+								avatarUrl={chat?.avatarUrl}
+								name={chatName}
+								size={'lg'}
+							/>
+							{canChangeChatAvatar && (
+								<View
+									className='absolute bottom-0 right-0 w-5 h-5 rounded-full items-center justify-center'
+									style={{
+										backgroundColor:
+											colors.backgroundSecondary
+									}}
+								>
+									<Camera size={12} color={colors.text} />
+								</View>
+							)}
+						</>
 					)}
 				</TouchableOpacity>
 				<View className='flex-1'>
@@ -183,7 +206,7 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 								)}
 								<Text
 									className='text-xs'
-									style={{ color: colors.textSecondary }}
+									style={{ color: colors.text }}
 								>
 									{membersCount} {t('participantsCount')}
 								</Text>
@@ -194,12 +217,14 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 				{canChangeChatInfo && (
 					<TouchableOpacity
 						onPress={() =>
-							isEditing ? handleSave() : setIsEditing(true)
+							isEditing ? void handleSave() : setIsEditing(true)
 						}
 						activeOpacity={0.7}
+						disabled={isSaving}
 						className='w-9 h-9 rounded-full items-center justify-center'
 						style={{
-							backgroundColor: colors.backgroundSecondary
+							backgroundColor: colors.backgroundSecondary,
+							opacity: isSaving ? 0.6 : 1
 						}}
 					>
 						{isEditing ? (
@@ -277,7 +302,7 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 			{/* Save button */}
 			{isEditing && hasChanges && (
 				<TouchableOpacity
-					onPress={handleSave}
+					onPress={() => void handleSave()}
 					activeOpacity={0.7}
 					disabled={isSaving || !editName.trim()}
 					className='flex-row items-center justify-center py-3 rounded-xl mt-3'

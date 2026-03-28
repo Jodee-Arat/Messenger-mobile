@@ -1,26 +1,27 @@
-import { MessageSquarePlus, Shield } from 'lucide-react-native'
+import { MessageSquarePlus } from 'lucide-react-native'
 import { FC } from 'react'
 import { TouchableOpacity, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useTheme } from '@/hooks/useTheme'
 
-import { loadAllSecretChats } from '@/utils/secret-chat/secretChat'
-
 interface ChatsFloatingActionsProps {
-	groupId: string
 	onCreatePress: () => void
 }
 
 const ChatsFloatingActions: FC<ChatsFloatingActionsProps> = ({
-	groupId,
 	onCreatePress
 }) => {
 	const { colors } = useTheme()
+	const { bottom } = useSafeAreaInsets()
 
 	return (
 		<View
-			className='absolute right-5 bottom-8 items-center'
-			style={{ gap: 12 }}
+			className='absolute right-5 items-center'
+			style={{
+				gap: 12,
+				bottom: bottom + 20
+			}}
 		>
 			{/* Create chat */}
 			<TouchableOpacity

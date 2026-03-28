@@ -15,7 +15,7 @@ import { navigationRef, resetToAuth } from '@/navigation/navigate'
 import { authStore } from '@/store/auth/auth.store'
 import { userStore } from '@/store/user/user.store'
 
-import { rebuildWebsocketLink } from '@/libs/apollo-client'
+import { client, rebuildWebsocketLink } from '@/libs/apollo-client'
 
 export const handleLogout = async () => {
 	try {
@@ -28,6 +28,8 @@ export const handleLogout = async () => {
 		await AsyncStorage.setItem(EnumAsyncStorage.ACCESS_TOKEN, '')
 		await SecureStore.deleteItemAsync(EnumSecureStore.REFRESH_TOKEN)
 		await AsyncStorage.setItem(EnumAsyncStorage.USER_ID, '')
+		await client.clearStore()
+		rebuildWebsocketLink()
 
 		if (navigationRef.isReady()) {
 			navigationRef.dispatch(

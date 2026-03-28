@@ -1,6 +1,9 @@
 import { Trash2 } from 'lucide-react-native'
 import { FC } from 'react'
-import { Modal, Pressable, Text, TouchableOpacity, View } from 'react-native'
+import { Pressable, Text, TouchableOpacity, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+
+import AppModal from '@/components/ui/AppModal'
 
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
@@ -21,14 +24,17 @@ const GroupActionSheet: FC<GroupActionSheetProps> = ({
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
+	const { bottom } = useSafeAreaInsets()
 
 	if (!group) return null
 
 	return (
-		<Modal
+		<AppModal
 			transparent
 			visible={!!group}
 			animationType='fade'
+			statusBarTranslucent
+			navigationBarTranslucent
 			onRequestClose={onClose}
 		>
 			<Pressable
@@ -43,7 +49,7 @@ const GroupActionSheet: FC<GroupActionSheetProps> = ({
 					borderTopRightRadius: 20,
 					borderTopWidth: 1,
 					borderColor: colors.borderLight,
-					paddingBottom: 34,
+					paddingBottom: bottom + 20,
 					paddingTop: 12,
 					paddingHorizontal: 16
 				}}
@@ -87,7 +93,7 @@ const GroupActionSheet: FC<GroupActionSheetProps> = ({
 					</Text>
 				</TouchableOpacity>
 			</View>
-		</Modal>
+		</AppModal>
 	)
 }
 

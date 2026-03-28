@@ -1,8 +1,10 @@
-﻿import {
+﻿import * as ExpoClipboard from 'expo-clipboard'
+import {
 	CheckCircle,
 	Clipboard,
 	Pencil,
 	Pin,
+	PinOff,
 	Reply,
 	Trash2,
 	X
@@ -11,13 +13,14 @@ import React, { FC, useCallback, useRef, useState } from 'react'
 import {
 	Animated,
 	Dimensions,
-	Modal,
 	Pressable,
 	Text,
 	TouchableOpacity,
 	View
 } from 'react-native'
 import Toast from 'react-native-toast-message'
+
+import AppModal from '@/components/ui/AppModal'
 
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
@@ -27,7 +30,8 @@ import { MessageType } from '@/types/message.type'
 import ChatMessageItem from './ChatMessageItem'
 import {
 	usePinMessageMutation,
-	useRemoveMessagesMutation
+	useRemoveMessagesMutation,
+	useUnPinMessageMutation
 } from '@/graphql/generated/output'
 
 interface ChatMessageDropdownProp {
@@ -37,6 +41,7 @@ interface ChatMessageDropdownProp {
 	chatId: string
 	messageId: string
 	messageIds: string[]
+	isSelectionMode: boolean
 	isSelected: boolean
 	handleAddForwardedMessage: (messages: MessageType[]) => void
 	handleChooseMessage: (messageId: string) => void
@@ -45,9 +50,12 @@ interface ChatMessageDropdownProp {
 		message: MessageType,
 		forwardedMessages?: ForwardedMessageType[]
 	) => void
+	pinnedMessageId?: string | null
 	canEditMessages?: boolean
 	canDeleteMessages?: boolean
 	canPinMessages?: boolean
+	isFirstInGroup: boolean
+	isLastInGroup: boolean
 }
 
 const SCREEN_HEIGHT = Dimensions.get('window').height
@@ -56,6 +64,7 @@ const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
 	chatId,
 	setPinnedMessage,
 	startEdit,
+	isSelectionMode,
 	isSelected,
 	handleAddForwardedMessage,
 	handleClearMessagesId,
@@ -63,15 +72,20 @@ const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
 	messageId,
 	messageIds,
 	messageInfo,
+	pinnedMessageId,
 	userId,
 	canEditMessages = true,
 	canDeleteMessages = true,
-	canPinMessages = true
+	canPinMessages = true,
+	isFirstInGroup,
+	isLastInGroup
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
 	const [modalVisible, setModalVisible] = useState(false)
 	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+	const isPinnedMessage = pinnedMessageId === messageInfo.id
+	const canEditThisMessage = canEditMessages && messageInfo.user.id === userId
 
 	const openSheet = () => {
 		setModalVisible(true)
@@ -127,6 +141,19 @@ const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
 		}
 	})
 
+	const [unPinMessage] = useUnPinMessageMutation({
+		onCompleted() {
+			setPinnedMessage(null)
+		},
+		onError(err) {
+			Toast.show({
+				type: 'error',
+				text1: t('unpinError'),
+				text2: err.message
+			})
+		}
+	})
+
 	const handleRemoveMessage = useCallback(() => {
 		removeMessage({
 			variables: { chatId, data: { messageIds: [messageId] } }
@@ -143,7 +170,7 @@ const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
 	const actions = [
 		{
 			icon: <CheckCircle size={20} color={colors.text} />,
-			label: t('select'),
+			label: isSelected ? t('deselect') : t('select'),
 			onPress: () => {
 				handleChooseMessage(messageId)
 				closeSheet()
@@ -157,18 +184,18 @@ const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
 		{
 			icon: <Clipboard size={20} color={colors.text} />,
 			label: t('copy'),
-			onPress: () => {
+			onPress: async () => {
 				if (messageInfo.text) {
+					await ExpoClipboard.setStringAsync(messageInfo.text)
 					Toast.show({
 						type: 'info',
-						text1: t('textCopied'),
-						text2: messageInfo.text
+						text1: t('textCopied')
 					})
 				}
 				closeSheet()
 			}
 		},
-		...(canEditMessages
+		...(canEditThisMessage
 			? [
 					{
 						icon: <Pencil size={20} color={colors.text} />,
@@ -191,15 +218,27 @@ const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
 		...(canPinMessages
 			? [
 					{
-						icon: <Pin size={20} color={colors.text} />,
-						label: t('pin'),
+						icon: isPinnedMessage ? (
+							<PinOff size={20} color={colors.text} />
+						) : (
+							<Pin size={20} color={colors.text} />
+						),
+						label: isPinnedMessage
+							? t('unpinChat') || 'Unpin'
+							: t('pin'),
 						onPress: () => {
-							pinMessage({
-								variables: {
-									chatId,
-									messageId: messageInfo.id
-								}
-							})
+							if (isPinnedMessage) {
+								unPinMessage({
+									variables: { chatId }
+								})
+							} else {
+								pinMessage({
+									variables: {
+										chatId,
+										messageId: messageInfo.id
+									}
+								})
+							}
 							closeSheet()
 						}
 					}
@@ -217,24 +256,42 @@ const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
 			: [])
 	]
 
+	const handlePressMessage = () => {
+		if (isSelectionMode) {
+			handleChooseMessage(messageId)
+			return
+		}
+		openSheet()
+	}
+
+	const handleLongPressMessage = () => {
+		handleChooseMessage(messageId)
+	}
+
 	return (
 		<>
-			<Pressable onLongPress={openSheet} delayLongPress={300}>
+			<Pressable
+				onPress={handlePressMessage}
+				onLongPress={handleLongPressMessage}
+				delayLongPress={300}
+			>
 				<ChatMessageItem
+					isSelectionMode={isSelectionMode}
 					isSelected={isSelected}
 					chatId={chatId}
-					handleChooseMessage={handleChooseMessage}
-					messageId={messageId}
-					messageIds={messageIds}
 					messageInfo={messageInfo}
 					userId={userId}
+					isFirstInGroup={isFirstInGroup}
+					isLastInGroup={isLastInGroup}
 				/>
 			</Pressable>
 
-			<Modal
+			<AppModal
 				transparent
 				visible={modalVisible}
 				animationType='none'
+				statusBarTranslucent
+				navigationBarTranslucent
 				onRequestClose={() => closeSheet()}
 			>
 				<View className='flex-1'>
@@ -332,7 +389,7 @@ const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
 						</View>
 					</Animated.View>
 				</View>
-			</Modal>
+			</AppModal>
 		</>
 	)
 }

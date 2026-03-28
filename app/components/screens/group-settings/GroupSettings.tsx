@@ -1,12 +1,23 @@
+import { useFocusEffect } from '@react-navigation/native'
 import { useRoute } from '@react-navigation/native'
 import { Trash2 } from 'lucide-react-native'
-import React, { useState } from 'react'
-import { Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import {
+	Alert,
+	RefreshControl,
+	ScrollView,
+	Text,
+	TouchableOpacity,
+	View
+} from 'react-native'
 
 import SettingsSkeleton from '@/components/ui/SettingsSkeleton'
 
+import { isGroupMembershipRevokedError } from '@/hooks/useBlockedUsers'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
+import { useUser } from '@/hooks/useUser'
+import { resetToHome } from '@/navigation/navigate'
 
 import {
 	type GroupSettingsRouteParams,
@@ -24,7 +35,7 @@ import RolesSection from './RolesSection'
 import { useGroupSettings } from './useGroupSettings'
 import {
 	GroupPermissionEnum,
-	useFindGroupByGroupIdQuery,
+	useGroupDeletedSubscription,
 	useGetMemberRoleQuery
 } from '@/graphql/generated/output'
 
@@ -32,62 +43,61 @@ const GroupSettings = () => {
 	const route = useRoute()
 	const navigation = useTypedNavigation()
 	const { groupId, groupName } = route.params as GroupSettingsRouteParams
+	const { userId } = useUser()
+	const handledAccessLossRef = useRef(false)
 
 	const { colors } = useTheme()
 	const { t } = useTranslation()
 	const PERMISSIONS = getPermissions(colors, t)
 
 	const [isInviteOpen, setIsInviteOpen] = useState(false)
+	const [isRefreshing, setIsRefreshing] = useState(false)
 
-	const { data: dataFindGroup, loading: isFindGroupByGroupId } =
-		useFindGroupByGroupIdQuery({
-			variables: { groupId },
-			fetchPolicy: 'network-only'
-		})
-	const group = dataFindGroup?.findGroupByGroupId
-
-	const { data: currentRoleData, loading: isLoadingGetMemberRole } =
+	const {
+		data: currentRoleData,
+		loading: isLoadingGetMemberRole,
+		refetch: refetchCurrentRole
+	} =
 		useGetMemberRoleQuery({
 			variables: { groupId },
 			fetchPolicy: 'network-only'
 		})
 
 	const currentRole = currentRoleData?.getMemberRole
+	const groupPermissions = currentRole?.permissions ?? []
+	const isCreator = !!currentRole?.isCreator
 
 	const canManageRoles =
-		currentRole?.permissions.includes(GroupPermissionEnum.ManageRoles) ||
-		currentRole?.isCreator
+		groupPermissions.includes(GroupPermissionEnum.ManageRoles) || isCreator
 
 	const canCreateRole =
-		currentRole?.permissions.includes(GroupPermissionEnum.CreateRoles) ||
-		currentRole?.isCreator
+		groupPermissions.includes(GroupPermissionEnum.CreateRoles) || isCreator
 
 	const canChangeRoleInfo =
-		currentRole?.permissions.includes(GroupPermissionEnum.ChangeRoleInfo) ||
-		currentRole?.isCreator
+		groupPermissions.includes(GroupPermissionEnum.ChangeRoleInfo) ||
+		isCreator
 
 	const canDeleteRoles =
-		currentRole?.permissions.includes(GroupPermissionEnum.DeleteRoles) ||
-		currentRole?.isCreator
+		groupPermissions.includes(GroupPermissionEnum.DeleteRoles) || isCreator
 
 	const canChangeGroupInfo =
-		currentRole?.permissions.includes(
-			GroupPermissionEnum.ChangeGroupInfo
-		) || currentRole?.isCreator
+		groupPermissions.includes(GroupPermissionEnum.ChangeGroupInfo) ||
+		isCreator
 
 	const canInviteMembers =
-		currentRole?.permissions.includes(GroupPermissionEnum.InviteMembers) ||
-		currentRole?.isCreator
+		groupPermissions.includes(GroupPermissionEnum.InviteMembers) ||
+		isCreator
 
 	const canRemoveMembers =
-		currentRole?.permissions.includes(GroupPermissionEnum.RemoveMembers) ||
-		currentRole?.isCreator
+		groupPermissions.includes(GroupPermissionEnum.RemoveMembers) ||
+		isCreator
 
 	const canDeleteGroup =
-		currentRole?.permissions.includes(GroupPermissionEnum.DeleteGroup) ||
-		currentRole?.isCreator
+		groupPermissions.includes(GroupPermissionEnum.DeleteGroup) || isCreator
 
 	const {
+		group,
+		groupError,
 		members,
 		isLoadingGroup,
 		roles,
@@ -108,6 +118,7 @@ const GroupSettings = () => {
 		handleDeleteGroup,
 		handleInviteMember,
 		handleRemoveMember,
+		refreshGroupSettings,
 		isChangingInfo,
 		isChangingAvatar,
 		isRemovingAvatar,
@@ -115,6 +126,45 @@ const GroupSettings = () => {
 		getRoleForUser,
 		getMembersWithRole
 	} = useGroupSettings(groupId)
+	const resolvedGroupName = group?.groupName ?? groupName
+
+	const handleGroupAccessLoss = useCallback(() => {
+		if (handledAccessLossRef.current) return
+		handledAccessLossRef.current = true
+		resetToHome()
+	}, [])
+
+	const handleRefresh = useCallback(async () => {
+		try {
+			setIsRefreshing(true)
+			await Promise.allSettled([
+				refreshGroupSettings(),
+				refetchCurrentRole()
+			])
+		} finally {
+			setIsRefreshing(false)
+		}
+	}, [refetchCurrentRole, refreshGroupSettings])
+
+	useEffect(() => {
+		if (!isGroupMembershipRevokedError(groupError)) return
+		handleGroupAccessLoss()
+	}, [groupError, handleGroupAccessLoss])
+
+	useFocusEffect(
+		useCallback(() => {
+			void refreshGroupSettings()
+		}, [refreshGroupSettings])
+	)
+
+	useGroupDeletedSubscription({
+		variables: { userId },
+		skip: !userId,
+		onData: ({ data }) => {
+			if (data.data?.groupDeleted.id !== groupId) return
+			handleGroupAccessLoss()
+		}
+	})
 
 	const isSavingGroupInfo =
 		isChangingInfo || isChangingAvatar || isRemovingAvatar
@@ -137,8 +187,8 @@ const GroupSettings = () => {
 
 	return (
 		<View className='flex-1' style={{ backgroundColor: colors.background }}>
-			<GroupSettingsHeader groupName={groupName} />
-			{isLoadingGetMemberRole || isFindGroupByGroupId ? (
+			<GroupSettingsHeader groupName={resolvedGroupName} />
+			{isLoadingGetMemberRole || isLoadingGroup ? (
 				<SettingsSkeleton />
 			) : (
 				<>
@@ -146,10 +196,19 @@ const GroupSettings = () => {
 						className='flex-1'
 						showsVerticalScrollIndicator={false}
 						contentContainerStyle={{ paddingBottom: 40 }}
+						refreshControl={
+							<RefreshControl
+								refreshing={isRefreshing}
+								onRefresh={handleRefresh}
+								tintColor={colors.accent}
+								colors={[colors.accent]}
+								progressBackgroundColor={colors.card}
+							/>
+						}
 					>
 						<GroupInfoCard
 							group={group}
-							isFindGroupByGroupIdLoading={isFindGroupByGroupId}
+							isFindGroupByGroupIdLoading={isLoadingGroup}
 							canChangeGroupInfo={!!canChangeGroupInfo}
 							onSaveInfo={handleChangeGroupInfo}
 							onChangeAvatar={handleChangeAvatar}

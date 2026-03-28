@@ -1,4 +1,5 @@
 import * as ImagePicker from 'expo-image-picker'
+import type { ReactNativeFile } from 'extract-files'
 import { Camera, Loader2, Pencil, Save, Trash2 } from 'lucide-react-native'
 import { FC, useEffect, useState } from 'react'
 import {
@@ -14,15 +15,20 @@ import EntityAvatar from '@/components/ui/EntityAvatar'
 
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
+import { createImageUploadFile } from '@/utils/create-image-upload-file'
+
 import { FindGroupByGroupIdQuery } from '@/graphql/generated/output'
 
 interface GroupInfoCardProps {
 	group?: FindGroupByGroupIdQuery['findGroupByGroupId']
 	isFindGroupByGroupIdLoading: boolean
 	canChangeGroupInfo?: boolean
-	onSaveInfo?: (groupName: string, description: string) => void
-	onChangeAvatar?: (file: any) => void
-	onRemoveAvatar?: () => void
+	onSaveInfo?: (
+		groupName: string,
+		description: string
+	) => Promise<boolean> | boolean
+	onChangeAvatar?: (file: ReactNativeFile) => Promise<void> | void
+	onRemoveAvatar?: () => Promise<void> | void
 	isSaving?: boolean
 }
 
@@ -53,30 +59,34 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 		editName !== (group?.groupName || '') ||
 		editDescription !== (group?.description || '')
 
-	const handleSave = () => {
-		if (!editName.trim()) return
-		onSaveInfo?.(editName.trim(), editDescription.trim())
-		setIsEditing(false)
+	const handleSave = async () => {
+		if (!editName.trim() || isSaving) return
+		const isSaved = await onSaveInfo?.(
+			editName.trim(),
+			editDescription.trim()
+		)
+		if (isSaved !== false) {
+			setIsEditing(false)
+		}
 	}
 
 	const handlePickAvatar = async () => {
 		setIsPicking(true)
 		try {
 			const result = await ImagePicker.launchImageLibraryAsync({
-				mediaTypes: ImagePicker.MediaTypeOptions.Images,
+				mediaTypes: ['images'],
 				allowsEditing: true,
+				aspect: [1, 1],
 				quality: 0.8
 			})
 
-			if (!result.canceled) {
-				const asset = result.assets[0]
-				const file = {
-					uri: asset.uri,
-					type: 'image/jpeg',
-					name: 'group-avatar.jpg'
-				} as any
-				onChangeAvatar?.(file)
-			}
+			if (result.canceled || !result.assets?.[0]) return
+
+			const file = createImageUploadFile(
+				result.assets[0],
+				'group-avatar.jpg'
+			)
+			await onChangeAvatar?.(file)
 		} finally {
 			setIsPicking(false)
 		}
@@ -124,7 +134,7 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 					className='w-14 h-14 rounded-2xl items-center justify-center mr-4'
 					onPress={canChangeGroupInfo ? handlePickAvatar : undefined}
 					activeOpacity={canChangeGroupInfo ? 0.7 : 1}
-					disabled={isPicking}
+					disabled={isPicking || isSaving}
 				>
 					{isPicking ? (
 						<ActivityIndicator size='small' color={colors.text} />
@@ -175,12 +185,14 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 				{canChangeGroupInfo && (
 					<TouchableOpacity
 						onPress={() =>
-							isEditing ? handleSave() : setIsEditing(true)
+							isEditing ? void handleSave() : setIsEditing(true)
 						}
 						activeOpacity={0.7}
+						disabled={isSaving}
 						className='w-9 h-9 rounded-full items-center justify-center'
 						style={{
-							backgroundColor: colors.backgroundSecondary
+							backgroundColor: colors.backgroundSecondary,
+							opacity: isSaving ? 0.6 : 1
 						}}
 					>
 						{isEditing ? (
@@ -256,7 +268,7 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 			{/* Save button */}
 			{isEditing && hasChanges && (
 				<TouchableOpacity
-					onPress={handleSave}
+					onPress={() => void handleSave()}
 					activeOpacity={0.7}
 					disabled={isSaving || !editName.trim()}
 					className='flex-row items-center justify-center py-3 rounded-xl mt-3'

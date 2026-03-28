@@ -28,6 +28,7 @@ import {
 	useLoginUserMutation,
 	useSendPreKeyMutation
 } from '@/graphql/generated/output'
+import { client, rebuildWebsocketLink } from '@/libs/apollo-client'
 import { generatePreKey } from '@/libs/e2ee/gost'
 
 const Auth = () => {
@@ -70,6 +71,7 @@ const Auth = () => {
 		onCompleted: async data => {
 			const accessToken = data.loginUser.accessToken
 			const refreshToken = data.loginUser.refreshToken
+			const currentUserId = data.loginUser.user?.id ?? ''
 
 			if (accessToken) {
 				await AsyncStorage.setItem(
@@ -83,7 +85,15 @@ const Auth = () => {
 					refreshToken
 				)
 			}
+			await AsyncStorage.setItem(
+				EnumAsyncStorage.USER_ID,
+				JSON.stringify(currentUserId)
+			)
 
+			await client.clearStore()
+			rebuildWebsocketLink()
+
+			setUserId(currentUserId)
 			auth()
 			const { toServer, toStore } = await generatePreKey()
 			AsyncStorage.setItem(
@@ -99,7 +109,6 @@ const Auth = () => {
 					}
 				}
 			})
-			setUserId(data.loginUser.user?.id ?? '')
 			form.reset()
 			navigation.navigate('Home')
 

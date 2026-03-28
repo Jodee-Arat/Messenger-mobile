@@ -7,6 +7,7 @@ import GroupSettings from '@/components/screens/group-settings/GroupSettings'
 import Home from '@/components/screens/home/Home'
 import FriendProfile from '@/components/screens/home/friend/FriendProfile'
 import Profile from '@/components/screens/profile/Profile'
+import BlockedUsers from '@/components/screens/profile/settings/BlockedUsers'
 import UserSettings from '@/components/screens/profile/settings/UserSettings'
 
 import { IRoute } from './navigation.types'
@@ -46,6 +47,10 @@ export const routes: IRoute[] = [
 	{
 		name: 'Profile',
 		component: Profile
+	},
+	{
+		name: 'BlockedUsers',
+		component: BlockedUsers
 	},
 	{
 		name: 'UserSettings',

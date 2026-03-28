@@ -1,6 +1,7 @@
 // Metro config: extend Expo default and add alias for 'gostEngine' used by 'gost-crypto'
 const path = require('path')
 const { getDefaultConfig } = require('expo/metro-config')
+const { withNativeWind } = require('nativewind/metro')
 
 /** @type {import('metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname)
@@ -16,4 +17,4 @@ config.resolver = {
 	}
 }
 
-module.exports = config
+module.exports = withNativeWind(config, { input: './global.css' })

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { ReactNativeFile } from 'extract-files'
 import { Alert } from 'react-native'
 
 import '../../../types/role.type'
@@ -6,6 +7,7 @@ import { GroupRoleData } from '../../../types/role.type'
 
 import {
 	GroupPermissionEnum,
+	FindAllGroupsByUserDocument,
 	useAssignGroupRoleToMemberMutation,
 	useChangeGroupAvatarMutation,
 	useChangeGroupInfoMutation,
@@ -28,14 +30,16 @@ export function useGroupSettings(groupId: string) {
 	// ── Group members query ──────────────────────────────────
 	const {
 		data: groupData,
+		error: groupError,
 		loading: isLoadingGroup,
 		refetch: refetchGroup
 	} = useFindGroupByGroupIdQuery({
 		variables: { groupId },
 		fetchPolicy: 'network-only'
 	})
+	const group = groupData?.findGroupByGroupId
 
-	const members = groupData?.findGroupByGroupId?.members ?? []
+	const members = group?.members ?? []
 
 	// ── Roles query ──────────────────────────────────────────
 	const {
@@ -238,18 +242,26 @@ export function useGroupSettings(groupId: string) {
 				variables: {
 					groupId,
 					data: { groupName, description }
-				}
+				},
+				refetchQueries: [FindAllGroupsByUserDocument],
+				awaitRefetchQueries: true
 			})
+			await refetchGroup()
+			return true
 		} catch (e) {
 			Alert.alert('Error', (e as Error).message)
+			return false
 		}
 	}
 
-	const handleChangeAvatar = async (file: any) => {
+	const handleChangeAvatar = async (file: ReactNativeFile) => {
 		try {
 			await changeGroupAvatar({
-				variables: { groupId, avatar: file }
+				variables: { groupId, avatar: file },
+				refetchQueries: [FindAllGroupsByUserDocument],
+				awaitRefetchQueries: true
 			})
+			await refetchGroup()
 		} catch (e) {
 			Alert.alert('Error', (e as Error).message)
 		}
@@ -257,7 +269,12 @@ export function useGroupSettings(groupId: string) {
 
 	const handleRemoveAvatar = async () => {
 		try {
-			await removeGroupAvatar({ variables: { groupId } })
+			await removeGroupAvatar({
+				variables: { groupId },
+				refetchQueries: [FindAllGroupsByUserDocument],
+				awaitRefetchQueries: true
+			})
+			await refetchGroup()
 		} catch (e) {
 			Alert.alert('Error', (e as Error).message)
 		}
@@ -306,8 +323,14 @@ export function useGroupSettings(groupId: string) {
 	const getMembersWithRole = (roleId: string) =>
 		members.filter(m => userRoles[m.user.id] === roleId)
 
+	const refreshGroupSettings = async () => {
+		await Promise.allSettled([refetchGroup(), refetchRoles()])
+	}
+
 	return {
 		// data
+		group,
+		groupError,
 		members,
 		isLoadingGroup,
 		roles,
@@ -345,6 +368,7 @@ export function useGroupSettings(groupId: string) {
 		handleDeleteGroup,
 		handleInviteMember,
 		handleRemoveMember,
+		refreshGroupSettings,
 
 		// helpers
 		getPermCount,

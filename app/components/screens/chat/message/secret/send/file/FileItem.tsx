@@ -4,17 +4,22 @@ import { FC } from 'react'
 import { Text, View } from 'react-native'
 
 import { Button } from '@/components/ui/button/Button'
+import { SendFileType } from '@/types/send-file.type'
 
 import { formatBytes } from '@/utils/format-bytes'
 
 interface FileItemProp {
-	file: { name: string; size: string }
+	file: SendFileType
 	onDeleteFile: () => void
 	isLoadingSend: boolean
 }
 
 const FileItem: FC<FileItemProp> = ({ file, isLoadingSend, onDeleteFile }) => {
 	const { colors } = useTheme()
+	const isBusy =
+		isLoadingSend ||
+		file.status === 'encrypting' ||
+		file.status === 'uploading'
 	return (
 		<View>
 			<View className='flex cursor-grab select-none'>
@@ -33,8 +38,16 @@ const FileItem: FC<FileItemProp> = ({ file, isLoadingSend, onDeleteFile }) => {
 					>
 						({formatBytes(parseInt(file.size))})
 					</Text>
+					{file.errorMessage ? (
+						<Text
+							className='truncate text-[10px]'
+							style={{ color: colors.destructive }}
+						>
+							{file.errorMessage}
+						</Text>
+					) : null}
 				</View>
-				{isLoadingSend ? (
+				{isBusy ? (
 					<Loader2
 						color={colors.accent}
 						className='ml-1 size-5 animate-spin'

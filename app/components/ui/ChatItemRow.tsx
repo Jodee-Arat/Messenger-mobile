@@ -1,6 +1,6 @@
-import { Lock } from 'lucide-react-native'
+import { GripVertical, Lock, Pin } from 'lucide-react-native'
 import React, { FC } from 'react'
-import { Pressable, Text, View } from 'react-native'
+import { Pressable, Text, TouchableOpacity, View } from 'react-native'
 
 import EntityAvatar from '@/components/ui/EntityAvatar'
 
@@ -11,6 +11,7 @@ export interface ChatItemData {
 	chatName?: string | null
 	avatarUrl?: string | null
 	isSecret: boolean
+	isPinned?: boolean | null
 	groupId?: string | null
 	lastMessage?: {
 		text?: string | null
@@ -27,6 +28,8 @@ interface ChatItemRowProps {
 	chat: ChatItemData
 	onPress: () => void
 	onLongPress?: () => void
+	onDrag?: () => void
+	isActive?: boolean
 	showSecretIcon?: boolean
 	showOnlineIndicator?: boolean
 }
@@ -35,6 +38,8 @@ const ChatItemRow: FC<ChatItemRowProps> = ({
 	chat,
 	onPress,
 	onLongPress,
+	onDrag,
+	isActive = false,
 	showSecretIcon = true,
 	showOnlineIndicator = false
 }) => {
@@ -60,6 +65,10 @@ const ChatItemRow: FC<ChatItemRowProps> = ({
 		chat.lastMessage.files.length > 0
 
 	const renderSubtitle = () => {
+		if (chat.isSecret) {
+			return <View style={{ height: 16 }} />
+		}
+
 		if (hasDraftText) {
 			return (
 				<View className='flex-row items-center'>
@@ -145,27 +154,27 @@ const ChatItemRow: FC<ChatItemRowProps> = ({
 	}
 
 	return (
-		<Pressable
-			onLongPress={onLongPress}
-			delayLongPress={300}
-			className='w-full'
-			onPress={onPress}
-			android_ripple={{
-				color: chat.isSecret
-					? 'rgba(76, 175, 80, 0.08)'
-					: 'rgba(139, 92, 246, 0.08)'
+		<View
+			className='w-full flex-row items-center'
+			style={{
+				borderBottomWidth: 0.5,
+				borderBottomColor: colors.border,
+				...(chat.isSecret && {
+					borderLeftWidth: 3,
+					borderLeftColor: '#4CAF50',
+					backgroundColor: 'rgba(76, 175, 80, 0.06)'
+				})
 			}}
 		>
-			<View
-				className='w-full px-4 py-3 flex-row items-center'
-				style={{
-					borderBottomWidth: 0.5,
-					borderBottomColor: colors.border,
-					...(chat.isSecret && {
-						borderLeftWidth: 3,
-						borderLeftColor: '#4CAF50',
-						backgroundColor: 'rgba(76, 175, 80, 0.06)'
-					})
+			<Pressable
+				onLongPress={onLongPress}
+				delayLongPress={300}
+				className='flex-1 px-4 py-3 flex-row items-center'
+				onPress={onPress}
+				android_ripple={{
+					color: chat.isSecret
+						? 'rgba(76, 175, 80, 0.08)'
+						: 'rgba(139, 92, 246, 0.08)'
 				}}
 			>
 				<View className='relative'>
@@ -195,6 +204,13 @@ const ChatItemRow: FC<ChatItemRowProps> = ({
 								style={{ marginRight: 4 }}
 							/>
 						)}
+						{chat.isPinned && (
+							<Pin
+								size={13}
+								color={colors.accent}
+								style={{ marginRight: 4 }}
+							/>
+						)}
 						<Text
 							className='text-base font-semibold'
 							numberOfLines={1}
@@ -205,8 +221,23 @@ const ChatItemRow: FC<ChatItemRowProps> = ({
 					</View>
 					<View className='mt-0.5'>{renderSubtitle()}</View>
 				</View>
-			</View>
-		</Pressable>
+			</Pressable>
+
+			{onDrag && (
+				<TouchableOpacity
+					onLongPress={onDrag}
+					delayLongPress={120}
+					activeOpacity={0.7}
+					className='px-4 py-3 justify-center'
+					hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+				>
+					<GripVertical
+						size={18}
+						color={isActive ? colors.accent : colors.textMuted}
+					/>
+				</TouchableOpacity>
+			)}
+		</View>
 	)
 }
 

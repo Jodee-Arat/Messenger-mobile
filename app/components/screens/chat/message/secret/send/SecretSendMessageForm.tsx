@@ -1,7 +1,8 @@
 ﻿import { Paperclip, SendHorizonal, X } from 'lucide-react-native'
 import React, { FC, useEffect } from 'react'
 import { Controller, useForm } from 'react-hook-form'
-import { Keyboard, TextInput, TouchableOpacity, View } from 'react-native'
+import { Keyboard, Platform, TextInput, TouchableOpacity, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
@@ -15,6 +16,7 @@ interface SecretSendMessageFormProps {
 	chatId: string
 	files: SendFileType[]
 	filesEdited: SendFileType[]
+	isSendingFiles: boolean
 	pickAndSendFile: () => void
 	onDeleteFile: (id: string) => void
 	clearMessageId: () => void
@@ -26,7 +28,7 @@ interface SecretSendMessageFormProps {
 	editId: string | null
 	setEditId: (id: string | null) => void
 	setFilesEdited: (files: SendFileType[]) => void
-	onSend: (text: string) => void
+	onSend: (text: string) => Promise<boolean>
 }
 
 interface FormValues {
@@ -37,6 +39,7 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 	setDraftText,
 	files,
 	filesEdited,
+	isSendingFiles,
 	pickAndSendFile,
 	onDeleteFile,
 	clearMessageId,
@@ -51,38 +54,52 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
+	const { bottom } = useSafeAreaInsets()
 	const { control, handleSubmit, watch, reset } = useForm<FormValues>({
 		defaultValues: { text: draftText ?? '' }
 	})
 
 	const canSendMessage =
-		(watch('text')?.trim() ?? '') !== '' || files.length > 0
+		((watch('text')?.trim() ?? '') !== '' || files.length > 0) &&
+		!isSendingFiles
 
 	// синхронизация draftText с полем ввода
 	useEffect(() => {
 		reset({ text: draftText })
 	}, [draftText])
 
-	const handleSubmitMessage = (data: FormValues) => {
+	const handleSubmitMessage = async (data: FormValues) => {
 		const text = data.text?.trim() ?? ''
 
 		if (!text && files.length === 0 && forwardedMessages.length === 0) {
 			return
 		}
 
-		onSend(text)
+		const wasSent = await onSend(text)
+		if (!wasSent) {
+			return
+		}
+
 		reset({ text: '' })
 		handleClearForm()
 	}
 
 	return (
-		<View className='flex-col'>
+		<View
+			className='flex-col'
+			style={{
+				paddingBottom:
+					Platform.OS === 'android'
+						? Math.max(bottom, 12)
+						: Math.max(bottom, 8)
+			}}
+		>
 			{(files.length > 0 || filesEdited.length > 0) && (
 				<FileList
 					files={files}
 					filesEdited={filesEdited}
 					onDeleteFile={onDeleteFile}
-					isLoadingSend={false}
+					isLoadingSend={isSendingFiles}
 				/>
 			)}
 
@@ -96,8 +113,12 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 			<View className='flex-row items-center mt-3 space-x-2'>
 				<TouchableOpacity
 					onPress={pickAndSendFile}
+					disabled={isSendingFiles}
 					className='p-2 rounded-lg'
-					style={{ backgroundColor: colors.cardHover }}
+					style={{
+						backgroundColor: colors.cardHover,
+						opacity: isSendingFiles ? 0.6 : 1
+					}}
 				>
 					<Paperclip size={24} color={colors.textSecondary} />
 				</TouchableOpacity>
@@ -129,7 +150,7 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 							}}
 							onSubmitEditing={() => {
 								Keyboard.dismiss()
-								handleSubmit(handleSubmitMessage)()
+								void handleSubmit(handleSubmitMessage)()
 							}}
 							returnKeyType='send'
 						/>
@@ -147,7 +168,7 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 				)}
 
 				<TouchableOpacity
-					onPress={handleSubmit(handleSubmitMessage)}
+					onPress={() => void handleSubmit(handleSubmitMessage)()}
 					disabled={!canSendMessage}
 					className='p-2 rounded-lg'
 					style={{

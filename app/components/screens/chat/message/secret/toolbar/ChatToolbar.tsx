@@ -1,6 +1,7 @@
 ﻿import { Trash2, X } from 'lucide-react-native'
 import React, { FC } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useTheme } from '@/hooks/useTheme'
 
@@ -18,6 +19,7 @@ const ChatToolbar: FC<ChatToolbarProp> = ({
 	chatId
 }) => {
 	const { colors } = useTheme()
+	const { bottom } = useSafeAreaInsets()
 	if (!messageIds || messageIds.length === 0) return null
 
 	return (
@@ -26,7 +28,7 @@ const ChatToolbar: FC<ChatToolbarProp> = ({
 				backgroundColor: colors.backgroundSecondary,
 				borderTopWidth: 1,
 				borderTopColor: colors.borderLight,
-				paddingBottom: 28,
+				paddingBottom: Math.max(bottom, 8) + 12,
 				paddingTop: 8,
 				paddingHorizontal: 8
 			}}

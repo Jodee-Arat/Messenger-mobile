@@ -1,5 +1,6 @@
 import React from 'react'
 import { Dimensions, ScrollView, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { SkeletonBox, SkeletonLine } from '@/components/ui/Skeleton'
 
@@ -12,6 +13,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window')
  */
 const UserSettingsSkeleton = () => {
 	const { colors } = useTheme()
+	const { top } = useSafeAreaInsets()
 
 	return (
 		<View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -21,7 +23,7 @@ const UserSettingsSkeleton = () => {
 					flexDirection: 'row',
 					alignItems: 'center',
 					paddingHorizontal: 16,
-					paddingTop: 52,
+					paddingTop: top + 8,
 					paddingBottom: 14,
 					borderBottomWidth: 1,
 					borderBottomColor: colors.borderLight

@@ -27,7 +27,12 @@ const Chat = () => {
 	}
 
 	return (
-		<DefaultChat chatId={chatId} chatName={chatName} isSecret={isSecret} />
+		<DefaultChat
+			groupId={groupId}
+			chatId={chatId}
+			chatName={chatName}
+			isSecret={isSecret}
+		/>
 	)
 }
 

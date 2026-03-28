@@ -1,21 +1,25 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { X } from 'lucide-react-native'
-import { FC, useEffect, useMemo } from 'react'
+import { FC, useEffect, useRef, useMemo } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import {
 	ActivityIndicator,
-	Modal,
 	ScrollView,
 	Text,
 	TextInput,
 	TouchableOpacity,
-	View
+	View,
+	Animated,
+	Dimensions,
+	Pressable
 } from 'react-native'
 import Toast from 'react-native-toast-message'
 
+import AppModal from '@/components/ui/AppModal'
 import EntityAvatar from '@/components/ui/EntityAvatar'
 import Checkbox from '@/components/ui/checkbox/Checkbox'
 
+import { useBottomSheetModalLayout } from '@/hooks/useModalLayout'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useUser } from '@/hooks/useUser'
 
@@ -33,16 +37,36 @@ interface CreateGroupModalProps {
 	onClose: () => void
 }
 
+const SCREEN_HEIGHT = Dimensions.get('window').height
+
 const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
+	const { containerPaddingBottom, sheetMaxHeight, sheetPaddingBottom } =
+		useBottomSheetModalLayout(0.8)
 	const { userId } = useUser()
+
+	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+
+	const closeSheet = (cb?: () => void) => {
+		Animated.timing(slideAnim, {
+			toValue: SCREEN_HEIGHT,
+			duration: 200,
+			useNativeDriver: true
+		}).start(() => {
+			onClose()
+			cb?.()
+		})
+	}
 
 	const {
 		data: friendsData,
 		loading: isLoadingUsers,
 		refetch: refetchFriends
-	} = useGetFriendsQuery({ skip: !isOpen, fetchPolicy: 'cache-and-network' })
+	} = useGetFriendsQuery({
+		skip: !isOpen || !userId,
+		fetchPolicy: 'network-only'
+	})
 
 	const friends = useMemo(() => {
 		if (!friendsData?.getFriends) return []
@@ -73,8 +97,7 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 	const [createGroup, { loading: isCreating }] = useCreateGroupMutation({
 		onCompleted() {
 			Toast.show({ type: 'success', text1: t('groupCreated') })
-			onClose()
-			form.reset()
+			closeSheet(() => form.reset())
 		},
 		onError(err) {
 			Toast.show({
@@ -86,30 +109,49 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 	})
 
 	useEffect(() => {
-		if (isOpen) refetchFriends()
+		if (isOpen) {
+			refetchFriends()
+			Animated.spring(slideAnim, {
+				toValue: 0,
+				useNativeDriver: true,
+				tension: 65,
+				friction: 11
+			}).start()
+		}
 	}, [isOpen])
 
 	const selectedUserIds = form.watch('userIds')
 
 	return (
-		<Modal
+		<AppModal
 			visible={isOpen}
-			animationType='slide'
+			animationType='none'
 			transparent
-			onRequestClose={onClose}
+			statusBarTranslucent
+			navigationBarTranslucent
+			onRequestClose={() => closeSheet()}
 		>
 			<View
 				className='flex-1 justify-end'
-				style={{ backgroundColor: colors.overlay }}
+				style={{
+					paddingBottom: containerPaddingBottom
+				}}
 			>
-				<View
+				<Pressable
+					className='flex-1'
+					style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: colors.overlay }}
+					onPress={() => closeSheet()}
+				/>
+				<Animated.View
 					style={{
+						transform: [{ translateY: slideAnim }],
 						backgroundColor: colors.backgroundSecondary,
 						borderTopLeftRadius: 24,
 						borderTopRightRadius: 24,
 						borderTopWidth: 1,
 						borderColor: colors.border,
-						maxHeight: '80%'
+						maxHeight: sheetMaxHeight,
+						paddingBottom: sheetPaddingBottom
 					}}
 				>
 					<View
@@ -126,7 +168,7 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 							{t('newGroup')}
 						</Text>
 						<TouchableOpacity
-							onPress={onClose}
+							onPress={() => closeSheet()}
 							activeOpacity={0.6}
 							className='w-9 h-9 rounded-full items-center justify-center'
 							style={{ backgroundColor: colors.cardHover }}
@@ -187,6 +229,7 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 							<ScrollView
 								style={{ maxHeight: 220 }}
 								showsVerticalScrollIndicator={false}
+								keyboardShouldPersistTaps='handled'
 							>
 								{friends.map(u => (
 									<Controller
@@ -303,9 +346,9 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 							)}
 						</TouchableOpacity>
 					</View>
-				</View>
+				</Animated.View>
 			</View>
-		</Modal>
+		</AppModal>
 	)
 }
 

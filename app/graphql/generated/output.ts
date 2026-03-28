@@ -15,7 +15,9 @@ export type Scalars = {
   Boolean: { input: boolean; output: boolean; }
   Int: { input: number; output: number; }
   Float: { input: number; output: number; }
+  /** A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format. */
   DateTime: { input: any; output: any; }
+  /** The `Upload` scalar type represents a file upload. */
   Upload: { input: any; output: any; }
 };
 
@@ -362,7 +364,9 @@ export type Mutation = {
   deleteGroup: Scalars['Boolean']['output'];
   deleteGroupRole: Scalars['Boolean']['output'];
   disableTotp: Scalars['Boolean']['output'];
+  discardSecretAttachment: Scalars['Boolean']['output'];
   downloadFile: FileDownloadData;
+  downloadSecretAttachment: SecretAttachmentDownloadModel;
   enableTotp: Scalars['Boolean']['output'];
   findOrCreateDirectChat: ChatModel;
   forwardChatMessage: Scalars['Boolean']['output'];
@@ -400,6 +404,7 @@ export type Mutation = {
   unPinMessage: Scalars['Boolean']['output'];
   unblockUser: Scalars['Boolean']['output'];
   updatePinnedChatsOrder: Scalars['Boolean']['output'];
+  uploadSecretAttachment: SecretAttachmentModel;
   upsertChatRole: Scalars['Boolean']['output'];
   upsertGroupRole: Scalars['Boolean']['output'];
   verifyChatTotp: Scalars['Boolean']['output'];
@@ -512,9 +517,21 @@ export type MutationDeleteGroupRoleArgs = {
 };
 
 
+export type MutationDiscardSecretAttachmentArgs = {
+  attachmentId: Scalars['String']['input'];
+  chatId: Scalars['String']['input'];
+};
+
+
 export type MutationDownloadFileArgs = {
   chatId: Scalars['String']['input'];
   fileId: Scalars['String']['input'];
+};
+
+
+export type MutationDownloadSecretAttachmentArgs = {
+  attachmentId: Scalars['String']['input'];
+  chatId: Scalars['String']['input'];
 };
 
 
@@ -706,6 +723,11 @@ export type MutationUpdatePinnedChatsOrderArgs = {
 };
 
 
+export type MutationUploadSecretAttachmentArgs = {
+  data: UploadSecretAttachmentInput;
+};
+
+
 export type MutationUpsertChatRoleArgs = {
   chatId: Scalars['String']['input'];
   data: UpsertChatRoleInput;
@@ -803,6 +825,11 @@ export type QueryFindAllMessagesByChatArgs = {
 };
 
 
+export type QueryFindAllUsersArgs = {
+  filters?: InputMaybe<FiltersInput>;
+};
+
+
 export type QueryFindChatByChatIdArgs = {
   chatId: Scalars['String']['input'];
 };
@@ -859,6 +886,7 @@ export type QueueSecretMessageModel = {
   ikPub?: Maybe<Scalars['String']['output']>;
   isKey: Scalars['Boolean']['output'];
   iv: Scalars['String']['output'];
+  secretAttachmentIds: Array<Scalars['String']['output']>;
   sig: Scalars['String']['output'];
   toUserIds: Array<Scalars['String']['output']>;
   ukm?: Maybe<Scalars['String']['output']>;
@@ -889,6 +917,25 @@ export type RemoveMessagesInput = {
   messageIds: Array<Scalars['String']['input']>;
 };
 
+export type SecretAttachmentDownloadModel = {
+  __typename?: 'SecretAttachmentDownloadModel';
+  attachmentId: Scalars['String']['output'];
+  chatId: Scalars['String']['output'];
+  ciphertextBase64: Scalars['String']['output'];
+  ciphertextSize: Scalars['String']['output'];
+};
+
+export type SecretAttachmentModel = {
+  __typename?: 'SecretAttachmentModel';
+  chatId: Scalars['String']['output'];
+  ciphertextSize: Scalars['String']['output'];
+  committedAt?: Maybe<Scalars['DateTime']['output']>;
+  createdAt: Scalars['DateTime']['output'];
+  expiresAt?: Maybe<Scalars['DateTime']['output']>;
+  id: Scalars['ID']['output'];
+  updatedAt: Scalars['DateTime']['output'];
+};
+
 export type SecretKeyRotationModel = {
   __typename?: 'SecretKeyRotationModel';
   chatId: Scalars['String']['output'];
@@ -908,6 +955,7 @@ export type SendSecretMessageInput = {
   groupId: Scalars['String']['input'];
   isKey?: InputMaybe<Scalars['Boolean']['input']>;
   iv: Scalars['String']['input'];
+  secretAttachmentIds?: InputMaybe<Array<Scalars['String']['input']>>;
   sig: Scalars['String']['input'];
   toUserIds: Array<Scalars['String']['input']>;
   ukm?: InputMaybe<Scalars['String']['input']>;
@@ -1107,6 +1155,11 @@ export type TypingIndicatorModel = {
   username: Scalars['String']['output'];
 };
 
+export type UploadSecretAttachmentInput = {
+  chatId: Scalars['String']['input'];
+  ciphertextBase64: Scalars['String']['input'];
+};
+
 export type UpsertChatRoleInput = {
   color: Scalars['String']['input'];
   name: Scalars['String']['input'];
@@ -1129,8 +1182,6 @@ export type UserModel = {
   id: Scalars['ID']['output'];
   isDeactivated: Scalars['Boolean']['output'];
   isTotpEnabled: Scalars['Boolean']['output'];
-  password: Scalars['String']['output'];
-  totpSecret?: Maybe<Scalars['String']['output']>;
   updatedAt: Scalars['DateTime']['output'];
   username: Scalars['String']['output'];
 };
@@ -1544,6 +1595,22 @@ export type UpsertGroupRoleMutationVariables = Exact<{
 
 export type UpsertGroupRoleMutation = { __typename?: 'Mutation', upsertGroupRole: boolean };
 
+export type DiscardSecretAttachmentMutationVariables = Exact<{
+  chatId: Scalars['String']['input'];
+  attachmentId: Scalars['String']['input'];
+}>;
+
+
+export type DiscardSecretAttachmentMutation = { __typename?: 'Mutation', discardSecretAttachment: boolean };
+
+export type DownloadSecretAttachmentMutationVariables = Exact<{
+  chatId: Scalars['String']['input'];
+  attachmentId: Scalars['String']['input'];
+}>;
+
+
+export type DownloadSecretAttachmentMutation = { __typename?: 'Mutation', downloadSecretAttachment: { __typename?: 'SecretAttachmentDownloadModel', attachmentId: string, chatId: string, ciphertextBase64: string, ciphertextSize: string } };
+
 export type SendPreKeyMutationVariables = Exact<{
   data: PreKeyInput;
 }>;
@@ -1564,6 +1631,13 @@ export type SendSharedSecretKeyMutationVariables = Exact<{
 
 
 export type SendSharedSecretKeyMutation = { __typename?: 'Mutation', sendSharedSecretKey: { __typename?: 'QueueSharedSecretKeyModel', id: string } };
+
+export type UploadSecretAttachmentMutationVariables = Exact<{
+  data: UploadSecretAttachmentInput;
+}>;
+
+
+export type UploadSecretAttachmentMutation = { __typename?: 'Mutation', uploadSecretAttachment: { __typename?: 'SecretAttachmentModel', id: string, chatId: string, ciphertextSize: string, committedAt?: any | null, expiresAt?: any | null, createdAt: any, updatedAt: any } };
 
 export type ChangeProfileAvatarMutationVariables = Exact<{
   avatar: Scalars['Upload']['input'];
@@ -1643,7 +1717,7 @@ export type GetBlockedUsersQuery = { __typename?: 'Query', getBlockedUsers: Arra
 export type GetFriendsQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type GetFriendsQuery = { __typename?: 'Query', getFriends: Array<{ __typename?: 'FriendshipModel', id: string, userId: string, friendId: string, status: FriendshipStatusEnum, createdAt: any, user?: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null } | null, friend?: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null } | null }> };
+export type GetFriendsQuery = { __typename?: 'Query', getFriends: Array<{ __typename?: 'FriendshipModel', id: string, userId: string, friendId: string, status: FriendshipStatusEnum, createdAt: any, user?: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null, bio?: string | null } | null, friend?: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null, bio?: string | null } | null }> };
 
 export type GetIncomingFriendRequestsQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -1704,7 +1778,9 @@ export type GetSharedSecretKeyQueryVariables = Exact<{
 
 export type GetSharedSecretKeyQuery = { __typename?: 'Query', getSharedSecretKey: Array<{ __typename?: 'QueueSharedSecretKeyModel', id: string, groupId: string, createdAt: any, updatedAt: any, ikPub: string, chatId: string, fromUserId: string, toUserId: string, ekPub: string, usedOpk?: string | null, ukm: string, iv: string, encryptedKey: string, sig: string }> };
 
-export type FindAllUsersQueryVariables = Exact<{ [key: string]: never; }>;
+export type FindAllUsersQueryVariables = Exact<{
+  filters?: InputMaybe<FiltersInput>;
+}>;
 
 
 export type FindAllUsersQuery = { __typename?: 'Query', findAllUsers: Array<{ __typename?: 'UserModel', username: string, avatarUrl?: string | null, bio?: string | null, id: string }> };
@@ -1712,7 +1788,7 @@ export type FindAllUsersQuery = { __typename?: 'Query', findAllUsers: Array<{ __
 export type FindProfileQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type FindProfileQuery = { __typename?: 'Query', findProfile: { __typename?: 'UserModel', id: string, avatarUrl?: string | null, username: string, bio?: string | null, password: string, isTotpEnabled: boolean } };
+export type FindProfileQuery = { __typename?: 'Query', findProfile: { __typename?: 'UserModel', id: string, avatarUrl?: string | null, username: string, bio?: string | null, isTotpEnabled: boolean } };
 
 export type FindCurrentSessionQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -1782,7 +1858,7 @@ export type ChatUpdatedSubscriptionVariables = Exact<{
 }>;
 
 
-export type ChatUpdatedSubscription = { __typename?: 'Subscription', chatUpdated: { __typename?: 'ChatModel', chatName?: string | null, avatarUrl?: string | null, updatedAt: any, isSecret: boolean, requireTotp: boolean, id: string, isGroup: boolean, groupId?: string | null, lastMessageAt?: any | null, members: Array<{ __typename?: 'ChatMemberModel', id: string, user: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null } }>, lastMessage?: { __typename?: 'ChatMessageModel', text?: string | null, user: { __typename?: 'UserModel', username: string }, files?: Array<{ __typename?: 'FileMessageModel', fileName: string }> | null } | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string }> }> | null } };
+export type ChatUpdatedSubscription = { __typename?: 'Subscription', chatUpdated: { __typename?: 'ChatModel', chatName?: string | null, avatarUrl?: string | null, updatedAt: any, pinnedMessageId?: string | null, isSecret: boolean, requireTotp: boolean, id: string, isGroup: boolean, groupId?: string | null, lastMessageAt?: any | null, members: Array<{ __typename?: 'ChatMemberModel', id: string, user: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null } }>, lastMessage?: { __typename?: 'ChatMessageModel', text?: string | null, user: { __typename?: 'UserModel', username: string }, files?: Array<{ __typename?: 'FileMessageModel', fileName: string }> | null } | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string }> }> | null } };
 
 export type ChatUpsertedRoleSubscriptionVariables = Exact<{
   chatId: Scalars['String']['input'];
@@ -3608,6 +3684,75 @@ export function useUpsertGroupRoleMutation(baseOptions?: Apollo.MutationHookOpti
 export type UpsertGroupRoleMutationHookResult = ReturnType<typeof useUpsertGroupRoleMutation>;
 export type UpsertGroupRoleMutationResult = Apollo.MutationResult<UpsertGroupRoleMutation>;
 export type UpsertGroupRoleMutationOptions = Apollo.BaseMutationOptions<UpsertGroupRoleMutation, UpsertGroupRoleMutationVariables>;
+export const DiscardSecretAttachmentDocument = gql`
+    mutation DiscardSecretAttachment($chatId: String!, $attachmentId: String!) {
+  discardSecretAttachment(chatId: $chatId, attachmentId: $attachmentId)
+}
+    `;
+export type DiscardSecretAttachmentMutationFn = Apollo.MutationFunction<DiscardSecretAttachmentMutation, DiscardSecretAttachmentMutationVariables>;
+
+/**
+ * __useDiscardSecretAttachmentMutation__
+ *
+ * To run a mutation, you first call `useDiscardSecretAttachmentMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useDiscardSecretAttachmentMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [discardSecretAttachmentMutation, { data, loading, error }] = useDiscardSecretAttachmentMutation({
+ *   variables: {
+ *      chatId: // value for 'chatId'
+ *      attachmentId: // value for 'attachmentId'
+ *   },
+ * });
+ */
+export function useDiscardSecretAttachmentMutation(baseOptions?: Apollo.MutationHookOptions<DiscardSecretAttachmentMutation, DiscardSecretAttachmentMutationVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useMutation<DiscardSecretAttachmentMutation, DiscardSecretAttachmentMutationVariables>(DiscardSecretAttachmentDocument, options);
+      }
+export type DiscardSecretAttachmentMutationHookResult = ReturnType<typeof useDiscardSecretAttachmentMutation>;
+export type DiscardSecretAttachmentMutationResult = Apollo.MutationResult<DiscardSecretAttachmentMutation>;
+export type DiscardSecretAttachmentMutationOptions = Apollo.BaseMutationOptions<DiscardSecretAttachmentMutation, DiscardSecretAttachmentMutationVariables>;
+export const DownloadSecretAttachmentDocument = gql`
+    mutation DownloadSecretAttachment($chatId: String!, $attachmentId: String!) {
+  downloadSecretAttachment(chatId: $chatId, attachmentId: $attachmentId) {
+    attachmentId
+    chatId
+    ciphertextBase64
+    ciphertextSize
+  }
+}
+    `;
+export type DownloadSecretAttachmentMutationFn = Apollo.MutationFunction<DownloadSecretAttachmentMutation, DownloadSecretAttachmentMutationVariables>;
+
+/**
+ * __useDownloadSecretAttachmentMutation__
+ *
+ * To run a mutation, you first call `useDownloadSecretAttachmentMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useDownloadSecretAttachmentMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [downloadSecretAttachmentMutation, { data, loading, error }] = useDownloadSecretAttachmentMutation({
+ *   variables: {
+ *      chatId: // value for 'chatId'
+ *      attachmentId: // value for 'attachmentId'
+ *   },
+ * });
+ */
+export function useDownloadSecretAttachmentMutation(baseOptions?: Apollo.MutationHookOptions<DownloadSecretAttachmentMutation, DownloadSecretAttachmentMutationVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useMutation<DownloadSecretAttachmentMutation, DownloadSecretAttachmentMutationVariables>(DownloadSecretAttachmentDocument, options);
+      }
+export type DownloadSecretAttachmentMutationHookResult = ReturnType<typeof useDownloadSecretAttachmentMutation>;
+export type DownloadSecretAttachmentMutationResult = Apollo.MutationResult<DownloadSecretAttachmentMutation>;
+export type DownloadSecretAttachmentMutationOptions = Apollo.BaseMutationOptions<DownloadSecretAttachmentMutation, DownloadSecretAttachmentMutationVariables>;
 export const SendPreKeyDocument = gql`
     mutation SendPreKey($data: PreKeyInput!) {
   sendPreKey(data: $data)
@@ -3705,6 +3850,45 @@ export function useSendSharedSecretKeyMutation(baseOptions?: Apollo.MutationHook
 export type SendSharedSecretKeyMutationHookResult = ReturnType<typeof useSendSharedSecretKeyMutation>;
 export type SendSharedSecretKeyMutationResult = Apollo.MutationResult<SendSharedSecretKeyMutation>;
 export type SendSharedSecretKeyMutationOptions = Apollo.BaseMutationOptions<SendSharedSecretKeyMutation, SendSharedSecretKeyMutationVariables>;
+export const UploadSecretAttachmentDocument = gql`
+    mutation UploadSecretAttachment($data: UploadSecretAttachmentInput!) {
+  uploadSecretAttachment(data: $data) {
+    id
+    chatId
+    ciphertextSize
+    committedAt
+    expiresAt
+    createdAt
+    updatedAt
+  }
+}
+    `;
+export type UploadSecretAttachmentMutationFn = Apollo.MutationFunction<UploadSecretAttachmentMutation, UploadSecretAttachmentMutationVariables>;
+
+/**
+ * __useUploadSecretAttachmentMutation__
+ *
+ * To run a mutation, you first call `useUploadSecretAttachmentMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useUploadSecretAttachmentMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [uploadSecretAttachmentMutation, { data, loading, error }] = useUploadSecretAttachmentMutation({
+ *   variables: {
+ *      data: // value for 'data'
+ *   },
+ * });
+ */
+export function useUploadSecretAttachmentMutation(baseOptions?: Apollo.MutationHookOptions<UploadSecretAttachmentMutation, UploadSecretAttachmentMutationVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useMutation<UploadSecretAttachmentMutation, UploadSecretAttachmentMutationVariables>(UploadSecretAttachmentDocument, options);
+      }
+export type UploadSecretAttachmentMutationHookResult = ReturnType<typeof useUploadSecretAttachmentMutation>;
+export type UploadSecretAttachmentMutationResult = Apollo.MutationResult<UploadSecretAttachmentMutation>;
+export type UploadSecretAttachmentMutationOptions = Apollo.BaseMutationOptions<UploadSecretAttachmentMutation, UploadSecretAttachmentMutationVariables>;
 export const ChangeProfileAvatarDocument = gql`
     mutation ChangeProfileAvatar($avatar: Upload!) {
   changeProfileAvatar(avatar: $avatar)
@@ -4337,11 +4521,13 @@ export const GetFriendsDocument = gql`
       id
       username
       avatarUrl
+      bio
     }
     friend {
       id
       username
       avatarUrl
+      bio
     }
     createdAt
   }
@@ -4809,8 +4995,8 @@ export type GetSharedSecretKeyLazyQueryHookResult = ReturnType<typeof useGetShar
 export type GetSharedSecretKeySuspenseQueryHookResult = ReturnType<typeof useGetSharedSecretKeySuspenseQuery>;
 export type GetSharedSecretKeyQueryResult = Apollo.QueryResult<GetSharedSecretKeyQuery, GetSharedSecretKeyQueryVariables>;
 export const FindAllUsersDocument = gql`
-    query FindAllUsers {
-  findAllUsers {
+    query FindAllUsers($filters: FiltersInput) {
+  findAllUsers(filters: $filters) {
     username
     avatarUrl
     bio
@@ -4831,6 +5017,7 @@ export const FindAllUsersDocument = gql`
  * @example
  * const { data, loading, error } = useFindAllUsersQuery({
  *   variables: {
+ *      filters: // value for 'filters'
  *   },
  * });
  */
@@ -4857,7 +5044,6 @@ export const FindProfileDocument = gql`
     avatarUrl
     username
     bio
-    password
     isTotpEnabled
   }
 }
@@ -5309,6 +5495,7 @@ export const ChatUpdatedDocument = gql`
     chatName
     avatarUrl
     updatedAt
+    pinnedMessageId
     isSecret
     requireTotp
     id

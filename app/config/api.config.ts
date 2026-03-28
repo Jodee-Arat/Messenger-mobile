@@ -1,5 +1,7 @@
-export const SERVER_URL = process.env.EXPO_PUBLIC_SERVER_URL
-export const API_URL = `${SERVER_URL}/api`
+import { API_URL as RUNTIME_API_URL } from '@/libs/constants/url.constant'
+
+export const SERVER_URL = RUNTIME_API_URL
+export const API_URL = RUNTIME_API_URL
 
 export const getAuthUrl = (suffix: string) => `/auth${suffix}`
 export const getUsersUrl = (suffix: string) => `/users${suffix}`

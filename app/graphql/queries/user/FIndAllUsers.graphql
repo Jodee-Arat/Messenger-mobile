@@ -1,5 +1,5 @@
-query FindAllUsers {
-  findAllUsers {
+query FindAllUsers($filters: FiltersInput) {
+  findAllUsers(filters: $filters) {
     username
     avatarUrl
     bio

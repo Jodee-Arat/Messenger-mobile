@@ -1,16 +1,20 @@
-import { LogOut } from 'lucide-react-native'
-import React, { FC } from 'react'
+import { LogOut, Search, X } from 'lucide-react-native'
+import React, { FC, useEffect, useState } from 'react'
 import {
 	Animated,
-	Modal,
 	Pressable,
 	Text,
+	TextInput,
 	TouchableOpacity,
 	View
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+
+import AppModal from '@/components/ui/AppModal'
 
 import { useTheme, useTranslation } from '@/hooks/useTheme'
-import { useTypedNavigation } from '@/hooks/useTypedNavigation'
+
+import { resetToAuth } from '@/navigation/navigate'
 
 import CreateGroupModal from './CreateGroupModal'
 import GroupActionSheet from './GroupActionSheet'
@@ -23,14 +27,32 @@ interface GroupsSidebarProps {
 	onClose: () => void
 }
 
+const SEARCH_DEBOUNCE_MS = 500
+
 const GroupsSidebar: FC<GroupsSidebarProps> = ({ visible, onClose }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
-	const navigation = useTypedNavigation()
+	const { bottom } = useSafeAreaInsets()
+	const [searchQuery, setSearchQuery] = useState('')
+	const [debouncedSearch, setDebouncedSearch] = useState('')
+
+	useEffect(() => {
+		const timer = setTimeout(() => {
+			setDebouncedSearch(searchQuery)
+		}, SEARCH_DEBOUNCE_MS)
+		return () => clearTimeout(timer)
+	}, [searchQuery])
+
+	// Reset search when sidebar closes
+	useEffect(() => {
+		if (!visible) {
+			setSearchQuery('')
+			setDebouncedSearch('')
+		}
+	}, [visible])
 
 	const {
 		slideAnim,
-		fadeAnim,
 		showModal,
 		isCreateOpen,
 		setIsCreateOpen,
@@ -38,15 +60,23 @@ const GroupsSidebar: FC<GroupsSidebarProps> = ({ visible, onClose }) => {
 		setLongPressGroup,
 		allGroups,
 		isLoadingGroups,
+		isRefreshingGroups,
+		handleRefreshGroups,
 		deleteGroup,
 		user,
 		exit
-	} = useGroupsSidebar(visible, onClose)
+	} = useGroupsSidebar(visible, onClose, debouncedSearch)
 
 	if (!showModal) return null
 
 	return (
-		<Modal transparent visible={showModal} animationType='none'>
+		<AppModal
+			transparent
+			visible={showModal}
+			animationType='none'
+			statusBarTranslucent
+			navigationBarTranslucent
+		>
 			<View className='flex-1 flex-row'>
 				{/* Sidebar panel */}
 				<Animated.View
@@ -64,9 +94,61 @@ const GroupsSidebar: FC<GroupsSidebarProps> = ({ visible, onClose }) => {
 						onClose={onClose}
 					/>
 
+					{/* Search bar */}
+					<View
+						className='px-4 py-2'
+						style={{
+							borderBottomWidth: 1,
+							borderBottomColor: colors.border
+						}}
+					>
+						<View
+							className='h-9 rounded-xl flex-row items-center px-3'
+							style={{
+								backgroundColor: colors.backgroundTertiary,
+								borderWidth: 1,
+								borderColor: colors.border
+							}}
+						>
+							<Search
+								size={15}
+								color={colors.textSecondary}
+								style={{ marginRight: 8 }}
+							/>
+							<TextInput
+								value={searchQuery}
+								onChangeText={setSearchQuery}
+								placeholder={t('searchGroupsPlaceholder')}
+								placeholderTextColor={colors.textMuted}
+								style={{
+									flex: 1,
+									color: colors.text,
+									fontSize: 14,
+									paddingVertical: 0
+								}}
+							/>
+							{searchQuery.length > 0 && (
+								<TouchableOpacity
+									onPress={() => {
+										setSearchQuery('')
+										setDebouncedSearch('')
+									}}
+									activeOpacity={0.6}
+								>
+									<X
+										size={16}
+										color={colors.textSecondary}
+									/>
+								</TouchableOpacity>
+							)}
+						</View>
+					</View>
+
 					<GroupsList
 						groups={allGroups}
 						isLoading={isLoadingGroups}
+						isRefreshing={isRefreshingGroups}
+						onRefresh={handleRefreshGroups}
 						onCreatePress={() => setIsCreateOpen(true)}
 						onLongPress={setLongPressGroup}
 						onClose={onClose}
@@ -78,14 +160,14 @@ const GroupsSidebar: FC<GroupsSidebarProps> = ({ visible, onClose }) => {
 						style={{
 							borderTopWidth: 1,
 							borderTopColor: colors.border,
-							paddingBottom: 32
+							paddingBottom: bottom
 						}}
 					>
 						<TouchableOpacity
 							onPress={() => {
 								onClose()
 								exit()
-								navigation.navigate('Auth')
+								resetToAuth()
 							}}
 							activeOpacity={0.6}
 							className='flex-row items-center py-2'
@@ -102,13 +184,13 @@ const GroupsSidebar: FC<GroupsSidebarProps> = ({ visible, onClose }) => {
 				</Animated.View>
 
 				{/* Backdrop */}
-				<Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+				<View style={{ flex: 1 }}>
 					<Pressable
 						className='flex-1'
 						style={{ backgroundColor: colors.overlay }}
 						onPress={onClose}
 					/>
-				</Animated.View>
+				</View>
 			</View>
 
 			{/* Long-press group bottom sheet */}
@@ -123,7 +205,7 @@ const GroupsSidebar: FC<GroupsSidebarProps> = ({ visible, onClose }) => {
 				isOpen={isCreateOpen}
 				onClose={() => setIsCreateOpen(false)}
 			/>
-		</Modal>
+		</AppModal>
 	)
 }
 

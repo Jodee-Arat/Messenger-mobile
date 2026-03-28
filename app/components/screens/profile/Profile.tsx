@@ -1,16 +1,18 @@
 import { LinearGradient } from 'expo-linear-gradient'
 import { ArrowLeft, ChevronRight, LogOut, Settings } from 'lucide-react-native'
-import { FC } from 'react'
+import { FC, useCallback, useState } from 'react'
 import {
 	ActivityIndicator,
 	Alert,
 	Dimensions,
 	Image,
+	RefreshControl,
 	ScrollView,
 	Text,
 	TouchableOpacity,
 	View
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
@@ -27,9 +29,11 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window')
 
 const Profile: FC = () => {
 	const navigation = useTypedNavigation()
-	const { user, isLoadingProfile } = useCurrentUser()
+	const { user, isLoadingProfile, refetch } = useCurrentUser()
 	const { colors, isDark } = useTheme()
 	const { t } = useTranslation()
+	const { top } = useSafeAreaInsets()
+	const [isRefreshing, setIsRefreshing] = useState(false)
 
 	const [logoutUser, { loading: isLoggingOut }] = useLogoutUserMutation({
 		onCompleted: async () => {
@@ -51,6 +55,15 @@ const Profile: FC = () => {
 		])
 	}
 
+	const handleRefresh = useCallback(async () => {
+		try {
+			setIsRefreshing(true)
+			await refetch()
+		} finally {
+			setIsRefreshing(false)
+		}
+	}, [refetch])
+
 	if (isLoadingProfile || !user) {
 		return <ProfileSkeleton />
 	}
@@ -63,6 +76,15 @@ const Profile: FC = () => {
 				className='flex-1'
 				showsVerticalScrollIndicator={false}
 				contentContainerStyle={{ paddingBottom: 40 }}
+				refreshControl={
+					<RefreshControl
+						refreshing={isRefreshing}
+						onRefresh={handleRefresh}
+						tintColor={colors.accent}
+						colors={[colors.accent]}
+						progressBackgroundColor={colors.card}
+					/>
+				}
 			>
 				{/* ── Gradient Header ── */}
 				<LinearGradient
@@ -75,7 +97,7 @@ const Profile: FC = () => {
 					end={{ x: 1, y: 1 }}
 					style={{
 						width: SCREEN_WIDTH,
-						paddingTop: 56,
+						paddingTop: top + 24,
 						paddingBottom: 60,
 						alignItems: 'center'
 					}}
@@ -86,7 +108,7 @@ const Profile: FC = () => {
 						activeOpacity={0.7}
 						style={{
 							position: 'absolute',
-							top: 52,
+							top: top + 12,
 							left: 20,
 							width: 40,
 							height: 40,
@@ -129,6 +151,7 @@ const Profile: FC = () => {
 									source={{
 										uri: getMediaSource(user.avatarUrl)
 									}}
+									resizeMode='cover'
 									style={{
 										width: '100%',
 										height: '100%'

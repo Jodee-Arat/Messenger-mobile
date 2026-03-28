@@ -1,8 +1,9 @@
-import { useRoute } from '@react-navigation/native'
+import { useFocusEffect, useRoute } from '@react-navigation/native'
 import { LogOut, ShieldCheck, Trash2 } from 'lucide-react-native'
-import React, { useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
 	Alert,
+	RefreshControl,
 	ScrollView,
 	Switch,
 	Text,
@@ -12,8 +13,11 @@ import {
 
 import SettingsSkeleton from '@/components/ui/SettingsSkeleton'
 
+import { isChatMembershipRevokedError } from '@/hooks/useBlockedUsers'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
+import { useUser } from '@/hooks/useUser'
+import { resetToHome } from '@/navigation/navigate'
 
 import { chatEvents } from '@/utils/chatEvents'
 
@@ -33,6 +37,8 @@ import ChatSettingsHeader from './ChatSettingsHeader'
 import { useChatSettings } from './useChatSettings'
 import {
 	ChatPermissionEnum,
+	useChatDeletedSubscription,
+	useGroupDeletedSubscription,
 	useLeaveChatMutation,
 	useToggleChatRequireTotpMutation
 } from '@/graphql/generated/output'
@@ -41,18 +47,22 @@ const ChatSettings = () => {
 	const route = useRoute()
 	const navigation = useTypedNavigation()
 	const { chatId } = route.params as ChatSettingsRouteParams
+	const { userId } = useUser()
+	const handledAccessLossRef = useRef(false)
 
 	const { colors } = useTheme()
 	const { t } = useTranslation()
 	const PERMISSIONS = getChatPermissions(colors, t)
 
 	const [isInviteOpen, setIsInviteOpen] = useState(false)
+	const [isRefreshing, setIsRefreshing] = useState(false)
 	const [leaveChatMutation] = useLeaveChatMutation()
 	const [toggleRequireTotpMutation, { loading: togglingTotp }] =
 		useToggleChatRequireTotpMutation()
 
 	const {
 		chat,
+		chatError,
 		members,
 		isLoadingChat,
 		isLoadingMemberRole,
@@ -75,12 +85,74 @@ const ChatSettings = () => {
 		handleDeleteChat,
 		handleInviteMember,
 		handleRemoveMember,
+		refreshChatSettings,
 		isChangingInfo,
 		isChangingAvatar,
 		isRemovingAvatar,
 		getRoleForUser,
 		getMembersWithRole
 	} = useChatSettings(chatId)
+
+	const handleChatAccessLoss = useCallback(
+		(scope: 'chat' | 'group') => {
+			if (handledAccessLossRef.current) return
+			handledAccessLossRef.current = true
+
+			if (scope === 'group') {
+				resetToHome()
+				return
+			}
+
+			if (navigation.canGoBack()) {
+				navigation.goBack()
+				return
+			}
+
+			resetToHome()
+		},
+		[navigation]
+	)
+
+	const handleRefresh = useCallback(async () => {
+		try {
+			setIsRefreshing(true)
+			await refreshChatSettings()
+		} finally {
+			setIsRefreshing(false)
+		}
+	}, [refreshChatSettings])
+
+	useEffect(() => {
+		if (!isChatMembershipRevokedError(chatError)) return
+		handleChatAccessLoss('chat')
+	}, [chatError, handleChatAccessLoss])
+
+	useFocusEffect(
+		useCallback(() => {
+			void refreshChatSettings()
+		}, [refreshChatSettings])
+	)
+
+	useChatDeletedSubscription({
+		variables: {
+			groupId: chat?.groupId ?? '',
+			userId
+		},
+		skip: !(userId && chat?.groupId),
+		onData: ({ data }) => {
+			if (data.data?.chatDeleted.id !== chatId) return
+			handleChatAccessLoss('chat')
+		}
+	})
+
+	useGroupDeletedSubscription({
+		variables: { userId },
+		skip: !(userId && chat?.groupId),
+		onData: ({ data }) => {
+			if (data.data?.groupDeleted.id !== chat?.groupId) return
+			handleChatAccessLoss('group')
+		}
+	})
 
 	// ── Permission checks ────────────────────────────────────
 	const isCreator = !!currentRole?.isCreator
@@ -112,11 +184,6 @@ const ChatSettings = () => {
 		currentRole?.permissions?.includes(ChatPermissionEnum.ChangeChatInfo) ||
 		currentRole?.isCreator
 
-	const canChangeChatName =
-		isDM ||
-		currentRole?.permissions?.includes(ChatPermissionEnum.ChangeChatName) ||
-		currentRole?.isCreator
-
 	const canChangeChatAvatar =
 		isDM ||
 		currentRole?.permissions?.includes(
@@ -136,13 +203,6 @@ const ChatSettings = () => {
 
 	const isSavingChatInfo =
 		isChangingInfo || isChangingAvatar || isRemovingAvatar
-
-	console.log(
-		canChangeChatInfo,
-		canChangeChatName,
-		canChangeChatAvatar,
-		currentRole
-	)
 
 	const chatName = chat?.chatName ?? t('chatFallback')
 
@@ -199,14 +259,21 @@ const ChatSettings = () => {
 						className='flex-1'
 						showsVerticalScrollIndicator={false}
 						contentContainerStyle={{ paddingBottom: 40 }}
+						refreshControl={
+							<RefreshControl
+								refreshing={isRefreshing}
+								onRefresh={handleRefresh}
+								tintColor={colors.accent}
+								colors={[colors.accent]}
+								progressBackgroundColor={colors.card}
+							/>
+						}
 					>
 						<ChatInfoCard
 							chat={chat}
 							isLoading={isLoadingChat}
 							membersCount={members.length}
-							canChangeChatInfo={
-								!!(canChangeChatInfo || canChangeChatName)
-							}
+							canChangeChatInfo={!!canChangeChatInfo}
 							canChangeChatAvatar={!!canChangeChatAvatar}
 							onSaveInfo={handleChangeChatInfo}
 							onChangeAvatar={handleChangeAvatar}
@@ -400,6 +467,7 @@ const ChatSettings = () => {
 						onClose={() => setIsInviteOpen(false)}
 						onInvite={handleInviteMember}
 						existingMemberIds={members.map(m => m.user.id)}
+						groupId={chat?.groupId ?? null}
 					/>
 				</>
 			)}

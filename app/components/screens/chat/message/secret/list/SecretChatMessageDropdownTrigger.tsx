@@ -1,8 +1,9 @@
-﻿import {
+﻿import * as ExpoClipboard from 'expo-clipboard'
+import {
 	CheckCircle,
 	Clipboard,
-	Pencil,
 	Pin,
+	PinOff,
 	Trash2,
 	X
 } from 'lucide-react-native'
@@ -10,7 +11,6 @@ import React, { FC, useCallback, useRef, useState } from 'react'
 import {
 	Animated,
 	Dimensions,
-	Modal,
 	Pressable,
 	Text,
 	TouchableOpacity,
@@ -18,12 +18,18 @@ import {
 } from 'react-native'
 import Toast from 'react-native-toast-message'
 
+import AppModal from '@/components/ui/AppModal'
+
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
-import { ForwardedMessageType } from '@/types/forward/forwarded-message.type'
 import { MessageType } from '@/types/message.type'
 
 import ChatMessageItem from '../../default/list/ChatMessageItem'
+
+import {
+	usePinMessageMutation,
+	useUnPinMessageMutation
+} from '@/graphql/generated/output'
 
 interface SecretChatMessageDropdownProp {
 	messageInfo: MessageType
@@ -32,15 +38,15 @@ interface SecretChatMessageDropdownProp {
 	messageId: string
 	chatId: string
 	messageIds: string[]
+	isSelectionMode: boolean
 	handleAddForwardedMessage?: (messages: MessageType[]) => void
 	handleChooseMessage: (messageId: string) => void
 	handleClearMessagesId: () => void
-	startEdit?: (
-		message: MessageType,
-		forwardedMessages?: ForwardedMessageType[]
-	) => void
 	onDelete: (id: string[]) => Promise<void>
 	isSelected: boolean
+	pinnedMessageId?: string | null
+	isFirstInGroup: boolean
+	isLastInGroup: boolean
 }
 
 const SCREEN_HEIGHT = Dimensions.get('window').height
@@ -48,22 +54,26 @@ const SCREEN_HEIGHT = Dimensions.get('window').height
 const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 	setPinnedMessage = () => {},
 	chatId,
-	startEdit = () => {},
 	handleAddForwardedMessage = () => {},
 	handleClearMessagesId,
 	handleChooseMessage,
 	messageId,
 	messageIds,
+	isSelectionMode,
 	messageInfo,
 	userId,
 	onDelete,
-	isSelected
+	isSelected,
+	pinnedMessageId,
+	isFirstInGroup,
+	isLastInGroup
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
 	const [modalVisible, setModalVisible] = useState(false)
 	const [isDeleting, setIsDeleting] = useState(false)
 	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+	const isPinnedMessage = pinnedMessageId === messageInfo.id
 
 	const openSheet = () => {
 		setModalVisible(true)
@@ -112,14 +122,35 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 		closeSheet()
 	}, [messageInfo, handleAddForwardedMessage, handleClearMessagesId])
 
-	const handlePinMessage = useCallback(() => {
-		setPinnedMessage(messageInfo)
-		Toast.show({
-			type: 'success',
-			text1: t('messagePinned')
-		})
-		closeSheet()
-	}, [messageInfo, setPinnedMessage])
+	const [pinMessage] = usePinMessageMutation({
+		onCompleted() {
+			setPinnedMessage(messageInfo)
+			Toast.show({
+				type: 'success',
+				text1: t('messagePinned')
+			})
+		},
+		onError(error) {
+			Toast.show({
+				type: 'error',
+				text1: t('pinError'),
+				text2: error.message
+			})
+		}
+	})
+
+	const [unPinMessage] = useUnPinMessageMutation({
+		onCompleted() {
+			setPinnedMessage(null)
+		},
+		onError(error) {
+			Toast.show({
+				type: 'error',
+				text1: t('unpinError'),
+				text2: error.message
+			})
+		}
+	})
 
 	const actions = [
 		{
@@ -133,35 +164,37 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 		{
 			icon: <Clipboard size={20} color={colors.text} />,
 			label: t('copy'),
-			onPress: () => {
+			onPress: async () => {
 				if (messageInfo.text) {
+					await ExpoClipboard.setStringAsync(messageInfo.text)
 					Toast.show({
 						type: 'info',
-						text1: t('copied'),
-						text2: messageInfo.text
+						text1: t('copied')
 					})
 				}
 				closeSheet()
 			}
 		},
 		{
-			icon: <Pencil size={20} color={colors.text} />,
-			label: t('edit'),
+			icon: isPinnedMessage ? (
+				<PinOff size={20} color={colors.text} />
+			) : (
+				<Pin size={20} color={colors.text} />
+			),
+			label: isPinnedMessage ? t('unpinChat') || 'Unpin' : t('pin'),
 			onPress: () => {
-				startEdit(
-					messageInfo,
-					messageInfo?.repliedToLinks
-						?.map(link => link?.repliedTo)
-						.filter((msg): msg is ForwardedMessageType => !!msg) ??
-						[]
-				)
+				if (isPinnedMessage) {
+					unPinMessage({ variables: { chatId } })
+				} else {
+					pinMessage({
+						variables: {
+							chatId,
+							messageId: messageInfo.id
+						}
+					})
+				}
 				closeSheet()
 			}
-		},
-		{
-			icon: <Pin size={20} color={colors.text} />,
-			label: t('pin'),
-			onPress: handlePinMessage
 		},
 		{
 			icon: <Trash2 size={20} color={colors.destructive} />,
@@ -172,9 +205,25 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 		}
 	]
 
+	const handlePressMessage = () => {
+		if (isSelectionMode) {
+			handleChooseMessage(messageId)
+			return
+		}
+		openSheet()
+	}
+
+	const handleLongPressMessage = () => {
+		handleChooseMessage(messageId)
+	}
+
 	return (
 		<>
-			<Pressable onLongPress={openSheet} delayLongPress={300}>
+			<Pressable
+				onPress={handlePressMessage}
+				onLongPress={handleLongPressMessage}
+				delayLongPress={300}
+			>
 				<View
 					className='rounded-xl'
 					style={{
@@ -184,21 +233,23 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 					}}
 				>
 					<ChatMessageItem
+						isSelectionMode={isSelectionMode}
 						chatId={chatId}
-						handleChooseMessage={handleChooseMessage}
-						messageId={messageId}
-						messageIds={messageIds}
 						messageInfo={messageInfo}
 						userId={userId}
 						isSelected={isSelected}
+						isFirstInGroup={isFirstInGroup}
+						isLastInGroup={isLastInGroup}
 					/>
 				</View>
 			</Pressable>
 
-			<Modal
+			<AppModal
 				transparent
 				visible={modalVisible}
 				animationType='none'
+				statusBarTranslucent
+				navigationBarTranslucent
 				onRequestClose={() => closeSheet()}
 			>
 				<View className='flex-1'>
@@ -299,7 +350,7 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 						</View>
 					</Animated.View>
 				</View>
-			</Modal>
+			</AppModal>
 		</>
 	)
 }

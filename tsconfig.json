@@ -1,18 +1,21 @@
 {
-	"extends": "expo/tsconfig.base",
-	"compilerOptions": {
-		"allowSyntheticDefaultImports": true,
-		"strict": true,
-		"baseUrl": ".",
-		"paths": {
-			"@/*": ["./app/*"]
-		},
-		"moduleResolution": "bundler"
-	},
-	"include": [
-		"**/*.ts",
-		"**/*.tsx",
-		"src/types/**/*.d.ts",
-		"app/ErrorUtilsPolyfill.js"
-	]
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./app/*"
+      ]
+    },
+    "moduleResolution": "bundler"
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "src/types/**/*.d.ts",
+    "app/ErrorUtilsPolyfill.js",
+    "nativewind-env.d.ts"
+  ]
 }

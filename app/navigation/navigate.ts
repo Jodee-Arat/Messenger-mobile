@@ -24,3 +24,11 @@ export function resetToAuth() {
 		)
 	}
 }
+
+export function resetToHome() {
+	if (navigationRef.isReady() && navigationRef.current) {
+		navigationRef.dispatch(
+			CommonActions.reset({ index: 0, routes: [{ name: 'Home' }] })
+		)
+	}
+}

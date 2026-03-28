@@ -3,8 +3,6 @@ import React, { useRef, useState } from 'react'
 import {
 	ActivityIndicator,
 	Animated,
-	Dimensions,
-	Modal,
 	Pressable,
 	ScrollView,
 	Text,
@@ -13,14 +11,14 @@ import {
 	View
 } from 'react-native'
 
+import AppModal from '@/components/ui/AppModal'
 import EntityAvatar from '@/components/ui/EntityAvatar'
 
+import { useBottomSheetModalLayout } from '@/hooks/useModalLayout'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useUser } from '@/hooks/useUser'
 
 import { useGetFriendsQuery } from '@/graphql/generated/output'
-
-const SCREEN_HEIGHT = Dimensions.get('window').height
 
 interface InviteMemberModalProps {
 	isOpen: boolean
@@ -38,14 +36,23 @@ const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
 	const { colors } = useTheme()
 	const { t } = useTranslation()
 	const { userId } = useUser()
-	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+	const {
+		containerPaddingBottom,
+		windowHeight,
+		sheetMaxHeight,
+		sheetPaddingBottom
+	} = useBottomSheetModalLayout(0.7)
+	const slideAnim = useRef(new Animated.Value(windowHeight)).current
 	const [searchQuery, setSearchQuery] = useState('')
 
 	const {
 		data: friendsData,
 		loading: isLoadingUsers,
 		refetch: refetchFriends
-	} = useGetFriendsQuery({ skip: !isOpen, fetchPolicy: 'cache-and-network' })
+	} = useGetFriendsQuery({
+		skip: !isOpen || !userId,
+		fetchPolicy: 'network-only'
+	})
 
 	const allFriends = (friendsData?.getFriends ?? [])
 		.map(f => {
@@ -84,7 +91,7 @@ const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
 
 	const closeSheet = () => {
 		Animated.timing(slideAnim, {
-			toValue: SCREEN_HEIGHT,
+			toValue: windowHeight,
 			duration: 200,
 			useNativeDriver: true
 		}).start(() => {
@@ -98,13 +105,13 @@ const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
 	}
 
 	return (
-		<Modal
+		<AppModal
 			visible={isOpen}
 			transparent
 			animationType='none'
 			onRequestClose={closeSheet}
 		>
-			<View className='flex-1'>
+			<View className='flex-1' style={{ paddingBottom: containerPaddingBottom }}>
 				<Pressable
 					className='flex-1'
 					style={{ backgroundColor: colors.overlay }}
@@ -119,9 +126,9 @@ const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
 						borderTopRightRadius: 20,
 						borderTopWidth: 1,
 						borderColor: colors.border,
-						paddingBottom: 34,
+						paddingBottom: sheetPaddingBottom,
 						paddingTop: 8,
-						maxHeight: SCREEN_HEIGHT * 0.7
+						maxHeight: sheetMaxHeight
 					}}
 				>
 					{/* Handle */}
@@ -265,7 +272,7 @@ const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
 					</ScrollView>
 				</Animated.View>
 			</View>
-		</Modal>
+		</AppModal>
 	)
 }
 

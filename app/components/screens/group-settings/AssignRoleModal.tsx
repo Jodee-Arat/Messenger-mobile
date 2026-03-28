@@ -2,8 +2,6 @@ import { Check } from 'lucide-react-native'
 import React, { useRef, useState } from 'react'
 import {
 	Animated,
-	Dimensions,
-	Modal,
 	Pressable,
 	ScrollView,
 	Text,
@@ -11,11 +9,11 @@ import {
 	View
 } from 'react-native'
 
+import AppModal from '@/components/ui/AppModal'
+import { useBottomSheetModalLayout } from '@/hooks/useModalLayout'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
 import { type GroupRoleData } from '../../../types/role.type'
-
-const SCREEN_HEIGHT = Dimensions.get('window').height
 
 interface MemberData {
 	user: {
@@ -44,7 +42,13 @@ const AssignRoleModal: React.FC<AssignRoleModalProps> = ({
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
-	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+	const {
+		containerPaddingBottom,
+		windowHeight,
+		sheetMaxHeight,
+		sheetPaddingBottom
+	} = useBottomSheetModalLayout(0.6)
+	const slideAnim = useRef(new Animated.Value(windowHeight)).current
 	const [isOpen, setIsOpen] = useState(false)
 
 	React.useEffect(() => {
@@ -61,7 +65,7 @@ const AssignRoleModal: React.FC<AssignRoleModalProps> = ({
 
 	const closeSheet = () => {
 		Animated.timing(slideAnim, {
-			toValue: SCREEN_HEIGHT,
+			toValue: windowHeight,
 			duration: 200,
 			useNativeDriver: true
 		}).start(() => {
@@ -82,13 +86,13 @@ const AssignRoleModal: React.FC<AssignRoleModalProps> = ({
 		: ''
 
 	return (
-		<Modal
+		<AppModal
 			visible={isOpen}
 			transparent
 			animationType='none'
 			onRequestClose={closeSheet}
 		>
-			<View className='flex-1'>
+			<View className='flex-1' style={{ paddingBottom: containerPaddingBottom }}>
 				<Pressable
 					className='flex-1'
 					style={{ backgroundColor: colors.overlay }}
@@ -103,9 +107,9 @@ const AssignRoleModal: React.FC<AssignRoleModalProps> = ({
 						borderTopRightRadius: 20,
 						borderTopWidth: 1,
 						borderColor: colors.border,
-						paddingBottom: 34,
+						paddingBottom: sheetPaddingBottom,
 						paddingTop: 8,
-						maxHeight: SCREEN_HEIGHT * 0.6
+						maxHeight: sheetMaxHeight
 					}}
 				>
 					{/* Handle */}
@@ -229,7 +233,7 @@ const AssignRoleModal: React.FC<AssignRoleModalProps> = ({
 					</ScrollView>
 				</Animated.View>
 			</View>
-		</Modal>
+		</AppModal>
 	)
 }
 

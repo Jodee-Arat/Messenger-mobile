@@ -39,15 +39,41 @@ export function useFriends() {
 	const [friends, setFriends] = useState<Friend[]>([])
 	const [incoming, setIncoming] = useState<IncomingRequest[]>([])
 	const [outgoing, setOutgoing] = useState<OutgoingRequest[]>([])
+	const [isRefreshing, setIsRefreshing] = useState(false)
 
 	// ── Queries ──
-	const { data: friendsData, loading: isLoadingFriends } = useGetFriendsQuery(
-		{ fetchPolicy: 'cache-and-network' }
-	)
-	const { data: incomingData, loading: isLoadingIncoming } =
-		useGetIncomingFriendRequestsQuery({ fetchPolicy: 'cache-and-network' })
-	const { data: outgoingData, loading: isLoadingOutgoing } =
-		useGetOutgoingFriendRequestsQuery({ fetchPolicy: 'cache-and-network' })
+	const {
+		data: friendsData,
+		loading: isLoadingFriends,
+		refetch: refetchFriends
+	} = useGetFriendsQuery({
+		skip: !userId,
+		fetchPolicy: 'network-only'
+	})
+	const {
+		data: incomingData,
+		loading: isLoadingIncoming,
+		refetch: refetchIncoming
+	} =
+		useGetIncomingFriendRequestsQuery({
+			skip: !userId,
+			fetchPolicy: 'network-only'
+		})
+	const {
+		data: outgoingData,
+		loading: isLoadingOutgoing,
+		refetch: refetchOutgoing
+	} =
+		useGetOutgoingFriendRequestsQuery({
+			skip: !userId,
+			fetchPolicy: 'network-only'
+		})
+
+	useEffect(() => {
+		setFriends([])
+		setIncoming([])
+		setOutgoing([])
+	}, [userId])
 
 	// ── Sync query data → state ──
 	useEffect(() => {
@@ -230,6 +256,21 @@ export function useFriends() {
 	const getFriendUser = (f: (typeof friends)[0]) =>
 		f.user?.id === userId ? f.friend : f.user
 
+	const handleRefresh = useCallback(async () => {
+		if (!userId) return
+
+		try {
+			setIsRefreshing(true)
+			await Promise.allSettled([
+				refetchFriends(),
+				refetchIncoming(),
+				refetchOutgoing()
+			])
+		} finally {
+			setIsRefreshing(false)
+		}
+	}, [refetchFriends, refetchIncoming, refetchOutgoing, userId])
+
 	return {
 		friends,
 		incoming,
@@ -237,6 +278,7 @@ export function useFriends() {
 		isLoadingFriends,
 		isLoadingIncoming,
 		isLoadingOutgoing,
+		isRefreshing,
 		isSending,
 		addFriendVisible,
 		setAddFriendVisible,
@@ -247,6 +289,7 @@ export function useFriends() {
 		handleDecline,
 		handleCancel,
 		handleRemoveFriend,
-		getFriendUser
+		getFriendUser,
+		handleRefresh
 	}
 }

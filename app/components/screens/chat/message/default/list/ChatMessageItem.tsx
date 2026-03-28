@@ -1,6 +1,8 @@
-﻿import React, { FC } from 'react'
+import { Check } from 'lucide-react-native'
+import React, { FC, useEffect, useRef } from 'react'
+import { Animated, Easing, View } from 'react-native'
+
 import { useTheme } from '@/hooks/useTheme'
-import { Pressable, View } from 'react-native'
 
 import { ForwardedMessageType } from '@/types/forward/forwarded-message.type'
 import { MessageType } from '@/types/message.type'
@@ -12,23 +14,44 @@ interface ChatMessageItemProp {
 	messageInfo: MessageType
 	userId: string
 	chatId: string
-	messageId: string
-	messageIds: string[]
+	isSelectionMode: boolean
 	isSelected: boolean
-	handleChooseMessage: (messageId: string) => void
+	isFirstInGroup: boolean
+	isLastInGroup: boolean
 }
 
 const ChatMessageItem: FC<ChatMessageItemProp> = ({
 	messageInfo,
-	handleChooseMessage,
-	messageId,
 	userId,
-	messageIds,
+	isSelectionMode,
 	isSelected,
-	chatId
+	chatId,
+	isFirstInGroup,
+	isLastInGroup
 }) => {
 	const { colors } = useTheme()
 	const { text, user, files, isEdited } = messageInfo
+
+	const selectionModeAnim = useRef(new Animated.Value(0)).current
+	const selectedAnim = useRef(new Animated.Value(isSelected ? 1 : 0)).current
+
+	useEffect(() => {
+		Animated.timing(selectionModeAnim, {
+			toValue: isSelectionMode ? 1 : 0,
+			duration: 190,
+			easing: Easing.out(Easing.ease),
+			useNativeDriver: false
+		}).start()
+	}, [isSelectionMode, selectionModeAnim])
+
+	useEffect(() => {
+		Animated.timing(selectedAnim, {
+			toValue: isSelected ? 1 : 0,
+			duration: 180,
+			easing: Easing.out(Easing.ease),
+			useNativeDriver: false
+		}).start()
+	}, [isSelected, selectedAnim])
 
 	const forwardedMessages: ForwardedMessageType[] =
 		messageInfo.repliedToLinks
@@ -54,21 +77,51 @@ const ChatMessageItem: FC<ChatMessageItemProp> = ({
 			})) ?? []
 
 	const isOwnMessage = user.id === userId
+	const shift = selectionModeAnim.interpolate({
+		inputRange: [0, 1],
+		outputRange: [0, 12]
+	})
+	const selectionBackground = selectedAnim.interpolate({
+		inputRange: [0, 1],
+		outputRange: ['transparent', colors.accentMuted]
+	})
+	const checkboxBorder = selectedAnim.interpolate({
+		inputRange: [0, 1],
+		outputRange: [colors.borderLight, colors.accent]
+	})
+
+	const bubbleTransform = isOwnMessage
+		? [{ translateX: Animated.multiply(shift, -1) }]
+		: [{ translateX: shift }]
 
 	return (
-		<Pressable
-			onPress={() => handleChooseMessage(messageId)}
-			className={`flex w-full p-2 rounded-xl transition-colors
-				${isOwnMessage ? 'flex-row-reverse' : 'flex-row'}`}
-			style={{
-				backgroundColor: isSelected
-					? colors.accentMuted
-					: 'transparent'
-			}}
+		<Animated.View
+			className={`flex w-full p-2 rounded-xl ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'} items-center`}
+			style={{ backgroundColor: selectionBackground }}
 		>
-			<View
-				className={`flex max-w-[80%] flex-col gap-2
-					${isOwnMessage ? 'items-end text-right' : 'items-start text-left'}`}
+			<Animated.View
+				style={{
+					opacity: selectionModeAnim,
+					width: 24,
+					height: 24,
+					borderRadius: 12,
+					borderWidth: 2,
+					borderColor: checkboxBorder,
+					backgroundColor: isSelected ? colors.accent : 'transparent',
+					alignItems: 'center',
+					justifyContent: 'center',
+					marginRight: isOwnMessage ? 0 : 10,
+					marginLeft: isOwnMessage ? 10 : 0
+				}}
+			>
+				{isSelected && <Check size={14} color='#fff' />}
+			</Animated.View>
+
+			<Animated.View
+				className={`flex max-w-[80%] flex-col gap-2 ${
+					isOwnMessage ? 'items-end text-right' : 'items-start text-left'
+				}`}
+				style={{ transform: bubbleTransform }}
 			>
 				<MessageForm
 					chatId={chatId}
@@ -78,6 +131,9 @@ const ChatMessageItem: FC<ChatMessageItemProp> = ({
 					files={files}
 					text={text}
 					isEdited={isEdited}
+					isFirstInGroup={isFirstInGroup}
+					isLastInGroup={isLastInGroup}
+					createdAt={messageInfo.createdAt}
 				/>
 
 				{messageInfo.repliedToLinks &&
@@ -100,7 +156,7 @@ const ChatMessageItem: FC<ChatMessageItemProp> = ({
 						</View>
 					)}
 			</View>
-		</Pressable>
+		</Animated.View>
 	)
 }
 

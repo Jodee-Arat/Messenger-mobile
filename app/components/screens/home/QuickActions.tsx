@@ -1,11 +1,11 @@
-import { FC } from 'react'
+import type { FC, ReactElement } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 
 import { useTheme } from '@/hooks/useTheme'
 
 interface QuickActionsProps {
 	actions: {
-		icon: JSX.Element
+		icon: ReactElement
 		label?: string
 		onPress?: () => void
 	}[]

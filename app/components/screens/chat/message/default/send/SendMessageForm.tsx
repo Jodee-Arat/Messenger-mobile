@@ -4,12 +4,28 @@ import type {
 	DocumentPickerAsset,
 	DocumentPickerResult
 } from 'expo-document-picker'
-import { Paperclip, SendHorizonal, X } from 'lucide-react-native'
+import {
+	Check,
+	ImageIcon,
+	Paperclip,
+	Pencil,
+	SendHorizonal,
+	X
+} from 'lucide-react-native'
 import React, { FC, useEffect, useRef } from 'react'
 import { Controller, useForm } from 'react-hook-form'
-import { Keyboard, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import {
+	Keyboard,
+	Platform,
+	Text,
+	TextInput,
+	TouchableOpacity,
+	View
+} from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Toast from 'react-native-toast-message'
 
+import { isDirectContactBlockedError } from '@/hooks/useBlockedUsers'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
 import { ForwardedMessageType } from '@/types/forward/forwarded-message.type'
@@ -31,12 +47,14 @@ import {
 
 interface SendMessageFormProp {
 	pickAndSendFile: () => void
+	pickAndSendImage?: () => void
 	handleClearForm: () => void
 	chatId: string
 	files: SendFileType[]
 	editId?: string | null
 	setEditId: (editId: string | null) => void
 	setForwardedMessages: (messages: ForwardedMessageType[]) => void
+	hasPendingUploads: boolean
 	isLoadingSendFiles: boolean
 	forwardedMessages?: ForwardedMessageType[]
 	onDeleteFile: (id: string) => void
@@ -45,14 +63,18 @@ interface SendMessageFormProp {
 	filesEdited: SendFileType[]
 	setFilesEdited: (files: SendFileType[]) => void
 	canSendMessages?: boolean
+	blockedStateMessage?: string | null
+	onBlockedError?: () => void
 	onTyping?: () => void
 }
 
 const SendMessageForm: FC<SendMessageFormProp> = ({
 	pickAndSendFile,
+	pickAndSendImage,
 	handleClearForm,
 	chatId,
 	files,
+	hasPendingUploads,
 	isLoadingSendFiles,
 	onDeleteFile,
 	clearMessageId,
@@ -64,10 +86,13 @@ const SendMessageForm: FC<SendMessageFormProp> = ({
 	filesEdited,
 	setFilesEdited,
 	canSendMessages = true,
+	blockedStateMessage,
+	onBlockedError,
 	onTyping
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
+	const { bottom } = useSafeAreaInsets()
 	const forwardedMessagesRef = useRef(forwardedMessages)
 	const filesRef = useRef(files)
 	const draftTextRef = useRef(draftText)
@@ -91,6 +116,10 @@ const SendMessageForm: FC<SendMessageFormProp> = ({
 			handleClearForm()
 		},
 		onError(error) {
+			if (isDirectContactBlockedError(error)) {
+				onBlockedError?.()
+				return
+			}
 			Toast.show({
 				type: 'error',
 				text1: error.message || t('somethingWentWrong')
@@ -109,6 +138,10 @@ const SendMessageForm: FC<SendMessageFormProp> = ({
 			handleClearForm()
 		},
 		onError(error) {
+			if (isDirectContactBlockedError(error)) {
+				onBlockedError?.()
+				return
+			}
 			Toast.show({
 				type: 'error',
 
@@ -137,7 +170,17 @@ const SendMessageForm: FC<SendMessageFormProp> = ({
 	})
 
 	const canSendMessage =
-		(watch('text')?.trim() ?? '') !== '' || files.length > 0
+		((watch('text')?.trim() ?? '') !== '' || files.length > 0) &&
+		!hasPendingUploads
+	const isComposerBlocked = !!blockedStateMessage
+
+	const handleCancelEdit = () => {
+		setEditId(null)
+		clearMessageId()
+		handleClearForm()
+		reset({ text: '' })
+		removeDraftMessage({ variables: { chatId } })
+	}
 
 	const onSubmit = async (data: SendMessageSchemaType, isDraft = false) => {
 		const trimmedText = data.text?.trim() ?? ''
@@ -222,7 +265,7 @@ const SendMessageForm: FC<SendMessageFormProp> = ({
 		}
 	}, [])
 
-	if (!canSendMessages) {
+	if (!canSendMessages || isComposerBlocked) {
 		return (
 			<View className='flex-col'>
 				<View
@@ -237,7 +280,8 @@ const SendMessageForm: FC<SendMessageFormProp> = ({
 							fontSize: 14
 						}}
 					>
-						{t('noSendPermission') ||
+						{blockedStateMessage ||
+							t('noSendPermission') ||
 							'У вас нет разрешения отправлять сообщения'}
 					</Text>
 				</View>
@@ -246,7 +290,61 @@ const SendMessageForm: FC<SendMessageFormProp> = ({
 	}
 
 	return (
-		<View className='flex-col'>
+		<View
+			className='flex-col'
+			style={{
+				paddingBottom:
+					Platform.OS === 'android'
+						? Math.max(bottom, 12)
+						: Math.max(bottom, 8)
+			}}
+		>
+			{editId && (
+				<View
+					className='mb-3 px-3 py-2 rounded-xl flex-row items-center justify-between'
+					style={{
+						backgroundColor: colors.cardHover,
+						borderWidth: 1,
+						borderColor: colors.accent
+					}}
+				>
+					<View className='flex-row items-center flex-1 pr-3'>
+						<View
+							className='w-8 h-8 rounded-full items-center justify-center mr-2'
+							style={{ backgroundColor: colors.accentMuted }}
+						>
+							<Pencil size={16} color={colors.accent} />
+						</View>
+						<View className='flex-1'>
+							<Text
+								className='text-sm font-semibold'
+								style={{ color: colors.accent }}
+							>
+								{t('edit')}
+							</Text>
+							<Text
+								numberOfLines={1}
+								className='text-xs'
+								style={{ color: colors.textSecondary }}
+							>
+								{watch('text')?.trim() ||
+									(files.length > 0
+										? `${files.length} ${t('files')}`
+										: t('empty'))}
+							</Text>
+						</View>
+					</View>
+
+					<TouchableOpacity
+						onPress={handleCancelEdit}
+						className='p-1'
+						activeOpacity={0.7}
+					>
+						<X size={18} color={colors.textSecondary} />
+					</TouchableOpacity>
+				</View>
+			)}
+
 			{(files.length > 0 || filesEdited.length > 0) && (
 				<FileList
 					filesEdited={filesEdited}
@@ -263,15 +361,45 @@ const SendMessageForm: FC<SendMessageFormProp> = ({
 				/>
 			)}
 
-			<View className='flex-row items-center mt-3 space-x-2'>
+			<View
+				style={{
+					flexDirection: 'row',
+					alignItems: 'center',
+					paddingHorizontal: 8,
+					paddingVertical: 6,
+					borderTopWidth: 1,
+					borderTopColor: colors.borderLight,
+					gap: 6
+				}}
+			>
 				{/* File button */}
 				<TouchableOpacity
 					onPress={pickAndSendFile}
-					className='p-2 rounded-lg'
-					style={{ backgroundColor: colors.cardHover }}
+					style={{
+						width: 40,
+						height: 40,
+						borderRadius: 20,
+						alignItems: 'center',
+						justifyContent: 'center'
+					}}
 				>
-					<Paperclip size={24} color={colors.textSecondary} />
+					<Paperclip size={22} color={colors.textSecondary} />
 				</TouchableOpacity>
+				{/* Image button */}
+				{pickAndSendImage && (
+					<TouchableOpacity
+						onPress={pickAndSendImage}
+						style={{
+							width: 40,
+							height: 40,
+							borderRadius: 20,
+							alignItems: 'center',
+							justifyContent: 'center'
+						}}
+					>
+						<ImageIcon size={22} color={colors.textSecondary} />
+					</TouchableOpacity>
+				)}
 				{/* Text input */}
 				<Controller
 					control={control}
@@ -290,13 +418,11 @@ const SendMessageForm: FC<SendMessageFormProp> = ({
 								flex: 1,
 								minHeight: 40,
 								maxHeight: 120,
-								paddingHorizontal: 12,
+								paddingHorizontal: 16,
 								paddingVertical: 8,
-								borderWidth: 1,
-								borderColor: colors.borderLight,
 								backgroundColor: colors.inputBg,
 								color: colors.text,
-								borderRadius: 12
+								borderRadius: 24
 							}}
 							onSubmitEditing={() => {
 								Keyboard.dismiss()
@@ -312,12 +438,15 @@ const SendMessageForm: FC<SendMessageFormProp> = ({
 				{/* Cancel edit button */}
 				{editId && (
 					<TouchableOpacity
-						onPress={() =>
-							removeDraftMessage({ variables: { chatId } })
-						}
-						disabled={!canSendMessage}
-						className='p-2 rounded-lg'
-						style={{ backgroundColor: colors.cardHover }}
+						onPress={handleCancelEdit}
+						style={{
+							width: 40,
+							height: 40,
+							borderRadius: 20,
+							alignItems: 'center',
+							justifyContent: 'center',
+							backgroundColor: colors.cardHover
+						}}
 					>
 						<X size={20} color={colors.textSecondary} />
 					</TouchableOpacity>
@@ -327,14 +456,22 @@ const SendMessageForm: FC<SendMessageFormProp> = ({
 				<TouchableOpacity
 					onPress={handleSubmit(data => onSubmit(data))}
 					disabled={!canSendMessage}
-					className='p-2 rounded-lg'
 					style={{
+						width: 40,
+						height: 40,
+						borderRadius: 20,
+						alignItems: 'center',
+						justifyContent: 'center',
 						backgroundColor: canSendMessage
 							? colors.accent
 							: colors.cardHover
 					}}
 				>
-					<SendHorizonal size={24} color='#fff' />
+					{editId ? (
+						<Check size={20} color='#fff' />
+					) : (
+						<SendHorizonal size={20} color='#fff' />
+					)}
 				</TouchableOpacity>
 			</View>
 		</View>

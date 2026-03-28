@@ -21,6 +21,7 @@ interface FriendsTabContentProps {
 	friends: FriendsReturn['friends']
 	incoming: FriendsReturn['incoming']
 	outgoing: FriendsReturn['outgoing']
+	isSearching: boolean
 	isLoadingFriends: boolean
 	isLoadingIncoming: boolean
 	isLoadingOutgoing: boolean
@@ -36,6 +37,7 @@ const FriendsTabContent: FC<FriendsTabContentProps> = ({
 	friends,
 	incoming,
 	outgoing,
+	isSearching,
 	isLoadingFriends,
 	isLoadingIncoming,
 	isLoadingOutgoing,
@@ -60,6 +62,7 @@ const FriendsTabContent: FC<FriendsTabContentProps> = ({
 				friendshipId: f.id,
 				username: other.username,
 				avatarUrl: other.avatarUrl,
+				bio: other.bio,
 				friendUserId: other.id,
 				friendSince: f.createdAt
 			})
@@ -85,13 +88,15 @@ const FriendsTabContent: FC<FriendsTabContentProps> = ({
 						className='text-base font-semibold mt-4 text-center'
 						style={{ color: colors.textMuted }}
 					>
-						{t('noFriends')}
+						{isSearching ? t('noSearchResults') : t('noFriends')}
 					</Text>
 					<Text
 						className='text-xs mt-2 text-center'
 						style={{ color: colors.textMuted }}
 					>
-						{t('addFriendsHint')}
+						{isSearching
+							? t('tryDifferentQuery')
+							: t('addFriendsHint')}
 					</Text>
 				</View>
 			)
@@ -125,8 +130,18 @@ const FriendsTabContent: FC<FriendsTabContentProps> = ({
 						className='text-base font-semibold mt-4 text-center'
 						style={{ color: colors.textMuted }}
 					>
-						{t('noPendingRequests')}
+						{isSearching
+							? t('noSearchResults')
+							: t('noPendingRequests')}
 					</Text>
+					{isSearching && (
+						<Text
+							className='text-xs mt-2 text-center'
+							style={{ color: colors.textMuted }}
+						>
+							{t('tryDifferentQuery')}
+						</Text>
+					)}
 				</View>
 			)
 		}

@@ -3,8 +3,6 @@ import React, { useRef, useState } from 'react'
 import {
 	ActivityIndicator,
 	Animated,
-	Dimensions,
-	Modal,
 	Pressable,
 	ScrollView,
 	Text,
@@ -13,38 +11,56 @@ import {
 	View
 } from 'react-native'
 
+import AppModal from '@/components/ui/AppModal'
 import EntityAvatar from '@/components/ui/EntityAvatar'
 
+import { useBottomSheetModalLayout } from '@/hooks/useModalLayout'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useUser } from '@/hooks/useUser'
 
-import { useGetFriendsQuery } from '@/graphql/generated/output'
-
-const SCREEN_HEIGHT = Dimensions.get('window').height
+import {
+	useFindGroupByGroupIdQuery,
+	useGetFriendsQuery
+} from '@/graphql/generated/output'
 
 interface ChatInviteMemberModalProps {
 	isOpen: boolean
 	onClose: () => void
 	onInvite: (userId: string) => void
 	existingMemberIds: string[]
+	groupId?: string | null
 }
 
 const ChatInviteMemberModal: React.FC<ChatInviteMemberModalProps> = ({
 	isOpen,
 	onClose,
 	onInvite,
-	existingMemberIds
+	existingMemberIds,
+	groupId
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
 	const { userId } = useUser()
-	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+	const {
+		containerPaddingBottom,
+		windowHeight,
+		sheetMaxHeight,
+		sheetPaddingBottom
+	} = useBottomSheetModalLayout(0.7)
+	const slideAnim = useRef(new Animated.Value(windowHeight)).current
 	const [searchQuery, setSearchQuery] = useState('')
+	const isGroupScopedInvite = !!groupId
 
-	const { data: friendsData, loading: isLoadingUsers } = useGetFriendsQuery({
-		skip: !isOpen,
-		fetchPolicy: 'cache-and-network'
+	const { data: friendsData, loading: isLoadingFriends } = useGetFriendsQuery({
+		skip: !isOpen || !userId || isGroupScopedInvite,
+		fetchPolicy: 'network-only'
 	})
+	const { data: groupData, loading: isLoadingGroupMembers } =
+		useFindGroupByGroupIdQuery({
+			variables: { groupId: groupId ?? '' },
+			skip: !isOpen || !groupId,
+			fetchPolicy: 'network-only'
+		})
 
 	const allFriends = (friendsData?.getFriends ?? [])
 		.map(f => {
@@ -63,7 +79,21 @@ const ChatInviteMemberModal: React.FC<ChatInviteMemberModalProps> = ({
 		avatarUrl?: string | null
 	}[]
 
-	const filteredUsers = allFriends.filter(
+	const groupCandidates = (groupData?.findGroupByGroupId?.members ?? [])
+		.map(member => member.user)
+		.filter(Boolean)
+		.map(member => ({
+			id: member.id,
+			username: member.username,
+			avatarUrl: member.avatarUrl
+		}))
+
+	const candidateUsers = isGroupScopedInvite ? groupCandidates : allFriends
+	const isLoadingUsers = isGroupScopedInvite
+		? isLoadingGroupMembers
+		: isLoadingFriends
+
+	const filteredUsers = candidateUsers.filter(
 		user =>
 			user.username.toLowerCase().includes(searchQuery.toLowerCase()) &&
 			!existingMemberIds.includes(user.id)
@@ -83,7 +113,7 @@ const ChatInviteMemberModal: React.FC<ChatInviteMemberModalProps> = ({
 
 	const closeSheet = () => {
 		Animated.timing(slideAnim, {
-			toValue: SCREEN_HEIGHT,
+			toValue: windowHeight,
 			duration: 200,
 			useNativeDriver: true
 		}).start(() => {
@@ -97,13 +127,13 @@ const ChatInviteMemberModal: React.FC<ChatInviteMemberModalProps> = ({
 	}
 
 	return (
-		<Modal
+		<AppModal
 			visible={isOpen}
 			transparent
 			animationType='none'
 			onRequestClose={closeSheet}
 		>
-			<View className='flex-1'>
+			<View className='flex-1' style={{ paddingBottom: containerPaddingBottom }}>
 				<Pressable
 					className='flex-1'
 					style={{ backgroundColor: colors.overlay }}
@@ -118,9 +148,9 @@ const ChatInviteMemberModal: React.FC<ChatInviteMemberModalProps> = ({
 						borderTopRightRadius: 20,
 						borderTopWidth: 1,
 						borderColor: colors.border,
-						paddingBottom: 34,
+						paddingBottom: sheetPaddingBottom,
 						paddingTop: 8,
-						maxHeight: SCREEN_HEIGHT * 0.7
+						maxHeight: sheetMaxHeight
 					}}
 				>
 					{/* Handle */}
@@ -268,7 +298,7 @@ const ChatInviteMemberModal: React.FC<ChatInviteMemberModalProps> = ({
 					</ScrollView>
 				</Animated.View>
 			</View>
-		</Modal>
+		</AppModal>
 	)
 }
 

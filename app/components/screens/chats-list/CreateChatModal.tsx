@@ -1,33 +1,44 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Lock, X } from 'lucide-react-native'
-import React, { FC, useEffect, useState } from 'react'
+import React, { FC, useEffect, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import {
 	ActivityIndicator,
-	Modal,
 	ScrollView,
 	Text,
 	TextInput,
 	TouchableOpacity,
-	View
+	View,
+	Animated,
+	Dimensions,
+	Pressable
 } from 'react-native'
 import Toast from 'react-native-toast-message'
 
+import AppModal from '@/components/ui/AppModal'
 import EntityAvatar from '@/components/ui/EntityAvatar'
 import { Button } from '@/components/ui/button/Button'
 import Checkbox from '@/components/ui/checkbox/Checkbox'
 
 import { useCurrentUser } from '@/hooks/useCurrentUser'
+import { useBottomSheetModalLayout } from '@/hooks/useModalLayout'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
+import { initGroupSessionAction } from '@/hooks/useSecretChat.actions'
 
-import { createSecretChat } from '@/utils/secret-chat/secretChat'
+import {
+	createMyKey,
+	createSecretChat,
+	loadMyPreKeyJSON
+} from '@/utils/secret-chat/secretChat'
 
 import {
 	FindAllChatsByGroupQuery,
 	useCreateChatMutation,
 	useFindAllUsersQuery,
+	useFindChatByChatIdLazyQuery,
 	useFindGroupByGroupIdQuery,
-	useGetPreKeysLazyQuery
+	useGetPreKeysLazyQuery,
+	useSendSharedSecretKeyMutation
 } from '@/graphql/generated/output'
 import {
 	createChatSchema,
@@ -43,6 +54,8 @@ interface CreateChatModalProp {
 	setIsOpen: (open: boolean) => void
 }
 
+const SCREEN_HEIGHT = Dimensions.get('window').height
+
 const CreateChatModal: FC<CreateChatModalProp> = ({
 	groupId,
 	setAllChats,
@@ -51,6 +64,22 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
+	const { containerPaddingBottom, sheetMaxHeight, sheetPaddingBottom } =
+		useBottomSheetModalLayout(0.85)
+		
+	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+
+	const closeSheet = (cb?: () => void) => {
+		Animated.timing(slideAnim, {
+			toValue: SCREEN_HEIGHT,
+			duration: 200,
+			useNativeDriver: true
+		}).start(() => {
+			setIsOpen(false)
+			cb?.()
+		})
+	}
+	
 	const { user: currentUser } = useCurrentUser()
 	const {
 		data,
@@ -75,6 +104,81 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 	)
 	const selectedUserIds = form.watch('userIds')
 	const isSecret = form.watch('isSecretChat')
+	const [getPreKeys] = useGetPreKeysLazyQuery({
+		fetchPolicy: 'network-only'
+	})
+	const [findChatById] = useFindChatByChatIdLazyQuery({
+		fetchPolicy: 'network-only'
+	})
+	const [sendSharedSecretKey] = useSendSharedSecretKeyMutation()
+
+	const bootstrapSecretGroupChat = async (chatId: string) => {
+		if (!currentUser?.id) return
+
+		const myPreKeys = await loadMyPreKeyJSON()
+		if (!myPreKeys) {
+			console.warn(
+				'[SecretChat][CreateChat] local prekeys missing, skip bootstrap'
+			)
+			return
+		}
+
+		const chatResponse = await findChatById({
+			variables: { chatId },
+			fetchPolicy: 'network-only'
+		})
+		const fullChat = chatResponse.data?.findChatByChatId
+		if (!fullChat?.isSecret || !fullChat.isGroup || !fullChat.groupId) {
+			return
+		}
+
+		await createSecretChat(fullChat, true)
+
+		const preKeysResponse = await getPreKeys({
+			variables: { chatId },
+			fetchPolicy: 'network-only'
+		})
+		const preKeys = preKeysResponse.data?.getPreKeys ?? []
+		if (preKeys.length === 0) {
+			console.warn(
+				'[SecretChat][CreateChat] no preKeys found after secret chat creation'
+			)
+			return
+		}
+
+		const initResult = await initGroupSessionAction({
+			chat: fullChat,
+			chatId,
+			groupId: fullChat.groupId,
+			userId: currentUser.id,
+			mySecretPreKey: myPreKeys.toStore,
+			preKeysPub: preKeys,
+			getPreKeys,
+			sendSharedSecretKey
+		})
+
+		if (initResult.errorMessage) {
+			console.warn(
+				'[SecretChat][CreateChat] bootstrap failed:',
+				initResult.errorMessage
+			)
+			return
+		}
+
+		if (initResult.groupKey && initResult.needPersistKey) {
+			await createMyKey(
+				chatId,
+				fullChat.groupId,
+				currentUser.id,
+				initResult.groupKey
+			)
+		}
+
+		console.log(
+			'[SecretChat][CreateChat] creator bootstrap finished for chat',
+			chatId
+		)
+	}
 
 	const [createChat, { loading: isLoadingCreate }] = useCreateChatMutation({
 		onCompleted() {
@@ -82,8 +186,7 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 				type: 'success',
 				text1: t('chatCreated')
 			})
-			setIsOpen(false)
-			form.reset()
+			closeSheet(() => form.reset())
 		},
 		onError(error) {
 			Toast.show({
@@ -94,8 +197,8 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 		}
 	})
 
-	const onSubmit = (data: createChatSchemaType) => {
-		createChat({
+	const onSubmit = async (data: createChatSchemaType) => {
+		const result = await createChat({
 			variables: {
 				groupId,
 				data: {
@@ -106,26 +209,48 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 				}
 			}
 		})
+
+		const newChatId = result.data?.createChat?.id
+		if (data.isSecretChat && newChatId) {
+			void bootstrapSecretGroupChat(newChatId)
+		}
 	}
 
 	useEffect(() => {
-		if (isOpen) refetch()
+		if (isOpen) {
+			refetch()
+			Animated.spring(slideAnim, {
+				toValue: 0,
+				useNativeDriver: true,
+				tension: 65,
+				friction: 11
+			}).start()
+		}
 	}, [isOpen])
 
 	return (
-		<Modal visible={isOpen} animationType='slide' transparent>
+		<AppModal visible={isOpen} animationType='none' transparent>
 			<View
 				className='flex-1 justify-end'
-				style={{ backgroundColor: colors.overlay }}
+				style={{
+					paddingBottom: containerPaddingBottom
+				}}
 			>
-				<View
+				<Pressable
+					className='flex-1'
+					style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: colors.overlay }}
+					onPress={() => closeSheet()}
+				/>
+				<Animated.View
 					style={{
+						transform: [{ translateY: slideAnim }],
 						backgroundColor: colors.backgroundSecondary,
 						borderTopLeftRadius: 24,
 						borderTopRightRadius: 24,
 						borderTopWidth: 1,
 						borderColor: colors.border,
-						maxHeight: '85%'
+						maxHeight: sheetMaxHeight,
+						paddingBottom: sheetPaddingBottom
 					}}
 				>
 					{/* Header */}
@@ -143,7 +268,7 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 							{t('newChat')}
 						</Text>
 						<TouchableOpacity
-							onPress={() => setIsOpen(false)}
+							onPress={() => closeSheet()}
 							activeOpacity={0.6}
 							className='w-9 h-9 rounded-full items-center justify-center'
 							style={{ backgroundColor: colors.cardHover }}
@@ -242,6 +367,7 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 								className='mb-4'
 								style={{ maxHeight: 240 }}
 								showsVerticalScrollIndicator={false}
+								keyboardShouldPersistTaps='handled'
 							>
 								{users.map(user => (
 									<Controller
@@ -367,9 +493,9 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 							)}
 						</TouchableOpacity>
 					</View>
-				</View>
+				</Animated.View>
 			</View>
-		</Modal>
+		</AppModal>
 	)
 }
 

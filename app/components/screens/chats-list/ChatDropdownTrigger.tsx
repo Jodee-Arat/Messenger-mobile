@@ -1,15 +1,16 @@
-import { Pin, PinOff, Trash2, X } from 'lucide-react-native'
+import { Pin, PinOff, Trash2 } from 'lucide-react-native'
 import React, { FC, useRef, useState } from 'react'
 import {
 	Animated,
 	Dimensions,
-	Modal,
 	Pressable,
 	Text,
 	TouchableOpacity,
 	View
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import AppModal from '@/components/ui/AppModal'
 import Loader from '@/components/ui/Loader'
 
 import { useTheme, useTranslation } from '@/hooks/useTheme'
@@ -46,6 +47,7 @@ const ChatDropdownTrigger: FC<ChatDropdownTrigger> = ({
 	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
 	const { colors } = useTheme()
 	const { t } = useTranslation()
+	const { bottom } = useSafeAreaInsets()
 
 	const { data: memberRoleData, loading: isLoadingMemberRole } =
 		useGetMemberRoleQuery({
@@ -53,9 +55,10 @@ const ChatDropdownTrigger: FC<ChatDropdownTrigger> = ({
 		})
 
 	const currentRole = memberRoleData?.getMemberRole
+	const groupPermissions = currentRole?.permissions ?? []
 	const canDeleteGroup =
-		currentRole?.permissions.includes(GroupPermissionEnum.DeleteGroup) ||
-		currentRole?.isCreator
+		groupPermissions.includes(GroupPermissionEnum.DeleteGroup) ||
+		!!currentRole?.isCreator
 
 	const openSheet = () => {
 		setModalVisible(true)
@@ -105,19 +108,17 @@ const ChatDropdownTrigger: FC<ChatDropdownTrigger> = ({
 			<ChatsItem
 				groupId={groupId}
 				chat={chat}
-				handleLongPress={() => {
-					if (chat.isPinned && onDrag) {
-						onDrag()
-					} else {
-						openSheet()
-					}
-				}}
+				handleLongPress={openSheet}
+				onDrag={onDrag}
+				isActive={isActive}
 			/>
 
-			<Modal
+			<AppModal
 				transparent
 				visible={modalVisible}
 				animationType='none'
+				statusBarTranslucent
+				navigationBarTranslucent
 				onRequestClose={() => closeSheet()}
 			>
 				<View className='flex-1'>
@@ -137,7 +138,7 @@ const ChatDropdownTrigger: FC<ChatDropdownTrigger> = ({
 							borderTopRightRadius: 20,
 							borderTopWidth: 1,
 							borderColor: colors.borderLight,
-							paddingBottom: 34,
+							paddingBottom: bottom + 20,
 							paddingTop: 8
 						}}
 					>
@@ -234,7 +235,7 @@ const ChatDropdownTrigger: FC<ChatDropdownTrigger> = ({
 						</View>
 					</Animated.View>
 				</View>
-			</Modal>
+			</AppModal>
 		</View>
 	)
 }

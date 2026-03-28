@@ -17,9 +17,8 @@ import {
 const SCREEN_WIDTH = Dimensions.get('window').width
 export const SIDEBAR_WIDTH = SCREEN_WIDTH * 0.82
 
-export function useGroupsSidebar(visible: boolean, onClose: () => void) {
+export function useGroupsSidebar(visible: boolean, onClose: () => void, searchTerm?: string) {
 	const slideAnim = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current
-	const fadeAnim = useRef(new Animated.Value(0)).current
 	const [showModal, setShowModal] = useState(false)
 	const [isCreateOpen, setIsCreateOpen] = useState(false)
 	const [longPressGroup, setLongPressGroup] = useState<
@@ -34,10 +33,15 @@ export function useGroupsSidebar(visible: boolean, onClose: () => void) {
 	const [allGroups, setAllGroups] = useState<
 		FindAllGroupsByUserQuery['findAllGroupsByUser']
 	>([])
+	const [isRefreshingGroups, setIsRefreshingGroups] = useState(false)
 
-	const { data: allGroupsData, loading: isLoadingGroups } =
+	const {
+		data: allGroupsData,
+		loading: isLoadingGroups,
+		refetch: refetchGroups
+	} =
 		useFindAllGroupsByUserQuery({
-			variables: { filters: {} },
+			variables: { filters: { searchTerm: searchTerm || undefined } },
 			skip: !user?.id,
 			fetchPolicy: 'network-only'
 		})
@@ -65,9 +69,23 @@ export function useGroupsSidebar(visible: boolean, onClose: () => void) {
 	})
 
 	useEffect(() => {
+		setAllGroups([])
+	}, [user?.id])
+
+	useEffect(() => {
 		if (allGroupsData?.findAllGroupsByUser)
 			setAllGroups(allGroupsData.findAllGroupsByUser)
 	}, [allGroupsData])
+
+	const handleRefreshGroups = async () => {
+		if (!user?.id) return
+		setIsRefreshingGroups(true)
+		try {
+			await refetchGroups()
+		} finally {
+			setIsRefreshingGroups(false)
+		}
+	}
 
 	useEffect(() => {
 		if (newGroupData?.groupAdded)
@@ -85,42 +103,32 @@ export function useGroupsSidebar(visible: boolean, onClose: () => void) {
 			)
 	}, [deleteGroupData])
 
+	useEffect(() => {
+		if (!visible || !user?.id) return
+		void refetchGroups()
+	}, [visible, user?.id, refetchGroups])
+
 	// ── Animations ──
 	useEffect(() => {
 		if (visible) {
 			setShowModal(true)
-			Animated.parallel([
-				Animated.spring(slideAnim, {
-					toValue: 0,
-					useNativeDriver: true,
-					tension: 65,
-					friction: 11
-				}),
-				Animated.timing(fadeAnim, {
-					toValue: 1,
-					duration: 200,
-					useNativeDriver: true
-				})
-			]).start()
+			Animated.spring(slideAnim, {
+				toValue: 0,
+				useNativeDriver: true,
+				tension: 65,
+				friction: 11
+			}).start()
 		} else {
-			Animated.parallel([
-				Animated.timing(slideAnim, {
-					toValue: -SIDEBAR_WIDTH,
-					duration: 200,
-					useNativeDriver: true
-				}),
-				Animated.timing(fadeAnim, {
-					toValue: 0,
-					duration: 200,
-					useNativeDriver: true
-				})
-			]).start(() => setShowModal(false))
+			Animated.timing(slideAnim, {
+				toValue: -SIDEBAR_WIDTH,
+				duration: 200,
+				useNativeDriver: true
+			}).start(() => setShowModal(false))
 		}
 	}, [visible])
 
 	return {
 		slideAnim,
-		fadeAnim,
 		showModal,
 		isCreateOpen,
 		setIsCreateOpen,
@@ -128,6 +136,8 @@ export function useGroupsSidebar(visible: boolean, onClose: () => void) {
 		setLongPressGroup,
 		allGroups,
 		isLoadingGroups,
+		isRefreshingGroups,
+		handleRefreshGroups,
 		deleteGroup,
 		user,
 		exit

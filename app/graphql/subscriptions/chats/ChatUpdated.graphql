@@ -3,6 +3,7 @@ subscription ChatUpdated($userId: String!) {
 		chatName
 		avatarUrl
 		updatedAt
+		pinnedMessageId
 		isSecret
 		requireTotp
 		id

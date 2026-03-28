@@ -1,6 +1,7 @@
 import { ArrowLeft } from 'lucide-react-native'
 import { FC } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
@@ -13,11 +14,13 @@ const GroupSettingsHeader: FC<GroupSettingsHeaderProps> = ({ groupName }) => {
 	const navigation = useTypedNavigation()
 	const { colors } = useTheme()
 	const { t } = useTranslation()
+	const { top } = useSafeAreaInsets()
 
 	return (
 		<View
-			className='pt-12 pb-4 px-4'
+			className='pb-4 px-4'
 			style={{
+				paddingTop: top + 8,
 				backgroundColor: colors.backgroundSecondary,
 				borderBottomWidth: 1,
 				borderBottomColor: colors.border

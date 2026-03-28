@@ -1,8 +1,14 @@
 ﻿import { createId } from '@paralleldrive/cuid2'
 import * as DocumentPicker from 'expo-document-picker'
-import * as FileSystem from 'expo-file-system'
-import { MutableRefObject } from 'react'
+import { Directory, File, Paths } from 'expo-file-system'
+import { Dispatch, MutableRefObject, SetStateAction } from 'react'
 
+import {
+	DIRECT_CONTACT_BLOCKED_BACKEND_MESSAGE,
+	getGraphQLErrorMessage,
+	isDirectContactBlockedError
+} from '@/hooks/useBlockedUsers'
+import { bytesToBase64 } from '@/utils/math/base64'
 import {
 	FILE,
 	fileExist,
@@ -11,6 +17,7 @@ import {
 	loadMyPreKeyJSON
 } from '@/utils/secret-chat/secretChat'
 
+import { MessageFileType } from '../types/message-file.type'
 import { MessageType } from '../types/message.type'
 import { SendFileType } from '../types/send-file.type'
 
@@ -18,11 +25,13 @@ import {
 	FindAllUsersQuery,
 	GetPreKeysQuery,
 	GetSecretMessageQuery,
+	useDiscardSecretAttachmentMutation,
 	useGetPreKeysLazyQuery,
 	useGetSecretMessageLazyQuery,
 	useGetSharedSecretKeyLazyQuery,
 	useSendSecretMessageMutation,
-	useSendSharedSecretKeyMutation
+	useSendSharedSecretKeyMutation,
+	useUploadSecretAttachmentMutation
 } from '@/graphql/generated/output'
 import {
 	PreKeyBundleClient,
@@ -46,19 +55,244 @@ import {
 	verifyBytes
 } from '@/libs/e2ee/gost'
 
-export type PickedFile = SendFileType & { uri?: string }
+export type PickedFile = SendFileType
 
 export const DM_STORAGE_GROUP_ID = 'direct'
+
+const SECRET_MESSAGE_PAYLOAD_KIND = 'secret-message-v2'
+
+type SecretAttachmentPayload = {
+	attachmentId: string
+	fileName: string
+	fileFormat: string
+	fileSize: string
+	fileKeyHex: string
+	ivHex: string
+	ciphertextSize: string
+}
+
+type SecretMessagePayloadV2 = {
+	kind: typeof SECRET_MESSAGE_PAYLOAD_KIND
+	version: 2
+	text: string
+	attachments: SecretAttachmentPayload[]
+}
+
+const getFileFormatFromName = (fileName: string) =>
+	fileName.split('.').pop() || 'file'
+
+const toMessageFile = (
+	attachment: SecretAttachmentPayload
+): MessageFileType => ({
+	id: attachment.attachmentId,
+	fileName: attachment.fileName,
+	fileFormat: attachment.fileFormat,
+	fileSize: attachment.fileSize,
+	isSecretAttachment: true,
+	fileKeyHex: attachment.fileKeyHex,
+	ivHex: attachment.ivHex,
+	ciphertextSize: attachment.ciphertextSize
+})
+
+const parseSecretMessageContent = (
+	plaintext: string
+): {
+	text: string
+	files: MessageFileType[]
+} => {
+	try {
+		const parsed = JSON.parse(plaintext) as Partial<SecretMessagePayloadV2>
+		if (
+			parsed.kind !== SECRET_MESSAGE_PAYLOAD_KIND ||
+			parsed.version !== 2 ||
+			!Array.isArray(parsed.attachments)
+		) {
+			return { text: plaintext, files: [] }
+		}
+
+		const attachments = parsed.attachments.filter(
+			attachment =>
+				typeof attachment?.attachmentId === 'string' &&
+				typeof attachment?.fileName === 'string' &&
+				typeof attachment?.fileFormat === 'string' &&
+				typeof attachment?.fileSize === 'string' &&
+				typeof attachment?.fileKeyHex === 'string' &&
+				typeof attachment?.ivHex === 'string' &&
+				typeof attachment?.ciphertextSize === 'string'
+		) as SecretAttachmentPayload[]
+
+		return {
+			text: typeof parsed.text === 'string' ? parsed.text : '',
+			files: attachments.map(toMessageFile)
+		}
+	} catch {
+		return { text: plaintext, files: [] }
+	}
+}
+
+const buildSecretMessagePlaintext = (
+	text: string,
+	attachments: SecretAttachmentPayload[]
+) => {
+	if (attachments.length === 0) {
+		return text
+	}
+
+	const payload: SecretMessagePayloadV2 = {
+		kind: SECRET_MESSAGE_PAYLOAD_KIND,
+		version: 2,
+		text,
+		attachments
+	}
+
+	return JSON.stringify(payload)
+}
+
+const createLocalSecretMessage = (params: {
+	plaintext: string
+	senderId: string
+	senderUsername: string
+	chatName: string
+}) => {
+	const { plaintext, senderId, senderUsername, chatName } = params
+	const parsedContent = parseSecretMessageContent(plaintext)
+
+	const newMessage: MessageType = {
+		id: createId(),
+		text: parsedContent.text,
+		isEdited: false,
+		user: { id: senderId, username: senderUsername },
+		chat: { chatName },
+		createdAt: new Date().toISOString(),
+		files: parsedContent.files
+	}
+
+	return newMessage
+}
+
+const updateComposerFileState = (
+	setFiles: Dispatch<SetStateAction<SendFileType[]>>,
+	fileId: string,
+	patch: Partial<SendFileType>
+) => {
+	setFiles(prev =>
+		prev.map(file => (file.id === fileId ? { ...file, ...patch } : file))
+	)
+}
+
+const cleanupUploadedSecretAttachmentsAction = async (params: {
+	attachmentIds: string[]
+	chatId: string
+	discardSecretAttachment: ReturnType<typeof useDiscardSecretAttachmentMutation>[0]
+}) => {
+	const { attachmentIds, chatId, discardSecretAttachment } = params
+
+	for (const attachmentId of attachmentIds) {
+		try {
+			await discardSecretAttachment({
+				variables: {
+					chatId,
+					attachmentId
+				}
+			})
+		} catch (error) {
+			console.warn(
+				'[SecretChat] Failed to discard staged secret attachment:',
+				attachmentId,
+				error
+			)
+		}
+	}
+}
+
+const stageSecretAttachmentsAction = async (params: {
+	chatId: string
+	files: SendFileType[]
+	setFiles: Dispatch<SetStateAction<SendFileType[]>>
+	uploadSecretAttachment: ReturnType<typeof useUploadSecretAttachmentMutation>[0]
+}): Promise<SecretAttachmentPayload[]> => {
+	const { chatId, files, setFiles, uploadSecretAttachment } = params
+	const stagedAttachments: SecretAttachmentPayload[] = []
+
+	for (const file of files) {
+		if (!file.uri) {
+			updateComposerFileState(setFiles, file.id, {
+				status: 'failed',
+				errorMessage: 'Selected file is missing a local URI.'
+			})
+			throw new Error('Selected file is missing a local URI.')
+		}
+
+		try {
+			updateComposerFileState(setFiles, file.id, {
+				status: 'encrypting',
+				errorMessage: undefined
+			})
+
+			const sourceFile = new File(file.uri)
+			const plaintextBytes = await sourceFile.bytes()
+			const { keyBytes, keyHex } = await generateKuznechikKey()
+			const encryptedFile = await encryptKuz(keyBytes, plaintextBytes)
+
+			updateComposerFileState(setFiles, file.id, {
+				status: 'uploading'
+			})
+
+			const uploadResult = await uploadSecretAttachment({
+				variables: {
+					data: {
+						chatId,
+						ciphertextBase64: bytesToBase64(encryptedFile.ciphertext)
+					}
+				}
+			})
+
+			const uploadedAttachment = uploadResult.data?.uploadSecretAttachment
+			if (!uploadedAttachment?.id) {
+				throw new Error('Secret attachment upload did not return an id.')
+			}
+
+			stagedAttachments.push({
+				attachmentId: uploadedAttachment.id,
+				fileName: file.name,
+				fileFormat: getFileFormatFromName(file.name),
+				fileSize: file.size,
+				fileKeyHex: keyHex,
+				ivHex: toHex(encryptedFile.iv),
+				ciphertextSize:
+					uploadedAttachment.ciphertextSize ||
+					String(encryptedFile.ciphertext.byteLength)
+			})
+
+			updateComposerFileState(setFiles, file.id, {
+				status: 'uploaded',
+				errorMessage: undefined
+			})
+		} catch (error) {
+			updateComposerFileState(setFiles, file.id, {
+				status: 'failed',
+				errorMessage:
+					getGraphQLErrorMessage(error) ||
+					'Failed to encrypt or upload secret attachment.'
+			})
+			throw error
+		}
+	}
+
+	return stagedAttachments
+}
 
 /**
  * Убедиться, что директория для хранения DM-секретного чата существует
  */
 export async function ensureDirectChatDirectory(chatId: string) {
-	const BASE = FileSystem.documentDirectory
-	const CHAT_DIR = `${BASE}${DM_STORAGE_GROUP_ID}/${chatId}`
-	const info = await FileSystem.getInfoAsync(CHAT_DIR)
-	if (!info.exists) {
-		await FileSystem.makeDirectoryAsync(CHAT_DIR, { intermediates: true })
+	const chatDirectory = new Directory(
+		Paths.document,
+		DM_STORAGE_GROUP_ID,
+		chatId
+	)
+	if (!chatDirectory.exists) {
+		chatDirectory.create({ intermediates: true, idempotent: true })
 	}
 }
 
@@ -92,6 +326,11 @@ export const loadDMKeysAction = async (params: {
 		if (!haveMyKeys) {
 			const preKeysResponse = await getPreKeys({ variables: { chatId } })
 			if (preKeysResponse.error) {
+				if (isDirectContactBlockedError(preKeysResponse.error)) {
+					return {
+						errorMessage: DIRECT_CONTACT_BLOCKED_BACKEND_MESSAGE
+					}
+				}
 				console.error(
 					'[SecretChat][DM] Ошибка при получении PreKeys:',
 					preKeysResponse.error
@@ -265,6 +504,76 @@ export const loadChatAction = async (params: {
 	}
 }
 
+const findOpkIndexForUser = (
+	bundles: GetPreKeysQuery['getPreKeys'],
+	userId: string,
+	usedOpk: string
+) => {
+	const myBundle = bundles.find(pk => pk.userId === userId)
+	if (!myBundle) return -1
+
+	return myBundle.opkPubs.findIndex(
+		opk => opk?.toLowerCase() === usedOpk.toLowerCase()
+	)
+}
+
+const resolveMyUsedOpkPrivateKey = async (params: {
+	chatId: string
+	userId: string
+	usedOpk?: string | null
+	mySecretPreKey: PreKeyBundleClient
+	preKeysPub: GetPreKeysQuery['getPreKeys']
+	getPreKeys?: ReturnType<typeof useGetPreKeysLazyQuery>[0]
+}) => {
+	const { chatId, userId, usedOpk, mySecretPreKey, preKeysPub, getPreKeys } =
+		params
+
+	if (!usedOpk) return undefined
+
+	let opkIndex = findOpkIndexForUser(preKeysPub, userId, usedOpk)
+
+	if (opkIndex < 0 && getPreKeys) {
+		try {
+			const preKeysResponse = await getPreKeys({
+				variables: { chatId }
+			})
+			const fresh = preKeysResponse.data?.getPreKeys || []
+			const freshBundle = fresh.find(pk => pk.userId === userId)
+
+			if (
+				freshBundle &&
+				freshBundle.opkPubs.length === mySecretPreKey.opkPriv.length
+			) {
+				opkIndex = findOpkIndexForUser(fresh, userId, usedOpk)
+			}
+		} catch (e) {
+			console.warn('[SecretChat] resolveMyUsedOpkPrivateKey refresh failed:', e)
+		}
+	}
+
+	if (opkIndex < 0) {
+		console.warn(
+			`[SecretChat] usedOpk ${usedOpk.slice(0, 16)}... not found for user ${userId}`
+		)
+		return undefined
+	}
+
+	const opkPrivHex = mySecretPreKey.opkPriv?.[opkIndex]
+	if (!opkPrivHex) {
+		console.warn(
+			`[SecretChat] missing local opkPriv for index ${opkIndex} and user ${userId}`
+		)
+		return undefined
+	}
+
+	try {
+		return await importPrivateRaw(fromHex(opkPrivHex))
+	} catch (e) {
+		console.warn('[SecretChat] failed to import local opkPriv:', e)
+		return undefined
+	}
+}
+
 /**
  * Обработка сообщения из подписки
  */
@@ -379,10 +688,18 @@ export const processSecretSubscriptionAction = async (params: {
 						sig: msg.sig
 					}
 					console.log('[SecretChat][Sub] envelope:', envelope)
+					const opkPriv = await resolveMyUsedOpkPrivateKey({
+						chatId,
+						userId,
+						usedOpk: envelope.usedOpk,
+						mySecretPreKey,
+						preKeysPub,
+						getPreKeys
+					})
 					const finalize = await finalizeFromEnvelope({
 						bobIKPriv: ikPriv,
 						bobSPKPriv: spkPriv,
-						opkPriv: undefined,
+						opkPriv,
 						envelope
 					})
 					currentSession = finalize.sessionKey
@@ -392,18 +709,12 @@ export const processSecretSubscriptionAction = async (params: {
 					const sender = chat.members.find(
 						(m: any) => m.user.id === msg.fromUserId
 					)?.user
-					const firstMessage: MessageType = {
-						id: createId(),
-						text: finalize.decrypted,
-						isEdited: false,
-						user: {
-							id: msg.fromUserId,
-							username: sender?.username || 'user'
-						},
-						chat: { chatName: chat.chatName },
-						createdAt: new Date().toISOString(),
-						files: []
-					}
+					const firstMessage = createLocalSecretMessage({
+						plaintext: finalize.decrypted,
+						senderId: msg.fromUserId,
+						senderUsername: sender?.username || 'user',
+						chatName: chat.chatName
+					})
 
 					return {
 						sessionKey: currentSession,
@@ -447,15 +758,12 @@ export const processSecretSubscriptionAction = async (params: {
 	const sender = chat.members.find(
 		(m: any) => m.user.id === msg.fromUserId
 	)?.user
-	const newMessage: MessageType = {
-		id: createId(),
-		text: decrypted,
-		isEdited: false,
-		user: { id: msg.fromUserId, username: sender?.username || 'user' },
-		chat: { chatName: chat.chatName },
-		createdAt: new Date().toISOString(),
-		files: []
-	}
+	const newMessage = createLocalSecretMessage({
+		plaintext: decrypted,
+		senderId: msg.fromUserId,
+		senderUsername: sender?.username || 'user',
+		chatName: chat.chatName
+	})
 	return { sessionKey: currentSession, newMessage }
 }
 
@@ -562,10 +870,18 @@ export const pullSecretMessagesAction = async (params: {
 						ct: msg.encryptedMessage,
 						sig: msg.sig
 					}
+					const opkPriv = await resolveMyUsedOpkPrivateKey({
+						chatId,
+						userId,
+						usedOpk: used,
+						mySecretPreKey,
+						preKeysPub,
+						getPreKeys: params.getPreKeys
+					})
 					const finalize = await finalizeFromEnvelope({
 						bobIKPriv: ikPriv,
 						bobSPKPriv: spkPriv,
-						opkPriv: undefined,
+						opkPriv,
 						envelope
 					})
 					currentSession = finalize.sessionKey
@@ -573,18 +889,12 @@ export const pullSecretMessagesAction = async (params: {
 					const sender = chat.members.find(
 						(m: any) => m.user.id === msg.fromUserId
 					)?.user
-					const firstMessage: MessageType = {
-						id: createId(),
-						text: finalize.decrypted,
-						isEdited: false,
-						user: {
-							id: msg.fromUserId,
-							username: sender?.username || 'user'
-						},
-						chat: { chatName: chat.chatName },
-						createdAt: new Date().toISOString(),
-						files: []
-					}
+					const firstMessage = createLocalSecretMessage({
+						plaintext: finalize.decrypted,
+						senderId: msg.fromUserId,
+						senderUsername: sender?.username || 'user',
+						chatName: chat.chatName
+					})
 					const collectedTail: MessageType[] = [firstMessage]
 					try {
 						processedRef?.current?.add(`${msg.iv}.${msg.sig}`)
@@ -652,18 +962,14 @@ export const pullSecretMessagesAction = async (params: {
 						const sender2 = chat.members.find(
 							(m: any) => m.user.id === nextMsg.fromUserId
 						)?.user
-						collectedTail.push({
-							id: createId(),
-							text: decrypted,
-							isEdited: false,
-							user: {
-								id: nextMsg.fromUserId,
-								username: sender2?.username || 'user'
-							},
-							chat: { chatName: chat.chatName },
-							createdAt: new Date().toISOString(),
-							files: []
-						})
+						collectedTail.push(
+							createLocalSecretMessage({
+								plaintext: decrypted,
+								senderId: nextMsg.fromUserId,
+								senderUsername: sender2?.username || 'user',
+								chatName: chat.chatName
+							})
+						)
 					}
 					return {
 						sessionKey: currentSession,
@@ -727,15 +1033,14 @@ export const pullSecretMessagesAction = async (params: {
 		const sender = chat.members.find(
 			(m: any) => m.user.id === msg.fromUserId
 		)?.user
-		collected.push({
-			id: createId(),
-			text: decrypted,
-			isEdited: false,
-			user: { id: msg.fromUserId, username: sender?.username || 'user' },
-			chat: { chatName: chat.chatName },
-			createdAt: new Date().toISOString(),
-			files: []
-		})
+		collected.push(
+			createLocalSecretMessage({
+				plaintext: decrypted,
+				senderId: msg.fromUserId,
+				senderUsername: sender?.username || 'user',
+				chatName: chat.chatName
+			})
+		)
 	}
 	return {
 		sessionKey: currentSession ?? undefined,
@@ -755,12 +1060,15 @@ export const sendSecretMessageAction = async (params: {
 	groupId: string
 	userId: string
 	files: SendFileType[]
+	setFiles: Dispatch<SetStateAction<SendFileType[]>>
 	sessionKey: Uint8Array<ArrayBufferLike> | null
 	mySecretPreKey: PreKeyBundleClient | null
 	preKeysPub: GetPreKeysQuery['getPreKeys']
 	getPreKeys: ReturnType<typeof useGetPreKeysLazyQuery>[0]
 	sendMessageToClients: ReturnType<typeof useSendSecretMessageMutation>[0]
 	sendSharedSecretKey: ReturnType<typeof useSendSharedSecretKeyMutation>[0]
+	uploadSecretAttachment: ReturnType<typeof useUploadSecretAttachmentMutation>[0]
+	discardSecretAttachment: ReturnType<typeof useDiscardSecretAttachmentMutation>[0]
 }): Promise<{
 	newMessage?: MessageType
 	sessionKey?: Uint8Array<ArrayBufferLike> | null
@@ -775,208 +1083,228 @@ export const sendSecretMessageAction = async (params: {
 		groupId,
 		userId,
 		files,
+		setFiles,
 		sessionKey,
 		mySecretPreKey,
 		preKeysPub,
 		getPreKeys,
 		sendMessageToClients,
-		sendSharedSecretKey
+		sendSharedSecretKey,
+		uploadSecretAttachment,
+		discardSecretAttachment
 	} = params
 
 	if (!chat || (!text.trim() && files.length === 0)) return {}
 
-	const newMessage: MessageType = {
-		id: createId(),
-		text,
-		isEdited: false,
-		user: { id: user.id, username: user.username },
-		chat: { chatName: chat.chatName },
-		createdAt: new Date().toISOString(),
-		files: files.map(f => ({
-			id: f.id || createId(),
-			fileName: f.name,
-			fileSize: f.size,
-			fileFormat: f.name.split('.').pop() || 'file'
-		}))
+	const recipientUserIds = (chat.members || [])
+		.filter((member: any) => member.user.id !== userId)
+		.map((member: any) => member.user.id) as string[]
+	if (recipientUserIds.length === 0) {
+		console.error('Получатели не найдены в чате')
+		return { errorMessage: 'Получатели не найдены в чате' }
 	}
 
-	if (!sessionKey) {
-		const recipientUserIds = (chat.members || [])
-			.filter((m: any) => m.user.id !== userId)
-			.map((m: any) => m.user.id) as string[]
-		if (recipientUserIds.length === 0) {
-			console.error('Получатели не найдены в чате')
-			return { newMessage, errorMessage: 'Получатели не найдены в чате' }
-		}
+	const uploadedAttachmentIds: string[] = []
 
-		let existingSessionKey = await loadMyKeys(chatId, groupId)
-		if (existingSessionKey) {
+	try {
+		const stagedAttachments =
+			files.length > 0
+				? await stageSecretAttachmentsAction({
+						chatId,
+						files,
+						setFiles,
+						uploadSecretAttachment
+					})
+				: []
+		uploadedAttachmentIds.push(
+			...stagedAttachments.map(attachment => attachment.attachmentId)
+		)
+
+		const plaintext = buildSecretMessagePlaintext(text, stagedAttachments)
+		const newMessage = createLocalSecretMessage({
+			plaintext,
+			senderId: user.id,
+			senderUsername: user.username,
+			chatName: chat.chatName
+		})
+
+		if (!sessionKey) {
+			const existingSessionKey = await loadMyKeys(chatId, groupId)
+			if (existingSessionKey) {
+				let mySecretPreKeyLocal = mySecretPreKey
+				if (!mySecretPreKeyLocal) {
+					const mk = await loadMyPreKeyJSON()
+					if (!mk) {
+						console.error('Мои PreKeys не найдены')
+						return {
+							newMessage,
+							errorMessage: 'Мои PreKeys не найдены'
+						}
+					}
+					mySecretPreKeyLocal = mk.toStore
+				}
+				const { envelope } = await buildSessionMsgEnvelope({
+					plaintext,
+					sessionKey: existingSessionKey.sessionKeyHex,
+					signerIKPriv: await importPrivateRaw(
+						fromHex(mySecretPreKeyLocal!.ikPriv)
+					)
+				})
+
+				await sendMessageToClients({
+					variables: {
+						data: {
+							chatId,
+							encryptedMessage: envelope.ct,
+							groupId,
+							iv: envelope.iv,
+							ukm: null,
+							sig: envelope.sig,
+							toUserIds: recipientUserIds,
+							secretAttachmentIds: uploadedAttachmentIds
+						}
+					}
+				})
+
+				return {
+					newMessage,
+					sessionKey: existingSessionKey.sessionKeyHex
+				}
+			}
+
 			let mySecretPreKeyLocal = mySecretPreKey
 			if (!mySecretPreKeyLocal) {
 				const mk = await loadMyPreKeyJSON()
 				if (!mk) {
 					console.error('Мои PreKeys не найдены')
-					return {
-						newMessage,
-						errorMessage: 'Мои PreKeys не найдены'
-					}
+					return { newMessage, errorMessage: 'Мои PreKeys не найдены' }
 				}
 				mySecretPreKeyLocal = mk.toStore
 			}
-			const { envelope } = await buildSessionMsgEnvelope({
-				plaintext: text,
-				sessionKey: existingSessionKey.sessionKeyHex,
-				signerIKPriv: await importPrivateRaw(
-					fromHex(mySecretPreKeyLocal!.ikPriv)
-				)
+
+			const ikPrivRaw = fromHex(mySecretPreKeyLocal!.ikPriv)
+			let myIkPubHex = preKeysPub.find(pk => pk.userId === userId)?.ikPub
+
+			if (!myIkPubHex) {
+				try {
+					const preKeysResponse = await getPreKeys({
+						variables: { chatId }
+					})
+					if (preKeysResponse.data?.getPreKeys) {
+						myIkPubHex = preKeysResponse.data.getPreKeys.find(
+							pk => pk.userId === userId
+						)?.ikPub
+					}
+				} catch {}
+			}
+			if (!myIkPubHex) {
+				console.error('Мой ikPub не найден в preKeys')
+				return {
+					newMessage,
+					errorMessage: 'Мой ikPub не найден в preKeys'
+				}
+			}
+			const ikPubRaw = fromHex(myIkPubHex)
+			const IK = {
+				privateKey: await importPrivateRaw(ikPrivRaw),
+				publicKey: await importPublicRaw(ikPubRaw)
+			} as const
+
+			let recipientBundle = preKeysPub.find(
+				pk => pk.userId === recipientUserIds[0]
+			)
+			if (!recipientBundle) {
+				try {
+					const preKeysResponse = await getPreKeys({
+						variables: { chatId }
+					})
+					if (preKeysResponse.data?.getPreKeys) {
+						recipientBundle = preKeysResponse.data.getPreKeys.find(
+							pk => pk.userId === recipientUserIds[0]
+						) as any
+					}
+				} catch {}
+			}
+			if (!recipientBundle) {
+				console.error('PreKeys получателя не найдены')
+				return {
+					newMessage,
+					errorMessage: 'PreKeys получателя не найдены'
+				}
+			}
+
+			const {
+				envelope: initEnvelope,
+				sessionKey: newSessionKey,
+				verifiedSpk
+			} = await buildInitEnvelope({
+				IK,
+				bobBundle: {
+					ikPub: recipientBundle.ikPub,
+					spkPub: recipientBundle.spkPub,
+					spkSig: recipientBundle.spkSig,
+					opk:
+						recipientBundle.opkPubs[
+							recipientBundle.indexOpkPub
+						] ?? null
+				},
+				plaintext
 			})
+			if (!verifiedSpk) {
+				console.error('Не удалось проверить подпись SPK получателя')
+				return {
+					newMessage,
+					errorMessage: 'Не удалось проверить подпись SPK получателя'
+				}
+			}
+
+			try {
+				await sendSharedSecretKey({
+					variables: {
+						data: {
+							chatId,
+							groupId,
+							toUserId: recipientUserIds[0],
+							ikPub: myIkPubHex,
+							ekPub: initEnvelope.ekAPub,
+							usedOpk: initEnvelope.usedOpk ?? null,
+							ukm: initEnvelope.ukm,
+							iv: initEnvelope.iv,
+							encryptedKey: initEnvelope.ct,
+							sig: initEnvelope.sig
+						}
+					}
+				})
+			} catch (error) {
+				console.warn('[SecretChat] sendSharedSecretKey failed:', error)
+			}
 
 			await sendMessageToClients({
 				variables: {
 					data: {
 						chatId,
-						encryptedMessage: envelope.ct,
+						encryptedMessage: initEnvelope.ct,
 						groupId,
-						iv: envelope.iv,
-						ukm: null,
-						sig: envelope.sig,
-						toUserIds: recipientUserIds
+						iv: initEnvelope.iv,
+						sig: initEnvelope.sig,
+						ukm: initEnvelope.ukm,
+						toUserIds: recipientUserIds,
+						secretAttachmentIds: uploadedAttachmentIds
 					}
 				}
 			})
 
-			return { newMessage, sessionKey: existingSessionKey.sessionKeyHex }
-		}
-
-		let mySecretPreKeyLocal = mySecretPreKey
-		if (!mySecretPreKeyLocal) {
-			const mk = await loadMyPreKeyJSON()
-			if (!mk) {
-				console.error('Мои PreKeys не найдены')
-				return { newMessage, errorMessage: 'Мои PreKeys не найдены' }
-			}
-			mySecretPreKeyLocal = mk.toStore
-		}
-
-		const ikPrivRaw = fromHex(mySecretPreKeyLocal!.ikPriv)
-		let myIkPubHex = preKeysPub.find(pk => pk.userId === userId)?.ikPub
-
-		if (!myIkPubHex) {
-			try {
-				const preKeysResponse = await getPreKeys({
-					variables: { chatId }
-				})
-				if (preKeysResponse.data?.getPreKeys) {
-					myIkPubHex = preKeysResponse.data.getPreKeys.find(
-						pk => pk.userId === userId
-					)?.ikPub
-				}
-			} catch {}
-		}
-		if (!myIkPubHex) {
-			console.error('Мой ikPub не найден в preKeys')
-			return { newMessage, errorMessage: 'Мой ikPub не найден в preKeys' }
-		}
-		const ikPubRaw = fromHex(myIkPubHex)
-		const IK = {
-			privateKey: await importPrivateRaw(ikPrivRaw),
-			publicKey: await importPublicRaw(ikPubRaw)
-		} as const
-
-		let recipientBundle = preKeysPub.find(
-			pk => pk.userId === recipientUserIds[0]
-		)
-		if (!recipientBundle) {
-			try {
-				const preKeysResponse = await getPreKeys({
-					variables: { chatId }
-				})
-				if (preKeysResponse.data?.getPreKeys) {
-					recipientBundle = preKeysResponse.data.getPreKeys.find(
-						pk => pk.userId === recipientUserIds[0]
-					) as any
-				}
-			} catch {}
-		}
-		if (!recipientBundle) {
-			console.error('PreKeys получателя не найдены')
-			return { newMessage, errorMessage: 'PreKeys получателя не найдены' }
-		}
-
-		const {
-			envelope: initEnvelope,
-			sessionKey: newSessionKey,
-			verifiedSpk
-		} = await buildInitEnvelope({
-			IK,
-			bobBundle: {
-				ikPub: recipientBundle.ikPub,
-				spkPub: recipientBundle.spkPub,
-				spkSig: recipientBundle.spkSig,
-				opk:
-					recipientBundle.opkPubs[recipientBundle.indexOpkPub] ?? null
-			},
-			plaintext: text
-		})
-		if (!verifiedSpk) {
-			console.error('Не удалось проверить подпись SPK получателя')
 			return {
 				newMessage,
-				errorMessage: 'Не удалось проверить подпись SPK получателя'
+				sessionKey: newSessionKey,
+				needPersistKey: true
 			}
-		}
-
-		try {
-			await sendSharedSecretKey({
-				variables: {
-					data: {
-						chatId,
-						groupId,
-						toUserId: recipientUserIds[0],
-						ikPub: myIkPubHex,
-						ekPub: initEnvelope.ekAPub,
-						usedOpk: initEnvelope.usedOpk ?? null,
-						ukm: initEnvelope.ukm,
-						iv: initEnvelope.iv,
-						encryptedKey: initEnvelope.ct,
-						sig: initEnvelope.sig
-					}
-				}
-			})
-		} catch (e) {
-			console.warn('[SecretChat] sendSharedSecretKey failed:', e)
-		}
-
-		await sendMessageToClients({
-			variables: {
-				data: {
-					chatId,
-					encryptedMessage: initEnvelope.ct,
-					groupId,
-					iv: initEnvelope.iv,
-					sig: initEnvelope.sig,
-					ukm: initEnvelope.ukm,
-					toUserIds: recipientUserIds
-				}
-			}
-		})
-
-		return { newMessage, sessionKey: newSessionKey, needPersistKey: true }
-	} else {
-		const recipientUserIds = (chat.members || [])
-			.filter((m: any) => m.user.id !== userId)
-			.map((m: any) => m.user.id) as string[]
-		if (recipientUserIds.length === 0) {
-			console.error('Получатели не найдены в чате')
-			return { newMessage, errorMessage: 'Получатели не найдены в чате' }
 		}
 
 		const { envelope } = await buildSessionMsgEnvelope({
-			plaintext: text,
+			plaintext,
 			sessionKey,
-			signerIKPriv: await importPrivateRaw(
-				fromHex(mySecretPreKey!.ikPriv)
-			)
+			signerIKPriv: await importPrivateRaw(fromHex(mySecretPreKey!.ikPriv))
 		})
 
 		await sendMessageToClients({
@@ -988,11 +1316,40 @@ export const sendSecretMessageAction = async (params: {
 					iv: envelope.iv,
 					ukm: null,
 					sig: envelope.sig,
-					toUserIds: recipientUserIds
+					toUserIds: recipientUserIds,
+					secretAttachmentIds: uploadedAttachmentIds
 				}
 			}
 		})
+
 		return { newMessage }
+	} catch (error) {
+		if (uploadedAttachmentIds.length > 0) {
+			await cleanupUploadedSecretAttachmentsAction({
+				attachmentIds: uploadedAttachmentIds,
+				chatId,
+				discardSecretAttachment
+			})
+		}
+
+		setFiles(prev =>
+			prev.map(file =>
+				file.status === 'uploaded'
+					? {
+							...file,
+							status: 'failed',
+							errorMessage:
+								file.errorMessage ||
+								'Failed to send secret message with attachments.'
+						}
+					: file
+			)
+		)
+
+		return {
+			errorMessage:
+				getGraphQLErrorMessage(error) || 'Failed to send secret message'
+		}
 	}
 }
 
@@ -1028,7 +1385,13 @@ export const pickFileAction = async (): Promise<{
 		const name = asset.name ?? 'unknown'
 		const sizeStr = String(asset.size ?? 0)
 		return {
-			newFile: { id: createId(), name, size: sizeStr, uri: asset.uri }
+			newFile: {
+				id: createId(),
+				name,
+				size: sizeStr,
+				uri: asset.uri,
+				status: 'pending'
+			}
 		}
 	} catch (err) {
 		console.error('Ошибка при выборе файла:', err)
@@ -1055,6 +1418,7 @@ export const receiveGroupKeyAction = async (params: {
 	chatId: string
 	groupId: string
 	userId: string
+	preferredFromUserId?: string
 	mySecretPreKey: PreKeyBundleClient
 	preKeysPub: GetPreKeysQuery['getPreKeys']
 	getPreKeys?: ReturnType<typeof useGetPreKeysLazyQuery>[0]
@@ -1068,6 +1432,7 @@ export const receiveGroupKeyAction = async (params: {
 		chatId,
 		groupId,
 		userId,
+		preferredFromUserId,
 		mySecretPreKey,
 		preKeysPub,
 		getPreKeys,
@@ -1088,12 +1453,37 @@ export const receiveGroupKeyAction = async (params: {
 			return { errorMessage: 'Общий ключ ещё не был передан' }
 		}
 
-		const packet = sharedKeys.find(sk => sk.toUserId === userId)
-		if (!packet) {
+		const packetsForUser = sharedKeys.filter(sk => sk.toUserId === userId)
+		if (packetsForUser.length === 0) {
 			console.log(
 				'[SecretChat][ReceiveGroup] Нет пакета для текущего юзера'
 			)
 			return { errorMessage: 'Общий ключ ещё не был передан вам' }
+		}
+
+		const preferredPackets = preferredFromUserId
+			? packetsForUser.filter(sk => sk.fromUserId === preferredFromUserId)
+			: []
+		const fallbackPackets = packetsForUser.filter(
+			sk => sk.fromUserId !== preferredFromUserId
+		)
+		const sortNewestFirst = (
+			a: (typeof packetsForUser)[number],
+			b: (typeof packetsForUser)[number]
+		) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+		const candidatePackets = [
+			...preferredPackets.slice().sort(sortNewestFirst),
+			...fallbackPackets.slice().sort(sortNewestFirst)
+		]
+
+		if (packetsForUser.length > 1 && candidatePackets[0]) {
+			console.warn(
+				`[SecretChat][ReceiveGroup] Найдено ${packetsForUser.length} пакетов sharedSecretKey для ${userId}; сначала пробую пакет от ${candidatePackets[0].fromUserId}`
+			)
+		}
+
+		if (candidatePackets.length === 0) {
+			return { errorMessage: 'Не удалось выбрать пакет общего ключа' }
 		}
 
 		const ikPrivHex = mySecretPreKey.ikPriv || ''
@@ -1104,73 +1494,93 @@ export const receiveGroupKeyAction = async (params: {
 		const ikPriv = await importPrivateRaw(fromHex(ikPrivHex))
 		const spkPriv = await importPrivateRaw(fromHex(spkPrivHex))
 
-		const { sessionKey: pairSessionKey } = await finalizeSessionX3DH({
-			bobIKPriv: ikPriv,
-			bobSPKPriv: spkPriv,
-			opkPriv: undefined,
-			envelope: {
-				ikAPub: packet.ikPub,
-				ekAPub: packet.ekPub,
-				usedOpk: packet.usedOpk ?? null,
-				ukm: packet.ukm
-			}
-		})
-
-		const groupKeyBytes = await decryptKuz(
-			pairSessionKey,
-			fromHex(packet.iv),
-			fromHex(packet.encryptedKey)
-		)
-
-		let senderIkPub =
-			packet.ikPub ||
-			preKeysPub.find(pk => pk.userId === packet.fromUserId)?.ikPub
-		if (!senderIkPub && getPreKeys) {
+		for (const packet of candidatePackets) {
 			try {
-				const preKeysResponse = await getPreKeys({
-					variables: { chatId }
+				const opkPriv = await resolveMyUsedOpkPrivateKey({
+					chatId,
+					userId,
+					usedOpk: packet.usedOpk ?? null,
+					mySecretPreKey,
+					preKeysPub,
+					getPreKeys
 				})
-				const fresh = preKeysResponse.data?.getPreKeys || []
-				senderIkPub = fresh.find(
-					pk => pk.userId === packet.fromUserId
-				)?.ikPub
-			} catch {}
-		}
-		if (senderIkPub) {
-			const pubKey = await importPublicRaw(fromHex(senderIkPub))
-			const ekAPubRaw = fromHex(packet.ekPub)
-			const ikAPubRaw = fromHex(packet.ikPub)
-			const aad = new Uint8Array([
-				...new TextEncoder().encode('GROUPKEYv1'),
-				...ikAPubRaw,
-				...ekAPubRaw
-			])
-			const sigOk = await verifyBytes(
-				pubKey,
-				new Uint8Array([
-					...aad,
-					...fromHex(packet.iv),
-					...fromHex(packet.encryptedKey)
-				]),
-				fromHex(packet.sig)
-			)
-			if (!sigOk) {
-				console.warn(
-					'[SecretChat][ReceiveGroup] Подпись общего ключа невалидна'
+
+				const { sessionKey: pairSessionKey } = await finalizeSessionX3DH({
+					bobIKPriv: ikPriv,
+					bobSPKPriv: spkPriv,
+					opkPriv,
+					envelope: {
+						ikAPub: packet.ikPub,
+						ekAPub: packet.ekPub,
+						usedOpk: packet.usedOpk ?? null,
+						ukm: packet.ukm
+					}
+				})
+
+				const groupKeyBytes = await decryptKuz(
+					pairSessionKey,
+					fromHex(packet.iv),
+					fromHex(packet.encryptedKey)
 				)
-				return { errorMessage: 'Подпись общего ключа невалидна' }
+
+				let senderIkPub =
+					packet.ikPub ||
+					preKeysPub.find(pk => pk.userId === packet.fromUserId)?.ikPub
+				if (!senderIkPub && getPreKeys) {
+					try {
+						const preKeysResponse = await getPreKeys({
+							variables: { chatId }
+						})
+						const fresh = preKeysResponse.data?.getPreKeys || []
+						senderIkPub = fresh.find(
+							pk => pk.userId === packet.fromUserId
+						)?.ikPub
+					} catch {}
+				}
+				if (senderIkPub) {
+					const pubKey = await importPublicRaw(fromHex(senderIkPub))
+					const ekAPubRaw = fromHex(packet.ekPub)
+					const ikAPubRaw = fromHex(packet.ikPub)
+					const aad = new Uint8Array([
+						...new TextEncoder().encode('GROUPKEYv1'),
+						...ikAPubRaw,
+						...ekAPubRaw
+					])
+					const sigOk = await verifyBytes(
+						pubKey,
+						new Uint8Array([
+							...aad,
+							...fromHex(packet.iv),
+							...fromHex(packet.encryptedKey)
+						]),
+						fromHex(packet.sig)
+					)
+					if (!sigOk) {
+						console.warn(
+							`[SecretChat][ReceiveGroup] Подпись общего ключа невалидна для пакета ${packet.id}`
+						)
+						continue
+					}
+				}
+
+				console.log(
+					'[SecretChat][ReceiveGroup] Group key received, length:',
+					groupKeyBytes.length
+				)
+
+				return {
+					groupKey: groupKeyBytes,
+					needPersistKey: true
+				}
+			} catch (packetError) {
+				console.warn(
+					`[SecretChat][ReceiveGroup] Пакет ${packet.id} не подошёл:`,
+					packetError
+				)
 			}
 		}
 
-		console.log(
-			'[SecretChat][ReceiveGroup] Group key received, length:',
-			groupKeyBytes.length
-		)
-
-		return {
-			groupKey: groupKeyBytes,
-			needPersistKey: true
-		}
+		return { errorMessage: 'Не удалось расшифровать общий ключ группы' }
 	} catch (e) {
 		console.error('[SecretChat][ReceiveGroup] Ошибка получения ключа:', e)
 		return { errorMessage: 'Ошибка получения общего ключа группы' }

@@ -7,6 +7,7 @@ export type TypeRootStackParamList = {
 	Favorites: undefined
 	Search: undefined
 	Profile: undefined
+	BlockedUsers: undefined
 	Explorer: undefined
 	Cart: undefined
 	ChatsList: { groupId: string; groupName: string }
@@ -21,11 +22,12 @@ export type TypeRootStackParamList = {
 	ChatSettings: { chatId: string }
 	GroupSettings: { groupId: string; groupName: string }
 	FriendProfile: {
-		friendshipId: string
+		friendshipId?: string
 		username: string
 		avatarUrl?: string | null
+		bio?: string | null
 		friendUserId: string
-		friendSince: string
+		friendSince?: string
 	}
 	// Thanks: undefined
 	// Category: {

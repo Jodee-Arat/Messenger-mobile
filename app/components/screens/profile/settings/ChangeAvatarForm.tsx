@@ -1,5 +1,5 @@
 import * as ImagePicker from 'expo-image-picker'
-import { Camera, Trash2, Upload } from 'lucide-react-native'
+import { Trash2, Upload } from 'lucide-react-native'
 import { useState } from 'react'
 import {
 	ActivityIndicator,
@@ -13,6 +13,7 @@ import {
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
+import { createImageUploadFile } from '@/utils/create-image-upload-file'
 import { getMediaSource } from '@/utils/get-media-source'
 
 import {
@@ -26,45 +27,39 @@ const ChangeAvatarForm = () => {
 	const { t } = useTranslation()
 	const [isPicking, setIsPicking] = useState(false)
 
-	const [update, { loading: isUpdating }] = useChangeProfileAvatarMutation({
-		onCompleted() {
-			refetch()
-		},
-		onError() {
-			Alert.alert(t('error'), t('errorUpdatingAvatar'))
-		}
-	})
+	const [update, { loading: isUpdating }] = useChangeProfileAvatarMutation()
 
-	const [remove, { loading: isRemoving }] = useRemoveProfileAvatarMutation({
-		onCompleted() {
-			refetch()
-		},
-		onError() {
-			Alert.alert(t('error'), t('errorRemovingAvatar'))
-		}
-	})
+	const [remove, { loading: isRemoving }] = useRemoveProfileAvatarMutation()
 
 	const pickImage = async () => {
 		setIsPicking(true)
 		try {
 			const result = await ImagePicker.launchImageLibraryAsync({
-				mediaTypes: ImagePicker.MediaTypeOptions.Images,
+				mediaTypes: ['images'],
 				allowsEditing: true,
+				aspect: [1, 1],
 				quality: 0.8
 			})
 
-			if (!result.canceled) {
-				const asset = result.assets[0]
-				const file = {
-					uri: asset.uri,
-					type: 'image/jpeg',
-					name: 'avatar.jpg'
-				} as any
+			if (result.canceled || !result.assets?.[0]) return
 
-				await update({ variables: { avatar: file } })
-			}
+			const file = createImageUploadFile(result.assets[0], 'avatar.jpg')
+
+			await update({ variables: { avatar: file } })
+			await refetch()
+		} catch {
+			Alert.alert(t('error'), t('errorUpdatingAvatar'))
 		} finally {
 			setIsPicking(false)
+		}
+	}
+
+	const handleConfirmRemove = async () => {
+		try {
+			await remove()
+			await refetch()
+		} catch {
+			Alert.alert(t('error'), t('errorRemovingAvatar'))
 		}
 	}
 
@@ -74,7 +69,7 @@ const ChangeAvatarForm = () => {
 			{
 				text: t('remove'),
 				style: 'destructive',
-				onPress: () => remove()
+				onPress: () => void handleConfirmRemove()
 			}
 		])
 	}
@@ -154,6 +149,7 @@ const ChangeAvatarForm = () => {
 								source={{
 									uri: getMediaSource(user.avatarUrl)
 								}}
+								resizeMode='cover'
 								style={{ width: '100%', height: '100%' }}
 							/>
 						) : (

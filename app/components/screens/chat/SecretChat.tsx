@@ -7,26 +7,35 @@ import {
 	ShieldCheck,
 	UserPlus
 } from 'lucide-react-native'
-import React, { FC, useState } from 'react'
+import { useFocusEffect } from '@react-navigation/native'
+import React, { FC, useCallback, useEffect, useRef, useState } from 'react'
 import {
 	ActivityIndicator,
 	Alert,
 	KeyboardAvoidingView,
 	Platform,
-	SafeAreaView,
 	Text,
 	TextInput,
 	TouchableOpacity,
 	View
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import EntityAvatar from '@/components/ui/EntityAvatar'
 
+import {
+	isChatMembershipRevokedError,
+	isDirectContactBlockedError
+} from '@/hooks/useBlockedUsers'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
+import { DM_STORAGE_GROUP_ID } from '@/hooks/useSecretChat.actions'
 import { useSecretChat } from '@/hooks/useSecretChat'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 import { useUser } from '@/hooks/useUser'
+import { resetToHome } from '@/navigation/navigate'
+
+import { MessageType } from '@/types/message.type'
 
 import { chatEvents } from '@/utils/chatEvents'
 import { deleteSecretChat } from '@/utils/secret-chat/secretChat'
@@ -35,11 +44,18 @@ import ChatInviteMemberModal from '../chat-settings/ChatInviteMemberModal'
 
 import ChatSkeleton from './ChatSkeleton'
 import FingerprintVerificationModal from './FingerprintVerificationModal'
+import Loader from '@/components/ui/Loader'
 import SecretChatMessageList from './message/secret/list/SecretChatMessageList'
 import SecretSendMessageForm from './message/secret/send/SecretSendMessageForm'
 import {
 	ChatPermissionEnum,
+	useChatAssignedRoleSubscription,
+	useChatDeletedSubscription,
+	useChatDeletedRoleSubscription,
+	useChatRemovedRoleSubscription,
+	useChatUpsertedRoleSubscription,
 	useGetMemberChatRoleQuery,
+	useGroupDeletedSubscription,
 	useInviteMemberToChatMutation,
 	useLeaveChatMutation,
 	useVerifyChatTotpMutation
@@ -62,6 +78,7 @@ const SecretChat: FC<SecretChatProps> = ({
 	const { isLoadingProfile, user } = useCurrentUser()
 	const { colors } = useTheme()
 	const { t } = useTranslation()
+	const { top } = useSafeAreaInsets()
 	const { userId } = useUser()
 	const navigation = useTypedNavigation()
 	const [rolesVisible, setRolesVisible] = useState(false)
@@ -70,6 +87,11 @@ const SecretChat: FC<SecretChatProps> = ({
 	const [totpVerified, setTotpVerified] = useState(false)
 	const [totpCode, setTotpCode] = useState('')
 	const [totpError, setTotpError] = useState('')
+	const [pinnedMessage, setPinnedMessage] = useState<MessageType | null>(
+		null
+	)
+	const handledAccessLossRef = useRef(false)
+	const hasFocusedOnceRef = useRef(false)
 
 	const lockColor = isDM ? '#4CAF50' : colors.accent
 
@@ -78,9 +100,48 @@ const SecretChat: FC<SecretChatProps> = ({
 		useVerifyChatTotpMutation()
 	const [inviteMemberMutation] = useInviteMemberToChatMutation()
 
-	const { data: roleData } = useGetMemberChatRoleQuery({
+	const { data: roleData, refetch: refetchMemberRole } =
+		useGetMemberChatRoleQuery({
 		variables: { chatId },
-		skip: isDM
+		skip: isDM,
+		fetchPolicy: 'network-only'
+	})
+
+	const refreshMemberRole = useCallback(() => {
+		if (isDM) return
+		void refetchMemberRole()
+	}, [isDM, refetchMemberRole])
+
+	useChatAssignedRoleSubscription({
+		variables: { chatId },
+		skip: isDM,
+		onData: () => {
+			refreshMemberRole()
+		}
+	})
+
+	useChatRemovedRoleSubscription({
+		variables: { chatId },
+		skip: isDM,
+		onData: () => {
+			refreshMemberRole()
+		}
+	})
+
+	useChatUpsertedRoleSubscription({
+		variables: { chatId },
+		skip: isDM,
+		onData: () => {
+			refreshMemberRole()
+		}
+	})
+
+	useChatDeletedRoleSubscription({
+		variables: { chatId },
+		skip: isDM,
+		onData: () => {
+			refreshMemberRole()
+		}
 	})
 
 	const isCreator = !!roleData?.getMemberChatRole?.isCreator
@@ -97,17 +158,250 @@ const SecretChat: FC<SecretChatProps> = ({
 		deleteMessage,
 		draftText,
 		files,
+		isSendingFiles,
 		messages,
 		loadingMessage,
 		pickFile,
+		removeFile,
 		reload,
 		sendMessage,
 		errorMessage,
+		chatAccessError,
 		setDraftText,
 		preKeysPub,
 		sendKeyToNewMember,
 		isKeyReady
 	} = useSecretChat(chatId, userId, groupId)
+
+	useFocusEffect(
+		useCallback(() => {
+			if (!hasFocusedOnceRef.current) {
+				hasFocusedOnceRef.current = true
+				return
+			}
+
+			void reload()
+			refreshMemberRole()
+		}, [refreshMemberRole, reload])
+	)
+
+	const handleRefresh = useCallback(async () => {
+		await reload()
+	}, [reload])
+	const resolvedChatName =
+		!isDM && chat && 'chatName' in chat && chat.chatName
+			? chat.chatName
+			: chatName
+	const resolvedAvatarUrl =
+		!isDM && chat && 'avatarUrl' in chat && chat.avatarUrl
+			? chat.avatarUrl
+			: null
+
+	const handleAccessLoss = useCallback(
+		async (scope: 'chat' | 'group') => {
+			if (handledAccessLossRef.current) return
+			handledAccessLossRef.current = true
+
+			if (groupId) {
+				await deleteSecretChat(groupId, chatId)
+			}
+
+			if (scope === 'group') {
+				resetToHome()
+				return
+			}
+
+			if (navigation.canGoBack()) {
+				navigation.goBack()
+				return
+			}
+
+			resetToHome()
+		},
+		[chatId, groupId, navigation]
+	)
+
+	const isBlockedSecretChatAccess =
+		isDM &&
+		(isDirectContactBlockedError(chatAccessError) ||
+			isDirectContactBlockedError(errorMessage))
+
+	useEffect(() => {
+		if (!isBlockedSecretChatAccess) return
+		void deleteSecretChat(DM_STORAGE_GROUP_ID, chatId)
+	}, [chatId, isBlockedSecretChatAccess])
+
+	useEffect(() => {
+		if (isBlockedSecretChatAccess) return
+		if (!isChatMembershipRevokedError(chatAccessError)) return
+
+		void handleAccessLoss('chat')
+	}, [chatAccessError, handleAccessLoss, isBlockedSecretChatAccess])
+
+	useChatDeletedSubscription({
+		variables: {
+			groupId: groupId ?? '',
+			userId
+		},
+		skip: !(userId && groupId),
+		onData: ({ data }) => {
+			if (data.data?.chatDeleted.id !== chatId) return
+			void handleAccessLoss('chat')
+		}
+	})
+
+	useGroupDeletedSubscription({
+		variables: { userId },
+		skip: !(userId && groupId),
+		onData: ({ data }) => {
+			if (data.data?.groupDeleted.id !== groupId) return
+			void handleAccessLoss('group')
+		}
+	})
+
+	useEffect(() => {
+		if (!chat || !('pinnedMessage' in chat)) {
+			setPinnedMessage(null)
+			return
+		}
+
+		setPinnedMessage((chat.pinnedMessage as MessageType | null) ?? null)
+	}, [chat])
+
+	const renderBlockedState = () => (
+		<View
+			style={{
+				flex: 1,
+				backgroundColor: colors.background,
+				paddingTop: top + 8,
+				paddingHorizontal: 20,
+				paddingBottom: 24
+			}}
+		>
+			<View
+				style={{
+					flexDirection: 'row',
+					alignItems: 'center',
+					marginBottom: 24
+				}}
+			>
+				<TouchableOpacity
+					onPress={() => navigation.goBack()}
+					activeOpacity={0.7}
+					style={{
+						width: 40,
+						height: 40,
+						borderRadius: 20,
+						backgroundColor: colors.backgroundSecondary,
+						alignItems: 'center',
+						justifyContent: 'center',
+						marginRight: 12
+					}}
+				>
+					<ArrowLeft size={20} color={colors.text} />
+				</TouchableOpacity>
+				<Text
+					numberOfLines={1}
+					style={{
+						flex: 1,
+						fontSize: 17,
+						fontWeight: '700',
+						color: colors.text
+					}}
+				>
+					{chatName}
+				</Text>
+			</View>
+
+			<View
+				style={{
+					flex: 1,
+					alignItems: 'center',
+					justifyContent: 'center'
+				}}
+			>
+				<View
+					style={{
+						width: 72,
+						height: 72,
+						borderRadius: 36,
+						backgroundColor: colors.backgroundSecondary,
+						alignItems: 'center',
+						justifyContent: 'center'
+					}}
+				>
+					<ShieldCheck size={30} color={colors.destructive} />
+				</View>
+
+				<Text
+					style={{
+						marginTop: 20,
+						fontSize: 20,
+						fontWeight: '700',
+						color: colors.text,
+						textAlign: 'center'
+					}}
+				>
+					{t('directChatUnavailable')}
+				</Text>
+				<Text
+					style={{
+						marginTop: 10,
+						fontSize: 14,
+						lineHeight: 20,
+						color: colors.textMuted,
+						textAlign: 'center'
+					}}
+				>
+					{t('directChatBlockedDescription')}
+				</Text>
+
+				<TouchableOpacity
+					onPress={() => navigation.navigate('BlockedUsers')}
+					activeOpacity={0.7}
+					style={{
+						marginTop: 20,
+						paddingHorizontal: 18,
+						paddingVertical: 12,
+						borderRadius: 12,
+						backgroundColor: colors.accent
+					}}
+				>
+					<Text
+						style={{
+							color: '#fff',
+							fontWeight: '700',
+							fontSize: 14
+						}}
+					>
+						{t('manageBlockedUsers')}
+					</Text>
+				</TouchableOpacity>
+
+				<TouchableOpacity
+					onPress={() => navigation.goBack()}
+					activeOpacity={0.7}
+					style={{
+						marginTop: 12,
+						paddingHorizontal: 18,
+						paddingVertical: 12,
+						borderRadius: 12,
+						backgroundColor: colors.backgroundSecondary
+					}}
+				>
+					<Text
+						style={{
+							color: colors.text,
+							fontWeight: '700',
+							fontSize: 14
+						}}
+					>
+						{t('back')}
+					</Text>
+				</TouchableOpacity>
+			</View>
+		</View>
+	)
 
 	const handleLeaveChat = () => {
 		Alert.alert(t('leaveChat'), t('leaveChatConfirm'), [
@@ -145,16 +439,34 @@ const SecretChat: FC<SecretChatProps> = ({
 		}
 	}
 
+	const shouldShowSecretSetupState =
+		!isDM && !isLoadingProfile && !!user && !!chat && !isKeyReady
+
+	if (isBlockedSecretChatAccess) {
+		return renderBlockedState()
+	}
+
 	if (errorMessage !== '') {
 		return (
-			<SafeAreaView
+			<View
 				className='flex-1 justify-center items-center'
 				style={{ backgroundColor: colors.background }}
 			>
 				<Text style={{ color: colors.textSecondary }}>
 					{errorMessage}
 				</Text>
-			</SafeAreaView>
+			</View>
+		)
+	}
+
+	if (shouldShowSecretSetupState) {
+		return (
+			<View
+				className='flex-1 items-center justify-center'
+				style={{ backgroundColor: colors.background }}
+			>
+				<Loader />
+			</View>
 		)
 	}
 
@@ -186,11 +498,14 @@ const SecretChat: FC<SecretChatProps> = ({
 
 	if ((chat as any).requireTotp && !totpVerified) {
 		return (
-			<SafeAreaView
+			<View
 				className='flex-1'
 				style={{ backgroundColor: colors.background }}
 			>
-				<View className='flex-1 pt-8 items-center justify-center px-6'>
+				<View
+					className='flex-1 items-center justify-center px-6'
+					style={{ paddingTop: top + 8 }}
+				>
 					<View
 						className='w-16 h-16 rounded-full items-center justify-center mb-4'
 						style={{ backgroundColor: colors.accent + '20' }}
@@ -273,7 +588,7 @@ const SecretChat: FC<SecretChatProps> = ({
 						</Text>
 					</TouchableOpacity>
 				</View>
-			</SafeAreaView>
+			</View>
 		)
 	}
 
@@ -287,7 +602,7 @@ const SecretChat: FC<SecretChatProps> = ({
 
 	const handleSend = async (text?: string) => {
 		const messageText = text ?? draftText
-		sendMessage(messageText, user)
+		return await sendMessage(messageText, user)
 	}
 
 	const members = (chat as any)?.members ?? [
@@ -295,13 +610,13 @@ const SecretChat: FC<SecretChatProps> = ({
 	]
 
 	return (
-		<SafeAreaView
-			className='flex-1'
-			style={{ backgroundColor: colors.background }}
-		>
+		<View style={{ flex: 1, backgroundColor: colors.background }}>
 			<View
-				className='flex-1 pt-8 overflow-hidden'
-				style={{ backgroundColor: colors.backgroundTertiary }}
+				className='flex-1 overflow-hidden'
+				style={{
+					backgroundColor: colors.backgroundTertiary,
+					paddingTop: top + 8
+				}}
 			>
 				{/* Header */}
 				<View
@@ -328,8 +643,8 @@ const SecretChat: FC<SecretChatProps> = ({
 					>
 						<EntityAvatar
 							size='default'
-							name={chatName}
-							avatarUrl={null}
+							name={resolvedChatName}
+							avatarUrl={resolvedAvatarUrl}
 						/>
 						<View className='ml-2.5 flex-1'>
 							<Text
@@ -340,7 +655,7 @@ const SecretChat: FC<SecretChatProps> = ({
 								}}
 								numberOfLines={1}
 							>
-								{chatName}
+								{resolvedChatName}
 							</Text>
 							<View className='flex-row items-center mt-0.5'>
 								<Lock size={10} color={lockColor} />
@@ -385,20 +700,49 @@ const SecretChat: FC<SecretChatProps> = ({
 				</View>
 
 				{/* Messages */}
-				<KeyboardAvoidingView
-					behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-					className='flex-1'
-					keyboardVerticalOffset={Platform.select({
-						ios: 90,
-						android: 80
-					})}
-				>
+				{Platform.OS === 'ios' ? (
+					<KeyboardAvoidingView behavior='padding' style={{ flex: 1 }}>
+						<View className='flex-1 px-2 pb-2 justify-end'>
+							<SecretChatMessageList
+								messages={messages}
+								userId={user.id}
+								onDelete={deleteMessage}
+								onRefresh={handleRefresh}
+								chatId={chatId}
+								pinnedMessage={pinnedMessage}
+								setPinnedMessage={setPinnedMessage}
+							/>
+
+							<SecretSendMessageForm
+								setDraftText={setDraftText}
+								chatId={chatId}
+								draftText={draftText}
+								setEditId={() => {}}
+								editId={null}
+								files={files}
+								filesEdited={[]}
+								isSendingFiles={isSendingFiles}
+								setFilesEdited={() => {}}
+								pickAndSendFile={pickFile}
+								onDeleteFile={removeFile}
+								clearMessageId={clearForm}
+								forwardedMessages={[]}
+								setForwardedMessages={() => {}}
+								handleClearForm={clearForm}
+								onSend={handleSend}
+							/>
+						</View>
+					</KeyboardAvoidingView>
+				) : (
 					<View className='flex-1 px-2 pb-2 justify-end'>
 						<SecretChatMessageList
 							messages={messages}
 							userId={user.id}
 							onDelete={deleteMessage}
+							onRefresh={handleRefresh}
 							chatId={chatId}
+							pinnedMessage={pinnedMessage}
+							setPinnedMessage={setPinnedMessage}
 						/>
 
 						<SecretSendMessageForm
@@ -409,12 +753,10 @@ const SecretChat: FC<SecretChatProps> = ({
 							editId={null}
 							files={files}
 							filesEdited={[]}
+							isSendingFiles={isSendingFiles}
 							setFilesEdited={() => {}}
 							pickAndSendFile={pickFile}
-							onDeleteFile={(id: string) => {
-								clearForm()
-								console.log('Deleted file', id)
-							}}
+							onDeleteFile={removeFile}
 							clearMessageId={clearForm}
 							forwardedMessages={[]}
 							setForwardedMessages={() => {}}
@@ -422,7 +764,7 @@ const SecretChat: FC<SecretChatProps> = ({
 							onSend={handleSend}
 						/>
 					</View>
-				</KeyboardAvoidingView>
+				)}
 			</View>
 
 			<FingerprintVerificationModal
@@ -432,7 +774,7 @@ const SecretChat: FC<SecretChatProps> = ({
 				preKeysPub={preKeysPub}
 				currentUserId={user.id}
 			/>
-		</SafeAreaView>
+		</View>
 	)
 }
 

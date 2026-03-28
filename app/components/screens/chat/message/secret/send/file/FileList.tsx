@@ -27,7 +27,7 @@ const FileList: FC<FileListProp> = ({
 					onDeleteFile={() => {
 						onDeleteFile(file.id!)
 					}}
-					isLoadingSend={isLoadingSend && files.length - 1 === index}
+					isLoadingSend={isLoadingSend}
 				/>
 			))}
 		</View>

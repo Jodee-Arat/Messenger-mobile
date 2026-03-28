@@ -1,25 +1,30 @@
-import {
-	ArrowLeft,
-	Lock,
-	LogOut,
-	Settings2,
-	UserPlus
-} from 'lucide-react-native'
-import React, { FC, useMemo, useState } from 'react'
+import { useFocusEffect } from '@react-navigation/native'
+import { ArrowLeft, LogOut, Shield } from 'lucide-react-native'
+import React, {
+	FC,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState
+} from 'react'
 import {
 	ActivityIndicator,
 	Alert,
 	KeyboardAvoidingView,
 	Platform,
-	SafeAreaView,
 	Text,
 	TouchableOpacity,
 	View
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import EntityAvatar from '@/components/ui/EntityAvatar'
-import { Button } from '@/components/ui/button/Button'
 
+import {
+	isChatMembershipRevokedError,
+	isDirectContactBlockedError
+} from '@/hooks/useBlockedUsers'
 import { useChat } from '@/hooks/useChat'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
@@ -29,6 +34,8 @@ import { useUser } from '@/hooks/useUser'
 
 import { chatEvents } from '@/utils/chatEvents'
 
+import { resetToHome } from '@/navigation/navigate'
+
 import ChatInviteMemberModal from '../chat-settings/ChatInviteMemberModal'
 
 import ChatSkeleton from './ChatSkeleton'
@@ -36,7 +43,13 @@ import ChatMessageList from './message/default/list/ChatMessageList'
 import SendMessageForm from './message/default/send/SendMessageForm'
 import {
 	ChatPermissionEnum,
+	useChatAssignedRoleSubscription,
+	useChatDeletedRoleSubscription,
+	useChatDeletedSubscription,
+	useChatRemovedRoleSubscription,
+	useChatUpsertedRoleSubscription,
 	useGetMemberChatRoleQuery,
+	useGroupDeletedSubscription,
 	useInviteMemberToChatMutation,
 	useLeaveChatMutation
 } from '@/graphql/generated/output'
@@ -44,15 +57,23 @@ import {
 type DefaultChatProps = {
 	chatId: string
 	chatName: string
+	groupId?: string
 	isSecret: boolean
 }
 
-const DefaultChat: FC<DefaultChatProps> = ({ chatId, chatName, isSecret }) => {
+const DefaultChat: FC<DefaultChatProps> = ({
+	chatId,
+	chatName,
+	groupId,
+	isSecret
+}) => {
 	const { isLoadingProfile, user } = useCurrentUser()
 	const { colors } = useTheme()
 	const { t } = useTranslation()
+	const { top } = useSafeAreaInsets()
 	const navigation = useTypedNavigation()
 	const [isInviteOpen, setIsInviteOpen] = useState(false)
+	const [hasBlockedRuntimeError, setHasBlockedRuntimeError] = useState(false)
 	const { userId } = useUser()
 
 	const [leaveChatMutation] = useLeaveChatMutation()
@@ -63,6 +84,7 @@ const DefaultChat: FC<DefaultChatProps> = ({ chatId, chatName, isSecret }) => {
 		setFilesEdited,
 		pinnedMessage,
 		setPinnedMessage,
+		reloadChat,
 		isLoadingFindChat,
 		startEdit,
 		handleAddForwardedMessage,
@@ -70,23 +92,138 @@ const DefaultChat: FC<DefaultChatProps> = ({ chatId, chatName, isSecret }) => {
 		setForwardedMessages,
 		draftText,
 		pickAndSendFile,
+		pickAndSendImage,
 		forwardedMessages,
 		handleDelete,
 		files,
+		hasPendingUploads,
 		isLoadingSendFile,
 		handleClearMessageId,
 		editId,
 		setEditId,
-		chat
-	} = useChat(chatId)
+		chat,
+		findChatError
+	} = useChat(chatId, {
+		onBlockedError: () => {
+			setHasBlockedRuntimeError(true)
+		}
+	})
 
 	const { typingUsernames, sendTyping } = useTypingIndicator(chatId, userId)
+	const handledAccessLossRef = useRef(false)
 
 	const isGroup = !!(chat as any)?.isGroup
+	const effectiveGroupId = groupId ?? chat?.groupId ?? undefined
+	const resolvedChatName =
+		isGroup && chat?.chatName ? chat.chatName : chatName
+	const resolvedAvatarUrl = isGroup && chat?.avatarUrl ? chat.avatarUrl : null
+	const isBlockedChatAccess =
+		hasBlockedRuntimeError || isDirectContactBlockedError(findChatError)
 
-	const { data: roleData } = useGetMemberChatRoleQuery({
+	const handleAccessLoss = useCallback(
+		(scope: 'chat' | 'group') => {
+			if (handledAccessLossRef.current) return
+			handledAccessLossRef.current = true
+
+			if (scope === 'group') {
+				resetToHome()
+				return
+			}
+
+			if (navigation.canGoBack()) {
+				navigation.goBack()
+				return
+			}
+
+			resetToHome()
+		},
+		[navigation]
+	)
+
+	const { data: roleData, refetch: refetchMemberRole } =
+		useGetMemberChatRoleQuery({
+			variables: { chatId },
+			skip: !isGroup,
+			fetchPolicy: 'network-only'
+		})
+
+	const refreshMemberRole = useCallback(() => {
+		if (!isGroup) return
+		void refetchMemberRole()
+	}, [isGroup, refetchMemberRole])
+
+	const handleRefresh = useCallback(async () => {
+		await Promise.allSettled([
+			reloadChat(),
+			isGroup ? refetchMemberRole() : Promise.resolve(null)
+		])
+	}, [isGroup, refetchMemberRole, reloadChat])
+
+	useFocusEffect(
+		useCallback(() => {
+			void reloadChat()
+			refreshMemberRole()
+		}, [refreshMemberRole, reloadChat])
+	)
+
+	useEffect(() => {
+		if (isBlockedChatAccess) return
+		if (!isChatMembershipRevokedError(findChatError)) return
+
+		handleAccessLoss('chat')
+	}, [findChatError, handleAccessLoss, isBlockedChatAccess])
+
+	useChatDeletedSubscription({
+		variables: {
+			groupId: effectiveGroupId ?? '',
+			userId
+		},
+		skip: !(userId && effectiveGroupId),
+		onData: ({ data }) => {
+			if (data.data?.chatDeleted.id !== chatId) return
+			handleAccessLoss('chat')
+		}
+	})
+
+	useGroupDeletedSubscription({
+		variables: { userId },
+		skip: !(userId && effectiveGroupId),
+		onData: ({ data }) => {
+			if (data.data?.groupDeleted.id !== effectiveGroupId) return
+			handleAccessLoss('group')
+		}
+	})
+
+	useChatAssignedRoleSubscription({
 		variables: { chatId },
-		skip: !isGroup
+		skip: !isGroup,
+		onData: () => {
+			refreshMemberRole()
+		}
+	})
+
+	useChatRemovedRoleSubscription({
+		variables: { chatId },
+		skip: !isGroup,
+		onData: () => {
+			refreshMemberRole()
+		}
+	})
+
+	useChatUpsertedRoleSubscription({
+		variables: { chatId },
+		skip: !isGroup,
+		onData: () => {
+			refreshMemberRole()
+		}
+	})
+
+	useChatDeletedRoleSubscription({
+		variables: { chatId },
+		skip: !isGroup,
+		onData: () => {
+			refreshMemberRole()
+		}
 	})
 
 	const messagePermissions = useMemo(() => {
@@ -99,7 +236,7 @@ const DefaultChat: FC<DefaultChatProps> = ({ chatId, chatName, isSecret }) => {
 			}
 		}
 		const role = roleData?.getMemberChatRole
-		if (!role) {
+		if (role?.isCreator) {
 			return {
 				canSendMessages: true,
 				canEditMessages: true,
@@ -107,15 +244,7 @@ const DefaultChat: FC<DefaultChatProps> = ({ chatId, chatName, isSecret }) => {
 				canPinMessages: true
 			}
 		}
-		if (role.isCreator) {
-			return {
-				canSendMessages: true,
-				canEditMessages: true,
-				canDeleteMessages: true,
-				canPinMessages: true
-			}
-		}
-		const perms = role.permissions ?? []
+		const perms = role?.permissions ?? []
 		return {
 			canSendMessages: perms.includes(ChatPermissionEnum.SendMessages),
 			canEditMessages: perms.includes(ChatPermissionEnum.EditMessages),
@@ -135,6 +264,141 @@ const DefaultChat: FC<DefaultChatProps> = ({ chatId, chatName, isSecret }) => {
 			))
 
 	const members = (chat as any)?.members ?? []
+
+	const renderBlockedState = () => (
+		<View
+			style={{
+				flex: 1,
+				backgroundColor: colors.background,
+				paddingTop: top + 8,
+				paddingHorizontal: 20,
+				paddingBottom: 24
+			}}
+		>
+			<View
+				style={{
+					flexDirection: 'row',
+					alignItems: 'center',
+					marginBottom: 24
+				}}
+			>
+				<TouchableOpacity
+					onPress={() => navigation.goBack()}
+					activeOpacity={0.7}
+					style={{
+						width: 40,
+						height: 40,
+						borderRadius: 20,
+						backgroundColor: colors.backgroundSecondary,
+						alignItems: 'center',
+						justifyContent: 'center',
+						marginRight: 12
+					}}
+				>
+					<ArrowLeft size={20} color={colors.text} />
+				</TouchableOpacity>
+				<Text
+					numberOfLines={1}
+					style={{
+						flex: 1,
+						fontSize: 17,
+						fontWeight: '700',
+						color: colors.text
+					}}
+				>
+					{chatName}
+				</Text>
+			</View>
+
+			<View
+				style={{
+					flex: 1,
+					alignItems: 'center',
+					justifyContent: 'center'
+				}}
+			>
+				<View
+					style={{
+						width: 72,
+						height: 72,
+						borderRadius: 36,
+						backgroundColor: colors.backgroundSecondary,
+						alignItems: 'center',
+						justifyContent: 'center'
+					}}
+				>
+					<Shield size={30} color={colors.destructive} />
+				</View>
+
+				<Text
+					style={{
+						marginTop: 20,
+						fontSize: 20,
+						fontWeight: '700',
+						color: colors.text,
+						textAlign: 'center'
+					}}
+				>
+					{t('directChatUnavailable')}
+				</Text>
+				<Text
+					style={{
+						marginTop: 10,
+						fontSize: 14,
+						lineHeight: 20,
+						color: colors.textMuted,
+						textAlign: 'center'
+					}}
+				>
+					{t('directChatBlockedDescription')}
+				</Text>
+
+				<TouchableOpacity
+					onPress={() => navigation.navigate('BlockedUsers')}
+					activeOpacity={0.7}
+					style={{
+						marginTop: 20,
+						paddingHorizontal: 18,
+						paddingVertical: 12,
+						borderRadius: 12,
+						backgroundColor: colors.accent
+					}}
+				>
+					<Text
+						style={{
+							color: '#fff',
+							fontWeight: '700',
+							fontSize: 14
+						}}
+					>
+						{t('manageBlockedUsers')}
+					</Text>
+				</TouchableOpacity>
+
+				<TouchableOpacity
+					onPress={() => navigation.goBack()}
+					activeOpacity={0.7}
+					style={{
+						marginTop: 12,
+						paddingHorizontal: 18,
+						paddingVertical: 12,
+						borderRadius: 12,
+						backgroundColor: colors.backgroundSecondary
+					}}
+				>
+					<Text
+						style={{
+							color: colors.text,
+							fontWeight: '700',
+							fontSize: 14
+						}}
+					>
+						{t('back')}
+					</Text>
+				</TouchableOpacity>
+			</View>
+		</View>
+	)
 
 	const handleLeaveChat = () => {
 		Alert.alert(t('leaveChat'), t('leaveChatConfirm'), [
@@ -167,6 +431,10 @@ const DefaultChat: FC<DefaultChatProps> = ({ chatId, chatName, isSecret }) => {
 		}
 	}
 
+	if (!isLoadingProfile && user && isBlockedChatAccess) {
+		return renderBlockedState()
+	}
+
 	if (isLoadingFindChat || isLoadingProfile || !user || !chat) {
 		return <ChatSkeleton />
 	}
@@ -180,13 +448,13 @@ const DefaultChat: FC<DefaultChatProps> = ({ chatId, chatName, isSecret }) => {
 	}
 
 	return (
-		<SafeAreaView
-			className='flex-1'
-			style={{ backgroundColor: colors.background }}
-		>
+		<View style={{ flex: 1, backgroundColor: colors.background }}>
 			<View
-				className='flex-1 pt-8 overflow-hidden'
-				style={{ backgroundColor: colors.backgroundTertiary }}
+				className='flex-1 overflow-hidden'
+				style={{
+					backgroundColor: colors.backgroundTertiary,
+					paddingTop: top + 8
+				}}
 			>
 				{/* Header */}
 				<View
@@ -213,8 +481,8 @@ const DefaultChat: FC<DefaultChatProps> = ({ chatId, chatName, isSecret }) => {
 					>
 						<EntityAvatar
 							size='default'
-							name={chatName}
-							avatarUrl={null}
+							name={resolvedChatName}
+							avatarUrl={resolvedAvatarUrl}
 						/>
 						<View className='ml-2.5 flex-1'>
 							<Text
@@ -225,7 +493,7 @@ const DefaultChat: FC<DefaultChatProps> = ({ chatId, chatName, isSecret }) => {
 								}}
 								numberOfLines={1}
 							>
-								{chatName}
+								{resolvedChatName}
 							</Text>
 							{typingUsernames.length > 0 ? (
 								<Text
@@ -236,7 +504,9 @@ const DefaultChat: FC<DefaultChatProps> = ({ chatId, chatName, isSecret }) => {
 										marginTop: 1
 									}}
 								>
-									{typingUsernames.join(', ') + ' ' + t('typing')}
+									{typingUsernames.join(', ') +
+										' ' +
+										t('typing')}
 								</Text>
 							) : null}
 						</View>
@@ -257,20 +527,74 @@ const DefaultChat: FC<DefaultChatProps> = ({ chatId, chatName, isSecret }) => {
 					)}
 				</View>
 
-				<KeyboardAvoidingView
-					behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-					className='flex-1'
-					keyboardVerticalOffset={Platform.select({
-						ios: 90,
-						android: 80
-					})}
-				>
+				{Platform.OS === 'ios' ? (
+					<KeyboardAvoidingView
+						behavior='padding'
+						style={{ flex: 1 }}
+					>
+						<View className='flex-1 px-2 pb-2 justify-end'>
+							<ChatMessageList
+								pinnedMessage={pinnedMessage}
+								setPinnedMessage={setPinnedMessage}
+								chatId={chatId}
+								startEdit={startEdit}
+								userId={user!.id}
+								handleAddForwardedMessage={
+									handleAddForwardedMessage
+								}
+								canEditMessages={
+									messagePermissions.canEditMessages
+								}
+								canDeleteMessages={
+									messagePermissions.canDeleteMessages
+								}
+								canPinMessages={
+									messagePermissions.canPinMessages
+								}
+								groupId={
+									isGroup ? (chat.groupId ?? null) : null
+								}
+								onRefresh={handleRefresh}
+							/>
+
+							<SendMessageForm
+								pickAndSendFile={pickAndSendFile}
+								pickAndSendImage={pickAndSendImage}
+								handleClearForm={handleClearForm}
+								setForwardedMessages={setForwardedMessages}
+								draftText={draftText}
+								forwardedMessages={forwardedMessages}
+								onDeleteFile={handleDelete}
+								files={files}
+								hasPendingUploads={hasPendingUploads}
+								isLoadingSendFiles={isLoadingSendFile}
+								chatId={chatId}
+								clearMessageId={handleClearMessageId}
+								editId={editId}
+								setEditId={setEditId}
+								filesEdited={filesEdited}
+								setFilesEdited={setFilesEdited}
+								canSendMessages={
+									messagePermissions.canSendMessages
+								}
+								blockedStateMessage={
+									hasBlockedRuntimeError
+										? t('directChatBlockedDescription')
+										: null
+								}
+								onBlockedError={() => {
+									setHasBlockedRuntimeError(true)
+								}}
+								onTyping={sendTyping}
+							/>
+						</View>
+					</KeyboardAvoidingView>
+				) : (
 					<View className='flex-1 px-2 pb-2 justify-end'>
 						<ChatMessageList
 							pinnedMessage={pinnedMessage}
 							setPinnedMessage={setPinnedMessage}
 							chatId={chatId}
-							groupId={(chat as any)?.groupId ?? ''}
 							startEdit={startEdit}
 							userId={user!.id}
 							handleAddForwardedMessage={
@@ -281,16 +605,20 @@ const DefaultChat: FC<DefaultChatProps> = ({ chatId, chatName, isSecret }) => {
 								messagePermissions.canDeleteMessages
 							}
 							canPinMessages={messagePermissions.canPinMessages}
+							groupId={isGroup ? (chat.groupId ?? null) : null}
+							onRefresh={handleRefresh}
 						/>
 
 						<SendMessageForm
 							pickAndSendFile={pickAndSendFile}
+							pickAndSendImage={pickAndSendImage}
 							handleClearForm={handleClearForm}
 							setForwardedMessages={setForwardedMessages}
 							draftText={draftText}
 							forwardedMessages={forwardedMessages}
 							onDeleteFile={handleDelete}
 							files={files}
+							hasPendingUploads={hasPendingUploads}
 							isLoadingSendFiles={isLoadingSendFile}
 							chatId={chatId}
 							clearMessageId={handleClearMessageId}
@@ -299,10 +627,18 @@ const DefaultChat: FC<DefaultChatProps> = ({ chatId, chatName, isSecret }) => {
 							filesEdited={filesEdited}
 							setFilesEdited={setFilesEdited}
 							canSendMessages={messagePermissions.canSendMessages}
+							blockedStateMessage={
+								hasBlockedRuntimeError
+									? t('directChatBlockedDescription')
+									: null
+							}
+							onBlockedError={() => {
+								setHasBlockedRuntimeError(true)
+							}}
 							onTyping={sendTyping}
 						/>
 					</View>
-				</KeyboardAvoidingView>
+				)}
 			</View>
 
 			{isGroup && canInviteMembers && (
@@ -313,9 +649,10 @@ const DefaultChat: FC<DefaultChatProps> = ({ chatId, chatName, isSecret }) => {
 					existingMemberIds={members.map(
 						(m: any) => m.userId ?? m.user?.id
 					)}
+					groupId={chat?.groupId ?? null}
 				/>
 			)}
-		</SafeAreaView>
+		</View>
 	)
 }
 

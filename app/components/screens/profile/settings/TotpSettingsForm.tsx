@@ -1,6 +1,6 @@
 import * as Clipboard from 'expo-clipboard'
 import { Shield, ShieldCheck, ShieldOff } from 'lucide-react-native'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
 	Alert,
 	Image,
@@ -22,7 +22,11 @@ import {
 	useGenerateTotpSecretMutation
 } from '@/graphql/generated/output'
 
-const TotpSettingsForm = () => {
+interface TotpSettingsFormProps {
+	refreshSignal?: number
+}
+
+const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 	const { colors } = useTheme()
 
 	const { data: profileData, refetch } = useFindProfileQuery()
@@ -86,6 +90,10 @@ const TotpSettingsForm = () => {
 			})
 		}
 	})
+
+	useEffect(() => {
+		void refetch()
+	}, [refreshSignal, refetch])
 
 	const handleCopySecret = async (secret: string) => {
 		await Clipboard.setStringAsync(secret)

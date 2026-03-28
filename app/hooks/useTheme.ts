@@ -1,4 +1,4 @@
-import { settingsStore } from '../store/settings/settings.store'
+﻿import { settingsStore } from '../store/settings/settings.store'
 
 export interface ThemeColors {
 	background: string
@@ -166,10 +166,15 @@ const translations: TranslationMap = {
 	/* ─── Home ─── */
 	messages: { ru: 'Сообщения', en: 'Messages' },
 	addFriend: { ru: 'Добавить друга', en: 'Add Friend' },
+	findPeople: { ru: 'Найти людей', en: 'Find People' },
 	favorites: { ru: 'Избранное', en: 'Favorites' },
 	online: { ru: 'В сети', en: 'Online' },
 	all: { ru: 'Все', en: 'All' },
-	pending: { ru: 'Ожидание', en: 'Pending' },
+	pending: { ru: 'Ожидание...', en: 'Pending...' },
+	friendRequestSent: {
+		ru: 'Заявка в друзья отправлена',
+		en: 'Friend request sent'
+	},
 	directMessages: { ru: 'Личные сообщения', en: 'Direct Messages' },
 	noDirectMessages: {
 		ru: 'Пока нет личных сообщений',
@@ -567,14 +572,235 @@ const translations: TranslationMap = {
 	sessionCurrentTitle: { ru: 'Текущая сессия', en: 'Current session' },
 	sessionCurrent: { ru: 'Активна', en: 'Active' },
 	sessionOther: { ru: 'Другие сессии', en: 'Other sessions' },
-	sessionNone: { ru: 'Нет активных сессий', en: 'No active sessions' }
+	sessionNone: { ru: 'Нет активных сессий', en: 'No active sessions' },
+	unblockUser: { ru: 'Разблокировать', en: 'Unblock User' },
+	unblockUserConfirm: {
+		ru: 'Вы уверены, что хотите разблокировать этого пользователя?',
+		en: 'Are you sure you want to unblock this user?'
+	},
+	unblockUserHint: {
+		ru: 'После разблокировки можно снова открыть личное общение',
+		en: 'After unblocking, direct contact can be opened again'
+	},
+	blockedUsers: {
+		ru: 'Заблокированные пользователи',
+		en: 'Blocked Users'
+	},
+	blockedUsersHint: {
+		ru: 'Управляйте теми, кого вы заблокировали',
+		en: 'Manage people you have blocked'
+	},
+	blockedUsersLoading: {
+		ru: 'Загружаем список блокировок...',
+		en: 'Loading blocked users...'
+	},
+	blockedUsersLoadErrorTitle: {
+		ru: 'Не удалось загрузить список',
+		en: 'Failed to load blocked users'
+	},
+	blockedUsersLoadError: {
+		ru: 'Не удалось загрузить заблокированных пользователей',
+		en: 'Could not load blocked users'
+	},
+	blockedUsersEmptyTitle: {
+		ru: 'Список пуст',
+		en: 'Nothing blocked yet'
+	},
+	blockedUsersEmpty: {
+		ru: 'Здесь появятся люди, которых вы заблокировали.',
+		en: 'People you block will appear here.'
+	},
+	blockedOn: {
+		ru: 'Заблокирован',
+		en: 'Blocked on'
+	},
+	directChatUnavailable: {
+		ru: 'Личный чат недоступен',
+		en: 'Direct chat unavailable'
+	},
+	directChatBlockedDescription: {
+		ru: 'Личное общение недоступно, потому что один из вас заблокировал другого.',
+		en: 'Direct contact is unavailable because one of you has blocked the other.'
+	},
+	blockedProfileTitle: {
+		ru: 'Пользователь заблокирован',
+		en: 'User is blocked'
+	},
+	blockedProfileDescription: {
+		ru: 'Пока блокировка активна, личный и секретный чат недоступны.',
+		en: 'While this block is active, direct and secret chats stay unavailable.'
+	},
+	manageBlockedUsers: {
+		ru: 'Управлять блокировками',
+		en: 'Manage blocked users'
+	},
+	unknownUser: { ru: 'Неизвестный', en: 'Unknown user' },
+	friends: { ru: 'Друзья', en: 'Friends' },
+	incoming: { ru: 'Входящие', en: 'Incoming' },
+	outgoing: { ru: 'Исходящие', en: 'Outgoing' },
+	incomingRequest: { ru: 'Входящая заявка', en: 'Incoming request' },
+	outgoingRequest: { ru: 'Исходящая заявка', en: 'Outgoing request' },
+	noFriends: { ru: 'Пока нет друзей', en: 'No friends yet' },
+	noPendingRequests: {
+		ru: 'Нет ожидающих заявок',
+		en: 'No pending requests'
+	},
+	enterUsername: { ru: 'Введите никнейм', en: 'Enter username' },
+	chatNamePlaceholder: {
+		ru: 'Введите название чата...',
+		en: 'Enter chat name...'
+	},
+	deleteChatConfirm: {
+		ru: 'Вы уверены, что хотите удалить этот чат? Это действие необратимо.',
+		en: 'Are you sure you want to delete this chat? This action cannot be undone.'
+	},
+	noSendPermission: {
+		ru: 'У вас нет прав на отправку сообщений',
+		en: 'You do not have permission to send messages'
+	},
+	send: { ru: 'Отправить', en: 'Send' },
+	retry: { ru: 'Повторить', en: 'Retry' },
+	typing: { ru: 'Печатает...', en: 'Typing...' },
+	pinChat: { ru: 'Закрепить чат', en: 'Pin chat' },
+	unpinChat: { ru: 'Открепить чат', en: 'Unpin chat' },
+	canInviteMembers: {
+		ru: 'Приглашать участников',
+		en: 'Invite members'
+	},
+	canInviteMembersDesc: {
+		ru: 'Позволяет добавлять новых участников',
+		en: 'Allows inviting new members'
+	},
+	canRemoveMembers: {
+		ru: 'Удалять участников',
+		en: 'Remove members'
+	},
+	canRemoveMembersDesc: {
+		ru: 'Позволяет исключать участников из группы или чата',
+		en: 'Allows removing members from a group or chat'
+	},
+	canCreateRoles: { ru: 'Создавать роли', en: 'Create roles' },
+	canCreateRolesDesc: {
+		ru: 'Позволяет создавать новые роли',
+		en: 'Allows creating new roles'
+	},
+	canDeleteRoles: { ru: 'Удалять роли', en: 'Delete roles' },
+	canDeleteRolesDesc: {
+		ru: 'Позволяет удалять уже созданные роли',
+		en: 'Allows deleting existing roles'
+	},
+	canChangeRoleInfo: {
+		ru: 'Изменять информацию о роли',
+		en: 'Change role info'
+	},
+	canChangeRoleInfoDesc: {
+		ru: 'Позволяет изменять название, цвет и настройки роли',
+		en: 'Allows changing role name, color and settings'
+	},
+	canEditMessages: {
+		ru: 'Редактировать сообщения',
+		en: 'Edit messages'
+	},
+	canEditMessagesDesc: {
+		ru: 'Позволяет изменять отправленные сообщения',
+		en: 'Allows editing sent messages'
+	},
+	canChangeChatInfo: {
+		ru: 'Изменять информацию о чате',
+		en: 'Change chat info'
+	},
+	canChangeChatInfoDesc: {
+		ru: 'Позволяет изменять описание и настройки чата',
+		en: 'Allows changing chat description and settings'
+	},
+	canChangeChatName: {
+		ru: 'Изменять название чата',
+		en: 'Change chat name'
+	},
+	canChangeChatNameDesc: {
+		ru: 'Позволяет переименовывать чат',
+		en: 'Allows renaming the chat'
+	},
+	canChangeChatAvatar: {
+		ru: 'Изменять аватар чата',
+		en: 'Change chat avatar'
+	},
+	canChangeChatAvatarDesc: {
+		ru: 'Позволяет менять аватар чата',
+		en: 'Allows changing the chat avatar'
+	},
+	canChangeGroupInfo: {
+		ru: 'Изменять информацию о группе',
+		en: 'Change group info'
+	},
+	canChangeGroupInfoDesc: {
+		ru: 'Позволяет изменять описание и настройки группы',
+		en: 'Allows changing group description and settings'
+	},
+	canChangeGroupName: {
+		ru: 'Изменять название группы',
+		en: 'Change group name'
+	},
+	canChangeGroupNameDesc: {
+		ru: 'Позволяет переименовывать группу',
+		en: 'Allows renaming the group'
+	},
+	canChangeGroupAvatar: {
+		ru: 'Изменять аватар группы',
+		en: 'Change group avatar'
+	},
+	canChangeGroupAvatarDesc: {
+		ru: 'Позволяет менять аватар группы',
+		en: 'Allows changing the group avatar'
+	},
+	canDeleteGroup: { ru: 'Удалять группу', en: 'Delete group' },
+	canDeleteGroupDesc: {
+		ru: 'Позволяет полностью удалить группу',
+		en: 'Allows deleting the entire group'
+	},
+	canSecretChat: {
+		ru: 'Использовать секретный чат',
+		en: 'Use secret chat'
+	},
+	canSecretChatDesc: {
+		ru: 'Позволяет открывать секретные чаты',
+		en: 'Allows opening secret chats'
+	},
+	window: { ru: 'Окно', en: 'Window' }
+}
+
+const fallbackTranslations: Record<string, { ru: string; en: string }> = {
+	searchFriendsPlaceholder: {
+		ru: 'Поиск друзей и заявок...',
+		en: 'Search friends and requests...'
+	},
+	searchDirectMessagesPlaceholder: {
+		ru: 'Поиск чатов...',
+		en: 'Search chats...'
+	},
+	noSearchResults: {
+		ru: 'Ничего не найдено',
+		en: 'Nothing found'
+	},
+	tryDifferentQuery: {
+		ru: 'Попробуйте другой запрос',
+		en: 'Try a different query'
+	},
+	searchChatsPlaceholder: {
+		ru: 'Поиск чатов...',
+		en: 'Search chats...'
+	},
+	searchGroupsPlaceholder: {
+		ru: 'Поиск групп...',
+		en: 'Search groups...'
+	}
 }
 
 export function useTranslation() {
 	const language = settingsStore(state => state.language)
 
 	const t = (key: string): string => {
-		const entry = translations[key]
+		const entry = translations[key] ?? fallbackTranslations[key]
 		if (!entry) return key
 		return entry[language] ?? key
 	}

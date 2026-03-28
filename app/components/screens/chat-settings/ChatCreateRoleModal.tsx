@@ -2,8 +2,6 @@ import { Shield } from 'lucide-react-native'
 import React, { useRef, useState } from 'react'
 import {
 	Animated,
-	Dimensions,
-	Modal,
 	Pressable,
 	ScrollView,
 	Switch,
@@ -13,6 +11,8 @@ import {
 	View
 } from 'react-native'
 
+import AppModal from '@/components/ui/AppModal'
+import { useBottomSheetModalLayout } from '@/hooks/useModalLayout'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
 import {
@@ -21,8 +21,6 @@ import {
 } from '../../../types/chat-role.type'
 
 import { ChatPermissionEnum } from '@/graphql/generated/output'
-
-const SCREEN_HEIGHT = Dimensions.get('window').height
 
 interface ChatCreateRoleModalProps {
 	isOpen: boolean
@@ -42,7 +40,13 @@ const ChatCreateRoleModal: React.FC<ChatCreateRoleModalProps> = ({
 	const { colors } = useTheme()
 	const { t } = useTranslation()
 	const PERMISSIONS = getChatPermissions(colors, t)
-	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+	const {
+		containerPaddingBottom,
+		windowHeight,
+		sheetMaxHeight,
+		sheetPaddingBottom
+	} = useBottomSheetModalLayout(0.85)
+	const slideAnim = useRef(new Animated.Value(windowHeight)).current
 	const [roleName, setRoleName] = useState('')
 	const [selectedColor, setSelectedColor] = useState(CHAT_ROLE_COLORS[0])
 	const [perms, setPerms] = useState<Set<ChatPermissionEnum>>(
@@ -62,7 +66,7 @@ const ChatCreateRoleModal: React.FC<ChatCreateRoleModalProps> = ({
 
 	const closeSheet = () => {
 		Animated.timing(slideAnim, {
-			toValue: SCREEN_HEIGHT,
+			toValue: windowHeight,
 			duration: 200,
 			useNativeDriver: true
 		}).start(() => {
@@ -92,13 +96,13 @@ const ChatCreateRoleModal: React.FC<ChatCreateRoleModalProps> = ({
 	}
 
 	return (
-		<Modal
+		<AppModal
 			visible={isOpen}
 			transparent
 			animationType='none'
 			onRequestClose={closeSheet}
 		>
-			<View className='flex-1'>
+			<View className='flex-1' style={{ paddingBottom: containerPaddingBottom }}>
 				<Pressable
 					className='flex-1'
 					style={{ backgroundColor: colors.overlay }}
@@ -113,9 +117,9 @@ const ChatCreateRoleModal: React.FC<ChatCreateRoleModalProps> = ({
 						borderTopRightRadius: 20,
 						borderTopWidth: 1,
 						borderColor: colors.border,
-						paddingBottom: 34,
+						paddingBottom: sheetPaddingBottom,
 						paddingTop: 8,
-						maxHeight: SCREEN_HEIGHT * 0.85
+						maxHeight: sheetMaxHeight
 					}}
 				>
 					{/* Handle */}
@@ -315,7 +319,7 @@ const ChatCreateRoleModal: React.FC<ChatCreateRoleModalProps> = ({
 					</ScrollView>
 				</Animated.View>
 			</View>
-		</Modal>
+		</AppModal>
 	)
 }
 

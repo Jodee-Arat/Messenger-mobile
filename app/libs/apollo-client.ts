@@ -315,6 +315,31 @@ export const client = new ApolloClient({
 							return incoming
 						}
 					},
+					findAllGroupsByUser: {
+						merge(_existing = [], incoming: any[]) {
+							return incoming
+						}
+					},
+					findAllMessagesByChat: {
+						merge(_existing = [], incoming: any[]) {
+							return incoming
+						}
+					},
+					getFriends: {
+						merge(_existing = [], incoming: any[]) {
+							return incoming
+						}
+					},
+					getIncomingFriendRequests: {
+						merge(_existing = [], incoming: any[]) {
+							return incoming
+						}
+					},
+					getOutgoingFriendRequests: {
+						merge(_existing = [], incoming: any[]) {
+							return incoming
+						}
+					},
 					getPreKeys: {
 						merge(_existing = [], incoming: any[]) {
 							return incoming
@@ -325,6 +350,15 @@ export const client = new ApolloClient({
 			ChatModel: {
 				fields: {
 					members: {
+						merge(_existing = [], incoming: any[]) {
+							return incoming
+						}
+					}
+				}
+			},
+			ChatMessageModel: {
+				fields: {
+					repliedToLinks: {
 						merge(_existing = [], incoming: any[]) {
 							return incoming
 						}
