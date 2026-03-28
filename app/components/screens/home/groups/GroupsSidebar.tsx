@@ -135,10 +135,7 @@ const GroupsSidebar: FC<GroupsSidebarProps> = ({ visible, onClose }) => {
 									}}
 									activeOpacity={0.6}
 								>
-									<X
-										size={16}
-										color={colors.textSecondary}
-									/>
+									<X size={16} color={colors.textSecondary} />
 								</TouchableOpacity>
 							)}
 						</View>

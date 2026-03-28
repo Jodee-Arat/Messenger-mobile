@@ -17,7 +17,11 @@ import {
 const SCREEN_WIDTH = Dimensions.get('window').width
 export const SIDEBAR_WIDTH = SCREEN_WIDTH * 0.82
 
-export function useGroupsSidebar(visible: boolean, onClose: () => void, searchTerm?: string) {
+export function useGroupsSidebar(
+	visible: boolean,
+	onClose: () => void,
+	searchTerm?: string
+) {
 	const slideAnim = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current
 	const [showModal, setShowModal] = useState(false)
 	const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -39,12 +43,11 @@ export function useGroupsSidebar(visible: boolean, onClose: () => void, searchTe
 		data: allGroupsData,
 		loading: isLoadingGroups,
 		refetch: refetchGroups
-	} =
-		useFindAllGroupsByUserQuery({
-			variables: { filters: { searchTerm: searchTerm || undefined } },
-			skip: !user?.id,
-			fetchPolicy: 'network-only'
-		})
+	} = useFindAllGroupsByUserQuery({
+		variables: { filters: { searchTerm: searchTerm || undefined } },
+		skip: !user?.id,
+		fetchPolicy: 'network-only'
+	})
 
 	const { data: newGroupData } = useGroupAddedSubscription({
 		variables: { userId: user?.id ?? '' },

@@ -4,11 +4,10 @@ import { Text, View } from 'react-native'
 import DraggableFlatList from 'react-native-draggable-flatlist'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import { isGroupMembershipRevokedError } from '@/hooks/useBlockedUsers'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
-import {
-	isGroupMembershipRevokedError
-} from '@/hooks/useBlockedUsers'
 import { useUser } from '@/hooks/useUser'
+
 import { resetToHome } from '@/navigation/navigate'
 
 import ChatDropdownTrigger from './ChatDropdownTrigger'
@@ -19,9 +18,9 @@ import CreateChatModal from './CreateChatModal'
 import { useGroupChats } from './useGroupChats'
 import {
 	GroupPermissionEnum,
-	useGroupDeletedSubscription,
 	useFindGroupByGroupIdQuery,
-	useGetMemberRoleQuery
+	useGetMemberRoleQuery,
+	useGroupDeletedSubscription
 } from '@/graphql/generated/output'
 
 type RouteParams = {
@@ -84,7 +83,8 @@ const ChatsList: FC = () => {
 	const currentRole = currentRoleData?.getMemberRole
 	const groupPermissions = currentRole?.permissions ?? []
 	const isCreator = !!currentRole?.isCreator
-	const resolvedGroupName = groupData?.findGroupByGroupId?.groupName ?? groupName
+	const resolvedGroupName =
+		groupData?.findGroupByGroupId?.groupName ?? groupName
 	const resolvedGroupAvatarUrl =
 		groupData?.findGroupByGroupId?.avatarUrl ?? null
 

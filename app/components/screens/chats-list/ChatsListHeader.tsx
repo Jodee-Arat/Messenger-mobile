@@ -140,10 +140,7 @@ const ChatsListHeader: FC<ChatsListHeaderProps> = ({
 								backgroundColor: colors.backgroundTertiary
 							}}
 						>
-							<Settings
-								size={20}
-								color={colors.textSecondary}
-							/>
+							<Settings size={20} color={colors.textSecondary} />
 						</TouchableOpacity>
 					)}
 				</View>
