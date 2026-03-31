@@ -1,15 +1,9 @@
-import './global.css'
-
 import * as NavigationBar from 'expo-navigation-bar'
-import * as SystemUI from 'expo-system-ui'
 import { StatusBar } from 'expo-status-bar'
+import * as SystemUI from 'expo-system-ui'
 import { useEffect } from 'react'
 import { Platform } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
-import {
-	configureReanimatedLogger,
-	ReanimatedLogLevel
-} from 'react-native-reanimated'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 
 import Toast from '@/components/ui/Toast'
@@ -21,12 +15,9 @@ import AuthProvider from '@/providers/auth/AuthProvider'
 
 import Navigation from '@/navigation/Navigation'
 
-// import './app/ErrorUtilsPolyfill'
+import './global.css'
 
-configureReanimatedLogger({
-	level: ReanimatedLogLevel.warn,
-	strict: false
-})
+// import './app/ErrorUtilsPolyfill'
 
 export default function App() {
 	const { colors, theme } = useTheme()

@@ -21,9 +21,9 @@ interface MessageFormProp {
 	text?: string | null
 	files?: MessageFileType[] | null | undefined
 	isSelected: boolean
-	isFirstInGroup: boolean
-	isLastInGroup: boolean
-	createdAt: string
+	isFirstInGroup?: boolean
+	isLastInGroup?: boolean
+	createdAt?: string
 }
 
 const MessageForm: FC<MessageFormProp> = ({
@@ -34,8 +34,8 @@ const MessageForm: FC<MessageFormProp> = ({
 	isSelected,
 	text,
 	isEdited,
-	isFirstInGroup,
-	isLastInGroup,
+	isFirstInGroup = true,
+	isLastInGroup = true,
 	createdAt
 }) => {
 	const { colors } = useTheme()
@@ -43,8 +43,12 @@ const MessageForm: FC<MessageFormProp> = ({
 	const isOwnMessage = user.id === userId
 
 	const timeString = (() => {
+		if (!createdAt) return ''
 		try {
-			const d = new Date(createdAt)
+			const raw =
+				typeof createdAt === 'number' ? createdAt : String(createdAt)
+			const d = new Date(raw)
+			if (isNaN(d.getTime())) return ''
 			return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 		} catch {
 			return ''
@@ -123,6 +127,7 @@ const MessageForm: FC<MessageFormProp> = ({
 					isSelected={isSelected}
 					files={files ?? []}
 					chatId={chatId}
+					isOwnMessage={isOwnMessage}
 				/>
 
 				<View

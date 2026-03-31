@@ -3,6 +3,7 @@ import { Directory, File, Paths } from 'expo-file-system'
 import { SecretChatData } from '@/hooks/useSecretChat'
 
 import { MessageType } from '@/types/message.type'
+import { notifySecretChatReady } from '@/utils/secret-chat/secretChatBootstrap'
 
 import {
 	FindAllChatsByGroupQuery,
@@ -116,10 +117,6 @@ export async function createSecretChat(
 
 		writeJson(getSecretChatFile(groupId, chatId), newChat)
 
-		console.log(
-			`Новый секретный чат создан в группе ${groupId}:`,
-			newChat
-		)
 		return newChat as unknown as
 			| FindAllChatsByGroupQuery['findAllChatsByGroup'][0]
 			| FindChatByChatIdQuery['findChatByChatId']
@@ -243,6 +240,7 @@ export async function createMyKey(
 	writeJson(getChatFile(groupId, chatId, FILE.MY_KEYS), {
 		sessionKeyHex: Array.from(sessionKey as Uint8Array)
 	})
+	notifySecretChatReady(groupId, chatId)
 }
 
 // сессионный ключ
@@ -305,7 +303,15 @@ export async function addMessages(
 ) {
 	const file = getChatFile(groupId, chatId, FILE.MESSAGES)
 	const existingMessages = (await readJson<MessageType[]>(file)) ?? []
-	const updatedMessages = [...existingMessages, ...messages]
+	const seenIds = new Set(existingMessages.map(message => message.id))
+	const uniqueIncoming = messages.filter(message => {
+		if (seenIds.has(message.id)) {
+			return false
+		}
+		seenIds.add(message.id)
+		return true
+	})
+	const updatedMessages = [...existingMessages, ...uniqueIncoming]
 
 	writeJson(file, updatedMessages)
 }

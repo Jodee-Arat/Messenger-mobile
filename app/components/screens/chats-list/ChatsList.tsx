@@ -1,6 +1,6 @@
 import { useFocusEffect, useRoute } from '@react-navigation/native'
 import { FC, useCallback, useEffect, useRef, useState } from 'react'
-import { Text, View } from 'react-native'
+import { RefreshControl, Text, View } from 'react-native'
 import DraggableFlatList from 'react-native-draggable-flatlist'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -63,9 +63,10 @@ const ChatsList: FC = () => {
 
 	const {
 		allChats,
+		disabledChatIds,
 		pinnedChats,
 		setAllChats,
-		isLoadingFindAllChats,
+		isInitialLoading,
 		isRefreshingChats,
 		handleRefreshChats,
 		handleDeleteChat,
@@ -114,7 +115,7 @@ const ChatsList: FC = () => {
 		}
 	})
 
-	if (isLoadingFindAllChats || isLoadingGetMemberRole) {
+	if (isInitialLoading || isLoadingGetMemberRole) {
 		return <ChatsListSkeleton />
 	}
 
@@ -149,8 +150,15 @@ const ChatsList: FC = () => {
 					paddingTop: 4,
 					paddingBottom: bottom + 104
 				}}
-				refreshing={isRefreshingChats}
-				onRefresh={() => void handleRefreshChats()}
+				refreshControl={
+					<RefreshControl
+						refreshing={isRefreshingChats}
+						onRefresh={() => void handleRefreshChats()}
+						tintColor={colors.accent}
+						colors={[colors.accent]}
+						progressBackgroundColor={colors.card}
+					/>
+				}
 				onDragEnd={({ data }) => {
 					const reorderedPinned = data.filter(chat => chat.isPinned)
 					if (reorderedPinned.length > 1) {
@@ -172,6 +180,7 @@ const ChatsList: FC = () => {
 						key={item.id}
 						groupId={groupId}
 						chat={item}
+						disabled={disabledChatIds.includes(item.id)}
 						deleteChat={handleDeleteChat}
 						onPinChat={handlePinChat}
 						onUnPinChat={handleUnPinChat}

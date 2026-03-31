@@ -1,4 +1,3 @@
-import * as ImagePicker from 'expo-image-picker'
 import type { ReactNativeFile } from 'extract-files'
 import { Camera, Loader2, Pencil, Save, Trash2 } from 'lucide-react-native'
 import { FC, useEffect, useState } from 'react'
@@ -15,6 +14,7 @@ import EntityAvatar from '@/components/ui/EntityAvatar'
 
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
+import { pickAvatarImage } from '@/utils/avatar-image-picker'
 import { createImageUploadFile } from '@/utils/create-image-upload-file'
 
 import { FindChatByChatIdQuery } from '@/graphql/generated/output'
@@ -77,12 +77,7 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 	const handlePickAvatar = async () => {
 		setIsPickingAvatar(true)
 		try {
-			const result = await ImagePicker.launchImageLibraryAsync({
-				mediaTypes: ['images'],
-				allowsEditing: true,
-				aspect: [1, 1],
-				quality: 0.8
-			})
+			const result = await pickAvatarImage()
 
 			if (result.canceled || !result.assets?.[0]) return
 
@@ -130,7 +125,6 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 				borderColor: colors.border
 			}}
 		>
-			{/* Avatar + Name header */}
 			<View
 				style={{ backgroundColor: colors.accent }}
 				className='flex-row items-center rounded-2xl p-1.5'
@@ -148,7 +142,7 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 							<EntityAvatar
 								avatarUrl={chat?.avatarUrl}
 								name={chatName}
-								size={'lg'}
+								size='lg'
 							/>
 							{canChangeChatAvatar && (
 								<View
@@ -164,34 +158,55 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 						</>
 					)}
 				</TouchableOpacity>
+
 				<View className='flex-1'>
 					{isEditing ? (
-						<TextInput
-							value={editName}
-							onChangeText={setEditName}
-							className='text-lg font-bold'
+						<View
+							className='rounded-2xl px-3 py-2'
 							style={{
-								color: colors.text,
-								padding: 0
+								backgroundColor: colors.backgroundSecondary,
+								borderWidth: 1.5,
+								borderColor: colors.text,
+								minHeight: 64,
+								justifyContent: 'center'
 							}}
-							placeholder={
-								t('chatNamePlaceholder') || 'Название чата'
-							}
-							placeholderTextColor={colors.textMuted}
-						/>
+						>
+							<Text
+								className='text-[10px] font-semibold uppercase mb-1'
+								style={{ color: colors.textSecondary }}
+							>
+								{t('chatName')}
+							</Text>
+							<TextInput
+								value={editName}
+								onChangeText={setEditName}
+								className='text-lg font-bold'
+								style={{
+									color: colors.text,
+									paddingHorizontal: 0,
+									paddingVertical: 0,
+									lineHeight: 22
+								}}
+								placeholder={
+									t('chatNamePlaceholder') || 'Название чата'
+								}
+								placeholderTextColor={colors.textMuted}
+								textAlignVertical='center'
+							/>
+						</View>
 					) : (
 						<>
 							<Text
 								className='text-lg font-bold'
 								style={{ color: colors.text }}
-								numberOfLines={1}
+								numberOfLines={2}
 							>
 								{chatName}
 							</Text>
-							<View className='flex-row items-center mt-0.5'>
+							<View className='flex-row items-center mt-1 flex-wrap'>
 								{chat?.isSecret && (
 									<View
-										className='px-2 py-0.5 rounded mr-2'
+										className='px-2 py-0.5 rounded-full mr-2 mb-1'
 										style={{
 											backgroundColor: colors.successMuted
 										}}
@@ -204,16 +219,25 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 										</Text>
 									</View>
 								)}
-								<Text
-									className='text-xs'
-									style={{ color: colors.text }}
+								<View
+									className='px-2 py-0.5 rounded-full mb-1'
+									style={{
+										backgroundColor:
+											colors.backgroundSecondary
+									}}
 								>
-									{membersCount} {t('participantsCount')}
-								</Text>
+									<Text
+										className='text-xs font-semibold'
+										style={{ color: colors.text }}
+									>
+										{membersCount} {t('participantsCount')}
+									</Text>
+								</View>
 							</View>
 						</>
 					)}
 				</View>
+
 				{canChangeChatInfo && (
 					<TouchableOpacity
 						onPress={() =>
@@ -236,7 +260,6 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 				)}
 			</View>
 
-			{/* Description */}
 			{(isEditing || chat?.description) && (
 				<View className='mt-3'>
 					<Text
@@ -257,7 +280,7 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 								borderColor: colors.border
 							}}
 							placeholder={
-								t('descriptionPlaceholder') || 'Описание'
+								t('descriptionPlaceholder') || 'Введите описание...'
 							}
 							placeholderTextColor={colors.textMuted}
 							multiline
@@ -275,7 +298,6 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 				</View>
 			)}
 
-			{/* Avatar actions when editing */}
 			{isEditing && canChangeChatAvatar && chat?.avatarUrl && (
 				<TouchableOpacity
 					onPress={handleRemoveAvatar}
@@ -299,7 +321,6 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 				</TouchableOpacity>
 			)}
 
-			{/* Save button */}
 			{isEditing && hasChanges && (
 				<TouchableOpacity
 					onPress={() => void handleSave()}

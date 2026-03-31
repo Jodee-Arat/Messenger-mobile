@@ -1,6 +1,12 @@
 import { MessageCircle, UserPlus } from 'lucide-react-native'
 import { FC, useMemo, useState } from 'react'
-import { Keyboard, Pressable, RefreshControl, ScrollView, View } from 'react-native'
+import {
+	Keyboard,
+	Pressable,
+	RefreshControl,
+	ScrollView,
+	View
+} from 'react-native'
 
 import { getGraphQLErrorMessage } from '@/hooks/useBlockedUsers'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
@@ -8,7 +14,6 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 
-import { useFindAllUsersQuery } from '@/graphql/generated/output'
 import { useFriends } from '../../../hooks/useFriends'
 import { TabKey } from '../../../types/tab-key.type'
 
@@ -19,6 +24,7 @@ import FindPeopleModal from './friend/AddFriendModal'
 import FriendsTabContent from './friend/FriendsTabContent'
 import FriendsTabs from './friend/FriendsTabs'
 import GroupsSidebar from './groups/GroupsSidebar'
+import { useFindAllUsersQuery } from '@/graphql/generated/output'
 
 const Home: FC = () => {
 	const navigation = useTypedNavigation()
@@ -34,7 +40,7 @@ const Home: FC = () => {
 	const trimmedFindPeopleQuery = findPeopleQuery.trim()
 	const debouncedFindPeopleQuery = useDebouncedValue(
 		trimmedFindPeopleQuery,
-		3000
+		1500
 	)
 	const findPeopleFilters = useMemo(
 		() =>
@@ -99,7 +105,7 @@ const Home: FC = () => {
 	const filteredFriends = isSearching
 		? friends.filter(friend =>
 				matchesUsername(getFriendUser(friend)?.username)
-		  )
+			)
 		: friends
 
 	const filteredIncoming = isSearching
@@ -159,40 +165,40 @@ const Home: FC = () => {
 					}
 				}}
 			>
-			<QuickActions actions={actions} />
+				<QuickActions actions={actions} />
 
-			<FriendsTabs activeTab={activeTab} onTabChange={setActiveTab} />
+				<FriendsTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
-			<ScrollView
-				className='flex-1'
-				showsVerticalScrollIndicator={false}
-				contentContainerStyle={{ paddingBottom: 20 }}
-				refreshControl={
-					<RefreshControl
-						refreshing={isRefreshing}
-						onRefresh={handleRefresh}
-						tintColor={colors.accent}
-						colors={[colors.accent]}
-						progressBackgroundColor={colors.card}
+				<ScrollView
+					className='flex-1'
+					showsVerticalScrollIndicator={false}
+					contentContainerStyle={{ paddingBottom: 20 }}
+					refreshControl={
+						<RefreshControl
+							refreshing={isRefreshing}
+							onRefresh={handleRefresh}
+							tintColor={colors.accent}
+							colors={[colors.accent]}
+							progressBackgroundColor={colors.card}
+						/>
+					}
+				>
+					<FriendsTabContent
+						activeTab={activeTab}
+						friends={filteredFriends}
+						incoming={filteredIncoming}
+						outgoing={filteredOutgoing}
+						isLoadingFriends={isLoadingFriends}
+						isLoadingIncoming={isLoadingIncoming}
+						isLoadingOutgoing={isLoadingOutgoing}
+						getFriendUser={getFriendUser}
+						handleRemoveFriend={handleRemoveFriend}
+						handleAccept={handleAccept}
+						handleDecline={handleDecline}
+						handleCancel={handleCancel}
+						isSearching={isSearching}
 					/>
-				}
-			>
-				<FriendsTabContent
-					activeTab={activeTab}
-					friends={filteredFriends}
-					incoming={filteredIncoming}
-					outgoing={filteredOutgoing}
-					isLoadingFriends={isLoadingFriends}
-					isLoadingIncoming={isLoadingIncoming}
-					isLoadingOutgoing={isLoadingOutgoing}
-					getFriendUser={getFriendUser}
-					handleRemoveFriend={handleRemoveFriend}
-					handleAccept={handleAccept}
-					handleDecline={handleDecline}
-					handleCancel={handleCancel}
-					isSearching={isSearching}
-				/>
-			</ScrollView>
+				</ScrollView>
 			</Pressable>
 
 			<FindPeopleModal

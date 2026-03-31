@@ -27,6 +27,7 @@ import {
 } from '@/hooks/useBlockedUsers'
 import { useChat } from '@/hooks/useChat'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
+import { useKeyboardVisible } from '@/hooks/useKeyboardVisible'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 import { useTypingIndicator } from '@/hooks/useTypingIndicator'
@@ -71,6 +72,7 @@ const DefaultChat: FC<DefaultChatProps> = ({
 	const { colors } = useTheme()
 	const { t } = useTranslation()
 	const { top } = useSafeAreaInsets()
+	const isKeyboardVisible = useKeyboardVisible()
 	const navigation = useTypedNavigation()
 	const [isInviteOpen, setIsInviteOpen] = useState(false)
 	const [hasBlockedRuntimeError, setHasBlockedRuntimeError] = useState(false)
@@ -178,7 +180,7 @@ const DefaultChat: FC<DefaultChatProps> = ({
 			groupId: effectiveGroupId ?? '',
 			userId
 		},
-		skip: !(userId && effectiveGroupId),
+		skip: !userId,
 		onData: ({ data }) => {
 			if (data.data?.chatDeleted.id !== chatId) return
 			handleAccessLoss('chat')
@@ -527,69 +529,12 @@ const DefaultChat: FC<DefaultChatProps> = ({
 					)}
 				</View>
 
-				{Platform.OS === 'ios' ? (
-					<KeyboardAvoidingView
-						behavior='padding'
-						style={{ flex: 1 }}
-					>
-						<View className='flex-1 px-2 pb-2 justify-end'>
-							<ChatMessageList
-								pinnedMessage={pinnedMessage}
-								setPinnedMessage={setPinnedMessage}
-								chatId={chatId}
-								startEdit={startEdit}
-								userId={user!.id}
-								handleAddForwardedMessage={
-									handleAddForwardedMessage
-								}
-								canEditMessages={
-									messagePermissions.canEditMessages
-								}
-								canDeleteMessages={
-									messagePermissions.canDeleteMessages
-								}
-								canPinMessages={
-									messagePermissions.canPinMessages
-								}
-								groupId={
-									isGroup ? (chat.groupId ?? null) : null
-								}
-								onRefresh={handleRefresh}
-							/>
-
-							<SendMessageForm
-								pickAndSendFile={pickAndSendFile}
-								pickAndSendImage={pickAndSendImage}
-								handleClearForm={handleClearForm}
-								setForwardedMessages={setForwardedMessages}
-								draftText={draftText}
-								forwardedMessages={forwardedMessages}
-								onDeleteFile={handleDelete}
-								files={files}
-								hasPendingUploads={hasPendingUploads}
-								isLoadingSendFiles={isLoadingSendFile}
-								chatId={chatId}
-								clearMessageId={handleClearMessageId}
-								editId={editId}
-								setEditId={setEditId}
-								filesEdited={filesEdited}
-								setFilesEdited={setFilesEdited}
-								canSendMessages={
-									messagePermissions.canSendMessages
-								}
-								blockedStateMessage={
-									hasBlockedRuntimeError
-										? t('directChatBlockedDescription')
-										: null
-								}
-								onBlockedError={() => {
-									setHasBlockedRuntimeError(true)
-								}}
-								onTyping={sendTyping}
-							/>
-						</View>
-					</KeyboardAvoidingView>
-				) : (
+				<KeyboardAvoidingView
+					behavior='padding'
+					style={{ flex: 1 }}
+					keyboardVerticalOffset={0}
+					enabled={Platform.OS === 'ios' || isKeyboardVisible}
+				>
 					<View className='flex-1 px-2 pb-2 justify-end'>
 						<ChatMessageList
 							pinnedMessage={pinnedMessage}
@@ -600,6 +545,7 @@ const DefaultChat: FC<DefaultChatProps> = ({
 							handleAddForwardedMessage={
 								handleAddForwardedMessage
 							}
+							canSendMessages={messagePermissions.canSendMessages}
 							canEditMessages={messagePermissions.canEditMessages}
 							canDeleteMessages={
 								messagePermissions.canDeleteMessages
@@ -638,7 +584,7 @@ const DefaultChat: FC<DefaultChatProps> = ({
 							onTyping={sendTyping}
 						/>
 					</View>
-				)}
+				</KeyboardAvoidingView>
 			</View>
 
 			{isGroup && canInviteMembers && (

@@ -26,6 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Toast from 'react-native-toast-message'
 
 import { isDirectContactBlockedError } from '@/hooks/useBlockedUsers'
+import { useKeyboardVisible } from '@/hooks/useKeyboardVisible'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
 import { ForwardedMessageType } from '@/types/forward/forwarded-message.type'
@@ -93,6 +94,7 @@ const SendMessageForm: FC<SendMessageFormProp> = ({
 	const { colors } = useTheme()
 	const { t } = useTranslation()
 	const { bottom } = useSafeAreaInsets()
+	const isKeyboardVisible = useKeyboardVisible()
 	const forwardedMessagesRef = useRef(forwardedMessages)
 	const filesRef = useRef(files)
 	const draftTextRef = useRef(draftText)
@@ -293,10 +295,11 @@ const SendMessageForm: FC<SendMessageFormProp> = ({
 		<View
 			className='flex-col'
 			style={{
-				paddingBottom:
-					Platform.OS === 'android'
-						? Math.max(bottom, 12)
-						: Math.max(bottom, 8)
+				paddingBottom: isKeyboardVisible
+					? Platform.OS === 'ios'
+						? 4
+						: 4
+					: Math.max(bottom, 8)
 			}}
 		>
 			{editId && (

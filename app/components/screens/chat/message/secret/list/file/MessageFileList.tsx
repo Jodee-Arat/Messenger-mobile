@@ -9,12 +9,14 @@ interface MessageFileListProp {
 	files: MessageFileType[]
 	chatId: string
 	isSelected: boolean
+	isOwnMessage?: boolean
 }
 
 const MessageFileList: FC<MessageFileListProp> = ({
 	files,
 	chatId,
-	isSelected
+	isSelected,
+	isOwnMessage = false
 }) => {
 	if (!files || files.length === 0) return null
 
@@ -29,6 +31,7 @@ const MessageFileList: FC<MessageFileListProp> = ({
 					isSelected={isSelected}
 					file={file}
 					chatId={chatId}
+					isOwnMessage={isOwnMessage}
 				/>
 			))}
 		</View>

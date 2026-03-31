@@ -24,6 +24,23 @@ type UseChatOptions = {
 	onBlockedError?: () => void
 }
 
+const normalizePinnedMessage = (
+	chat: NonNullable<
+		ReturnType<typeof useFindChatByChatIdQuery>['data']
+	>['findChatByChatId']
+): MessageType | null => {
+	if (!chat.pinnedMessage) return null
+
+	return {
+		...chat.pinnedMessage,
+		isStarted: false,
+		chat: {
+			chatName: chat.chatName ?? null
+		},
+		files: chat.pinnedMessage.files ?? null
+	}
+}
+
 export const useChat = (chatId: string, options?: UseChatOptions) => {
 	const { userId } = useUser()
 	const [messageId, setMessageId] = useState<string | null>(null)
@@ -96,10 +113,21 @@ export const useChat = (chatId: string, options?: UseChatOptions) => {
 
 	const draftRestoredRef = useRef(false)
 
+	// Handle chatId change without remount (React Navigation reuses component)
+	useEffect(() => {
+		const pending = consumePendingForward(chatId)
+		if (pending) {
+			setForwardedMessages(pending.messages)
+			setDraftText(pending.text)
+			pendingRef.current = pending
+			draftRestoredRef.current = false
+		}
+	}, [chatId])
+
 	useEffect(() => {
 		if (!chat) return
 
-		setPinnedMessage(chat.pinnedMessage ?? null)
+		setPinnedMessage(normalizePinnedMessage(chat))
 
 		// Восстанавливаем черновик только при первой загрузке
 		if (draftRestoredRef.current) return
@@ -232,7 +260,8 @@ export const useChat = (chatId: string, options?: UseChatOptions) => {
 			}
 
 			// Проверки лимитов/дубликатов
-			const name = asset.name ?? 'unknown'
+			const rawName = asset.name ?? 'unknown'
+			const name = decodeURIComponent(rawName)
 			const sizeStr = asset.size ? String(asset.size) : '0'
 			const tempId = `temp:${createId()}`
 			if (files.length >= 7) {
@@ -296,7 +325,8 @@ export const useChat = (chatId: string, options?: UseChatOptions) => {
 			if (result.canceled || !result.assets?.[0]) return
 
 			const asset = result.assets[0]
-			const name = asset.fileName ?? `image_${Date.now()}.jpg`
+			const rawName = asset.fileName ?? `image_${Date.now()}.jpg`
+			const name = decodeURIComponent(rawName)
 			const sizeStr = asset.fileSize ? String(asset.fileSize) : '0'
 			const tempId = `temp:${createId()}`
 

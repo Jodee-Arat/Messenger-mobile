@@ -20,9 +20,6 @@ query FindChatByChatId($chatId: String!) {
 				fileSize
 				id
 			}
-			chat {
-				id
-			}
 			user {
 				id
 				username

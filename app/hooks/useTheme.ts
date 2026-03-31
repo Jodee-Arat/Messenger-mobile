@@ -302,6 +302,10 @@ const translations: TranslationMap = {
 	/* ─── Auth ─── */
 	signUp: { ru: 'Регистрация', en: 'Sign Up' },
 	login: { ru: 'Вход', en: 'Login' },
+	brandTagline: {
+		ru: 'Безопасные сообщения, группы и приватные чаты',
+		en: 'Secure messaging, groups, and private chats'
+	},
 	enterLogin: { ru: 'Введите логин', en: 'Enter login' },
 	enterEmail: { ru: 'Введите email', en: 'Enter email' },
 	enterPassword: { ru: 'Введите пароль', en: 'Enter password' },
@@ -323,6 +327,12 @@ const translations: TranslationMap = {
 		en: 'Already have an account? '
 	},
 	noAccount: { ru: 'Нет аккаунта? ', en: "Don't have an account? " },
+	totpVerification: { ru: 'Проверка TOTP', en: 'TOTP Verification' },
+	totpAuthHint: {
+		ru: 'Введите 6-значный код из приложения-аутентификатора',
+		en: 'Enter the 6-digit code from your authenticator app'
+	},
+	backToLogin: { ru: 'Вернуться ко входу', en: 'Back to login' },
 
 	/* ─── Favorites ─── */
 	editProfileBtn: { ru: 'Редактировать профиль', en: 'Edit profile' },
@@ -394,6 +404,12 @@ const translations: TranslationMap = {
 	},
 	tryAgain: { ru: 'Попробуйте снова', en: 'Try again' },
 	copied: { ru: 'Скопировано', en: 'Copied' },
+	fileSaved: { ru: 'Сохранено в галерею', en: 'Saved to gallery' },
+	saveToGallery: { ru: 'Сохранить', en: 'Save' },
+	shareFile: { ru: 'Поделиться', en: 'Share' },
+	permissionDenied: { ru: 'Нет разрешения', en: 'Permission denied' },
+	encrypting: { ru: 'Шифрование...', en: 'Encrypting...' },
+	uploading: { ru: 'Загрузка...', en: 'Uploading...' },
 	messagesCount: { ru: 'сообщений', en: 'messages' },
 
 	/* ─── Group/Chat Settings ─── */
@@ -639,6 +655,7 @@ const translations: TranslationMap = {
 	incoming: { ru: 'Входящие', en: 'Incoming' },
 	outgoing: { ru: 'Исходящие', en: 'Outgoing' },
 	incomingRequest: { ru: 'Входящая заявка', en: 'Incoming request' },
+	acceptFriendRequest: { ru: 'Принять заявку', en: 'Accept request' },
 	outgoingRequest: { ru: 'Исходящая заявка', en: 'Outgoing request' },
 	noFriends: { ru: 'Пока нет друзей', en: 'No friends yet' },
 	noPendingRequests: {

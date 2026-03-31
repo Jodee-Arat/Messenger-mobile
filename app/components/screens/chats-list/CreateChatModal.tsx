@@ -30,6 +30,10 @@ import {
 	createSecretChat,
 	loadMyPreKeyJSON
 } from '@/utils/secret-chat/secretChat'
+import {
+	clearSecretChatBootstrapPending,
+	markSecretChatBootstrapPending
+} from '@/utils/secret-chat/secretChatBootstrap'
 
 import {
 	FindAllChatsByGroupQuery,
@@ -113,71 +117,71 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 	const [sendSharedSecretKey] = useSendSharedSecretKeyMutation()
 
 	const bootstrapSecretGroupChat = async (chatId: string) => {
-		if (!currentUser?.id) return
+		try {
+			if (!currentUser?.id) return
 
-		const myPreKeys = await loadMyPreKeyJSON()
-		if (!myPreKeys) {
-			console.warn(
-				'[SecretChat][CreateChat] local prekeys missing, skip bootstrap'
-			)
-			return
-		}
+			const myPreKeys = await loadMyPreKeyJSON()
+			if (!myPreKeys) {
+				console.warn(
+					'[SecretChat][CreateChat] local prekeys missing, skip bootstrap'
+				)
+				return
+			}
 
-		const chatResponse = await findChatById({
-			variables: { chatId },
-			fetchPolicy: 'network-only'
-		})
-		const fullChat = chatResponse.data?.findChatByChatId
-		if (!fullChat?.isSecret || !fullChat.isGroup || !fullChat.groupId) {
-			return
-		}
+			const chatResponse = await findChatById({
+				variables: { chatId },
+				fetchPolicy: 'network-only'
+			})
+			const fullChat = chatResponse.data?.findChatByChatId
+			if (!fullChat?.isSecret || !fullChat.isGroup || !fullChat.groupId) {
+				return
+			}
 
-		await createSecretChat(fullChat, true)
+			await createSecretChat(fullChat, true)
 
-		const preKeysResponse = await getPreKeys({
-			variables: { chatId },
-			fetchPolicy: 'network-only'
-		})
-		const preKeys = preKeysResponse.data?.getPreKeys ?? []
-		if (preKeys.length === 0) {
-			console.warn(
-				'[SecretChat][CreateChat] no preKeys found after secret chat creation'
-			)
-			return
-		}
+			const preKeysResponse = await getPreKeys({
+				variables: { chatId },
+				fetchPolicy: 'network-only'
+			})
+			const preKeys = preKeysResponse.data?.getPreKeys ?? []
+			if (preKeys.length === 0) {
+				console.warn(
+					'[SecretChat][CreateChat] no preKeys found after secret chat creation'
+				)
+				return
+			}
 
-		const initResult = await initGroupSessionAction({
-			chat: fullChat,
-			chatId,
-			groupId: fullChat.groupId,
-			userId: currentUser.id,
-			mySecretPreKey: myPreKeys.toStore,
-			preKeysPub: preKeys,
-			getPreKeys,
-			sendSharedSecretKey
-		})
-
-		if (initResult.errorMessage) {
-			console.warn(
-				'[SecretChat][CreateChat] bootstrap failed:',
-				initResult.errorMessage
-			)
-			return
-		}
-
-		if (initResult.groupKey && initResult.needPersistKey) {
-			await createMyKey(
+			const initResult = await initGroupSessionAction({
+				chat: fullChat,
 				chatId,
-				fullChat.groupId,
-				currentUser.id,
-				initResult.groupKey
-			)
-		}
+				groupId: fullChat.groupId,
+				userId: currentUser.id,
+				mySecretPreKey: myPreKeys.toStore,
+				preKeysPub: preKeys,
+				getPreKeys,
+				sendSharedSecretKey
+			})
 
-		console.log(
-			'[SecretChat][CreateChat] creator bootstrap finished for chat',
-			chatId
-		)
+			if (initResult.errorMessage) {
+				console.warn(
+					'[SecretChat][CreateChat] bootstrap failed:',
+					initResult.errorMessage
+				)
+				return
+			}
+
+			if (initResult.groupKey && initResult.needPersistKey) {
+				await createMyKey(
+					chatId,
+					fullChat.groupId,
+					currentUser.id,
+					initResult.groupKey
+				)
+			}
+
+		} finally {
+			clearSecretChatBootstrapPending(groupId, chatId)
+		}
 	}
 
 	const [createChat, { loading: isLoadingCreate }] = useCreateChatMutation({
@@ -212,6 +216,7 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 
 		const newChatId = result.data?.createChat?.id
 		if (data.isSecretChat && newChatId) {
+			markSecretChatBootstrapPending(groupId, newChatId)
 			void bootstrapSecretGroupChat(newChatId)
 		}
 	}

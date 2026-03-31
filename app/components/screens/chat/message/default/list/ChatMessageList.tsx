@@ -31,6 +31,7 @@ interface ChatMessageListProp {
 		messages: MessageType[],
 		initialText?: string
 	) => void
+	canSendMessages?: boolean
 	canEditMessages?: boolean
 	canDeleteMessages?: boolean
 	canPinMessages?: boolean
@@ -45,6 +46,7 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 	startEdit,
 	userId,
 	handleAddForwardedMessage,
+	canSendMessages = true,
 	canEditMessages = true,
 	canDeleteMessages = true,
 	canPinMessages = true,
@@ -239,6 +241,44 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 						!prevItem || prevItem.user.id !== item.user.id
 					const isLastInGroup =
 						!nextItem || nextItem.user.id !== item.user.id
+
+					if (item.isStarted) {
+						return (
+							<View
+								style={{
+									flexDirection: 'row',
+									alignItems: 'center',
+									paddingHorizontal: 24,
+									paddingVertical: 10
+								}}
+							>
+								<View
+									style={{
+										flex: 1,
+										height: 1,
+										backgroundColor: colors.border
+									}}
+								/>
+								<Text
+									style={{
+										color: colors.textMuted,
+										fontSize: 12,
+										marginHorizontal: 12
+									}}
+								>
+									{item.text}
+								</Text>
+								<View
+									style={{
+										flex: 1,
+										height: 1,
+										backgroundColor: colors.border
+									}}
+								/>
+							</View>
+						)
+					}
+
 					return (
 						<View style={{ marginBottom: isLastInGroup ? 8 : 2 }}>
 							<ChatMessageDropdownTrigger
@@ -258,6 +298,7 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 								isSelected={isSelected}
 								setPinnedMessage={setPinnedMessage}
 								pinnedMessageId={pinnedMessage?.id ?? null}
+								canSendMessages={canSendMessages}
 								canEditMessages={canEditMessages}
 								canDeleteMessages={canDeleteMessages}
 								canPinMessages={canPinMessages}
@@ -275,7 +316,9 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 				selectedMessages={selectedMessages}
 				handleRemoveMessages={handleRemoveMessages}
 				handleClearMessagesId={handleClearMessagesId}
-				handleAddForwarded={handleAddForwarded}
+				handleAddForwarded={
+					canSendMessages ? handleAddForwarded : undefined
+				}
 				selectedMessage={selectedMessage}
 				pinnedMessageId={pinnedMessage?.id ?? null}
 				setPinnedMessage={setPinnedMessage}

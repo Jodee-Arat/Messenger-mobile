@@ -7,6 +7,7 @@ import {
 	Lock,
 	MessageCircle,
 	Shield,
+	UserCheck,
 	UserMinus,
 	UserPlus
 } from 'lucide-react-native'
@@ -38,9 +39,11 @@ import { TypeRootStackParamList } from '@/navigation/navigation.types'
 
 import FriendProfileSkeleton from './FriendProfileSkeleton'
 import {
+	useAcceptFriendRequestMutation,
 	useBlockUserMutation,
 	useFindOrCreateDirectChatMutation,
 	useGetFriendsQuery,
+	useGetIncomingFriendRequestsQuery,
 	useGetOutgoingFriendRequestsQuery,
 	useRemoveFriendMutation,
 	useSendFriendRequestByUsernameMutation,
@@ -85,10 +88,18 @@ const FriendProfile: FC = () => {
 			fetchPolicy: 'network-only',
 			notifyOnNetworkStatusChange: true
 		})
+	const { data: incomingData, refetch: refetchIncoming } =
+		useGetIncomingFriendRequestsQuery({
+			skip: !user,
+			fetchPolicy: 'network-only',
+			notifyOnNetworkStatusChange: true
+		})
 
 	const [removeFriend] = useRemoveFriendMutation({
 		refetchQueries: ['GetFriends']
 	})
+	const [acceptFriendRequest, { loading: isAcceptingFriend }] =
+		useAcceptFriendRequestMutation()
 	const [blockUser, { loading: isBlockingUser }] = useBlockUserMutation()
 	const [unblockUser, { loading: isUnblockingUser }] =
 		useUnblockUserMutation()
@@ -133,6 +144,15 @@ const FriendProfile: FC = () => {
 			),
 		[friendUserId, outgoingData]
 	)
+
+	const incomingRequest = useMemo(
+		() =>
+			(incomingData?.getIncomingFriendRequests ?? []).find(
+				request => request.user?.id === friendUserId
+			) ?? null,
+		[friendUserId, incomingData]
+	)
+	const hasIncomingRequest = !!incomingRequest
 
 	const blockedFriendship = getBlockedFriendship(friendUserId)
 	const isBlockedByMe = !!blockedFriendship
@@ -179,7 +199,8 @@ const FriendProfile: FC = () => {
 				refetchCurrentUser(),
 				refetchBlockedUsers(),
 				refetchFriends(),
-				refetchOutgoing()
+				refetchOutgoing(),
+				refetchIncoming()
 			])
 		} finally {
 			setIsRefreshing(false)
@@ -188,6 +209,7 @@ const FriendProfile: FC = () => {
 		refetchBlockedUsers,
 		refetchCurrentUser,
 		refetchFriends,
+		refetchIncoming,
 		refetchOutgoing
 	])
 
@@ -314,6 +336,23 @@ const FriendProfile: FC = () => {
 		}
 	}, [displayUsername, sendFriendRequest, t])
 
+	const handleAcceptFriend = useCallback(async () => {
+		if (!incomingRequest) return
+		try {
+			await acceptFriendRequest({
+				variables: { friendshipId: incomingRequest.id },
+				refetchQueries: [
+					'GetFriends',
+					'GetIncomingFriendRequests',
+					'GetOutgoingFriendRequests'
+				],
+				awaitRefetchQueries: true
+			})
+		} catch (e: any) {
+			Alert.alert(t('error'), getGraphQLErrorMessage(e))
+		}
+	}, [acceptFriendRequest, incomingRequest, t])
+
 	const handleBlock = useCallback(() => {
 		Alert.alert(t('blockUser'), t('blockUserConfirm'), [
 			{ text: t('cancel'), style: 'cancel' },
@@ -327,7 +366,7 @@ const FriendProfile: FC = () => {
 							refetchQueries: [
 								'GetFriends',
 								'GetBlockedUsers',
-								'FindAllChatsByUser'
+								'FindAllUsers'
 							],
 							awaitRefetchQueries: true
 						})
@@ -355,7 +394,7 @@ const FriendProfile: FC = () => {
 							refetchQueries: [
 								'GetFriends',
 								'GetBlockedUsers',
-								'FindAllChatsByUser'
+								'FindAllUsers'
 							],
 							awaitRefetchQueries: true
 						})
@@ -575,54 +614,97 @@ const FriendProfile: FC = () => {
 						</View>
 					)}
 
-					{!isBlockedByMe && !resolvedFriendshipId && (
-						<TouchableOpacity
-							activeOpacity={0.7}
-							onPress={handleAddFriend}
-							disabled={
-								hasOutgoingRequest || isSendingFriendRequest
-							}
-							className='flex-row items-center px-4 py-4 rounded-2xl mb-2'
-							style={{
-								backgroundColor: colors.backgroundSecondary,
-								borderWidth: 1,
-								borderColor: colors.border,
-								opacity:
-									hasOutgoingRequest || isSendingFriendRequest
-										? 0.7
-										: 1
-							}}
-						>
-							<View
-								className='w-9 h-9 rounded-full items-center justify-center mr-3'
+					{!isBlockedByMe &&
+						!resolvedFriendshipId &&
+						hasIncomingRequest && (
+							<TouchableOpacity
+								activeOpacity={0.7}
+								onPress={handleAcceptFriend}
+								disabled={isAcceptingFriend}
+								className='flex-row items-center px-4 py-4 rounded-2xl mb-2'
 								style={{
-									backgroundColor: colors.accent + '20'
+									backgroundColor: colors.accent,
+									opacity: isAcceptingFriend ? 0.7 : 1
 								}}
 							>
-								<UserPlus size={18} color={colors.accent} />
-							</View>
-							<View className='flex-1'>
-								<Text
-									className='text-sm font-semibold'
-									style={{ color: colors.text }}
+								<View
+									className='w-9 h-9 rounded-full items-center justify-center mr-3'
+									style={{
+										backgroundColor: 'rgba(255,255,255,0.2)'
+									}}
 								>
-									{hasOutgoingRequest
-										? t('pending')
-										: t('addFriend')}
-								</Text>
-								<Text
-									className='text-xs mt-0.5'
-									style={{ color: colors.textMuted }}
-								>
-									{hasOutgoingRequest
-										? t('outgoingRequest')
-										: `@${displayUsername}`}
-								</Text>
-							</View>
-						</TouchableOpacity>
-					)}
+									<UserCheck size={18} color='#fff' />
+								</View>
+								<View className='flex-1'>
+									<Text
+										className='text-sm font-bold'
+										style={{ color: '#fff' }}
+									>
+										{t('acceptFriendRequest')}
+									</Text>
+									<Text
+										className='text-xs mt-0.5'
+										style={{
+											color: 'rgba(255,255,255,0.7)'
+										}}
+									>
+										{t('incomingRequest')}
+									</Text>
+								</View>
+							</TouchableOpacity>
+						)}
 
-					{!isBlockedByMe && (
+					{!isBlockedByMe &&
+						!resolvedFriendshipId &&
+						!hasIncomingRequest && (
+							<TouchableOpacity
+								activeOpacity={0.7}
+								onPress={handleAddFriend}
+								disabled={
+									hasOutgoingRequest || isSendingFriendRequest
+								}
+								className='flex-row items-center px-4 py-4 rounded-2xl mb-2'
+								style={{
+									backgroundColor: colors.backgroundSecondary,
+									borderWidth: 1,
+									borderColor: colors.border,
+									opacity:
+										hasOutgoingRequest ||
+										isSendingFriendRequest
+											? 0.7
+											: 1
+								}}
+							>
+								<View
+									className='w-9 h-9 rounded-full items-center justify-center mr-3'
+									style={{
+										backgroundColor: colors.accent + '20'
+									}}
+								>
+									<UserPlus size={18} color={colors.accent} />
+								</View>
+								<View className='flex-1'>
+									<Text
+										className='text-sm font-semibold'
+										style={{ color: colors.text }}
+									>
+										{hasOutgoingRequest
+											? t('pending')
+											: t('addFriend')}
+									</Text>
+									<Text
+										className='text-xs mt-0.5'
+										style={{ color: colors.textMuted }}
+									>
+										{hasOutgoingRequest
+											? t('outgoingRequest')
+											: `@${displayUsername}`}
+									</Text>
+								</View>
+							</TouchableOpacity>
+						)}
+
+					{!isBlockedByMe && resolvedFriendshipId && (
 						<>
 							{/* Send message */}
 							<TouchableOpacity

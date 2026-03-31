@@ -1,4 +1,3 @@
-import * as ImagePicker from 'expo-image-picker'
 import type { ReactNativeFile } from 'extract-files'
 import { Camera, Loader2, Pencil, Save, Trash2 } from 'lucide-react-native'
 import { FC, useEffect, useState } from 'react'
@@ -15,6 +14,7 @@ import EntityAvatar from '@/components/ui/EntityAvatar'
 
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
+import { pickAvatarImage } from '@/utils/avatar-image-picker'
 import { createImageUploadFile } from '@/utils/create-image-upload-file'
 
 import { FindGroupByGroupIdQuery } from '@/graphql/generated/output'
@@ -73,12 +73,7 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 	const handlePickAvatar = async () => {
 		setIsPicking(true)
 		try {
-			const result = await ImagePicker.launchImageLibraryAsync({
-				mediaTypes: ['images'],
-				allowsEditing: true,
-				aspect: [1, 1],
-				quality: 0.8
-			})
+			const result = await pickAvatarImage()
 
 			if (result.canceled || !result.assets?.[0]) return
 
@@ -114,6 +109,8 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 		)
 	}
 
+	const groupName = group?.groupName ?? t('groupFallback')
+
 	return (
 		<View
 			className='mx-4 mt-4 p-4 rounded-2xl'
@@ -123,11 +120,8 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 				borderColor: colors.border
 			}}
 		>
-			{/* Avatar + Name header */}
 			<View
-				style={{
-					backgroundColor: colors.accent
-				}}
+				style={{ backgroundColor: colors.accent }}
 				className='flex-row items-center rounded-2xl p-1.5'
 			>
 				<TouchableOpacity
@@ -142,8 +136,8 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 						<>
 							<EntityAvatar
 								avatarUrl={group?.avatarUrl}
-								name={group?.groupName}
-								size={'lg'}
+								name={groupName}
+								size='lg'
 							/>
 							{canChangeGroupInfo && (
 								<View
@@ -159,29 +153,53 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 						</>
 					)}
 				</TouchableOpacity>
+
 				<View className='flex-1'>
 					{isEditing ? (
-						<TextInput
-							value={editName}
-							onChangeText={setEditName}
-							className='text-lg font-bold border-2 rounded-xl mr-1.5 p-1'
+						<View
+							className='rounded-2xl px-3 py-2'
 							style={{
-								color: colors.text,
-								padding: 0,
-								borderColor: colors.background
+								backgroundColor: colors.backgroundSecondary,
+								borderWidth: 1.5,
+								borderColor: colors.text,
+								minHeight: 64,
+								justifyContent: 'center'
 							}}
-							placeholder={t('groupNamePlaceholder')}
-							placeholderTextColor={colors.textMuted}
-						/>
+						>
+							<Text
+								className='text-[10px] font-semibold uppercase mb-1'
+								style={{ color: colors.textSecondary }}
+							>
+								{t('groupName')}
+							</Text>
+							<TextInput
+								value={editName}
+								onChangeText={setEditName}
+								className='text-lg font-bold'
+								style={{
+									color: colors.text,
+									paddingHorizontal: 0,
+									paddingVertical: 0,
+									lineHeight: 22
+								}}
+								placeholder={
+									t('groupNamePlaceholder') || 'Название группы'
+								}
+								placeholderTextColor={colors.textMuted}
+								textAlignVertical='center'
+							/>
+						</View>
 					) : (
 						<Text
 							className='text-lg font-bold'
 							style={{ color: colors.text }}
+							numberOfLines={2}
 						>
-							{group?.groupName}
+							{groupName}
 						</Text>
 					)}
 				</View>
+
 				{canChangeGroupInfo && (
 					<TouchableOpacity
 						onPress={() =>
@@ -204,7 +222,6 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 				)}
 			</View>
 
-			{/* Description */}
 			{(isEditing || group?.description) && (
 				<View className='mt-3'>
 					<Text
@@ -241,7 +258,6 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 				</View>
 			)}
 
-			{/* Avatar actions when editing */}
 			{isEditing && canChangeGroupInfo && group?.avatarUrl && (
 				<TouchableOpacity
 					onPress={handleRemoveAvatar}
@@ -265,7 +281,6 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 				</TouchableOpacity>
 			)}
 
-			{/* Save button */}
 			{isEditing && hasChanges && (
 				<TouchableOpacity
 					onPress={() => void handleSave()}

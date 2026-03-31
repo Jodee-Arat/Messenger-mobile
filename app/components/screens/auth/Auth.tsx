@@ -3,9 +3,19 @@ import { CommonActions } from '@react-navigation/native'
 import * as SecureStore from 'expo-secure-store'
 import { useEffect, useState } from 'react'
 import { SubmitHandler, useForm } from 'react-hook-form'
-import { Pressable, Text, TextInput, View } from 'react-native'
+import {
+	KeyboardAvoidingView,
+	Platform,
+	Pressable,
+	ScrollView,
+	Text,
+	TextInput,
+	View
+} from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Toast from 'react-native-toast-message'
 
+import BrandMark from '@/components/ui/BrandMark'
 import Loader from '@/components/ui/Loader'
 import { Button } from '@/components/ui/button/Button'
 
@@ -45,6 +55,7 @@ const Auth = () => {
 	const { setUserId } = useUser()
 	const { colors } = useTheme()
 	const { t } = useTranslation()
+	const { top, bottom } = useSafeAreaInsets()
 
 	useEffect(() => {
 		if (isAuthenticated) {
@@ -231,124 +242,167 @@ const Auth = () => {
 	const isLoading = false
 
 	return (
-		<View
-			className='mx-2 justify-center items-center h-full'
-			style={{ backgroundColor: colors.background }}
+		<KeyboardAvoidingView
+			style={{ flex: 1, backgroundColor: colors.background }}
+			behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
 		>
-			<View className='w-9/12'>
-				{totpStep ? (
-					<>
+			<ScrollView
+				keyboardShouldPersistTaps='handled'
+				showsVerticalScrollIndicator={false}
+				contentContainerStyle={{
+					flexGrow: 1,
+					alignItems: 'center',
+					justifyContent: 'center',
+					paddingHorizontal: 20,
+					paddingTop: Math.max(top + 24, 48),
+					paddingBottom: Math.max(bottom + 24, 40)
+				}}
+			>
+				<View style={{ width: '100%', alignItems: 'center' }}>
+					<View className='mb-8 items-center'>
+						<BrandMark size={88} />
 						<Text
-							className='text-center text-3xl font-medium mb-4'
-							style={{ color: colors.text }}
+							className='mt-4 text-lg font-semibold'
+							style={{ color: colors.accent, letterSpacing: 2 }}
 						>
-							TOTP Verification
+							МесАгат
 						</Text>
 						<Text
-							className='text-center text-sm mb-6'
-							style={{ color: colors.textMuted }}
+							className='mt-2 text-center text-sm'
+							style={{ color: colors.textSecondary }}
 						>
-							Enter the 6-digit code from your authenticator app
+							{totpStep ? t('totpAuthHint') : t('brandTagline')}
 						</Text>
-						<TextInput
-							value={totpCode}
-							onChangeText={(text: string) =>
-								setTotpCode(
-									text.replace(/[^0-9]/g, '').slice(0, 6)
-								)
-							}
-							placeholder='000000'
-							placeholderTextColor={colors.textMuted}
-							keyboardType='number-pad'
-							autoCapitalize='none'
-							style={{
-								backgroundColor: colors.inputBg,
-								borderWidth: 1,
-								borderColor: colors.border,
-								borderRadius: 12,
-								paddingVertical: 10,
-								paddingHorizontal: 16,
-								marginVertical: 6,
-								textAlign: 'center',
-								fontSize: 24,
-								letterSpacing: 8,
-								fontFamily: 'monospace',
-								color: colors.text
-							}}
-						/>
-						<View style={{ marginTop: 8 }}>
-							<Button
-								size='sm'
-								onPress={onSubmitTotp}
-								loading={isLoadingLogin}
-							>
-								Verify
-							</Button>
-						</View>
-						<Pressable
-							onPress={() => {
-								setTotpStep(false)
-								setSavedCredentials(null)
-								setTotpCode('')
-							}}
-						>
-							<Text
-								className='text-center text-base mt-6'
-								style={{ color: colors.accent }}
-							>
-								Back to login
-							</Text>
-						</Pressable>
-					</>
-				) : (
-					<>
-						<Text
-							className='text-center text-3xl font-medium mb-8'
-							style={{ color: colors.text }}
-						>
-							{isReg ? t('signUp') : t('login')}
-						</Text>
-						{isLoading ? (
-							<Loader />
-						) : (
+					</View>
+
+					<View style={{ width: '100%', maxWidth: 360 }}>
+						{totpStep ? (
 							<>
-								<AuthFields
-									isReg={isReg}
-									control={form.control}
-									isPassRequired
-								/>
-
-								<Button
-									size='sm'
-									onPress={form.handleSubmit(onSubmit)}
-									loading={
-										isLoadingCreateUserWEmail ||
-										isLoadingSendPreKey ||
-										isLoadingLogin
-									}
+								<Text
+									className='text-center text-3xl font-medium mb-4'
+									style={{ color: colors.text }}
 								>
-									{isReg ? t('signUp') : t('login')}
-								</Button>
-
-								<Pressable onPress={() => setIsReg(!isReg)}>
+									{t('totpVerification')}
+								</Text>
+								<Text
+									className='text-center text-sm mb-6'
+									style={{ color: colors.textMuted }}
+								>
+									{t('totpAuthHint')}
+								</Text>
+								<TextInput
+									value={totpCode}
+									onChangeText={(text: string) =>
+										setTotpCode(
+											text
+												.replace(/[^0-9]/g, '')
+												.slice(0, 6)
+										)
+									}
+									placeholder='000000'
+									placeholderTextColor={colors.textMuted}
+									keyboardType='number-pad'
+									autoCapitalize='none'
+									style={{
+										backgroundColor: colors.inputBg,
+										borderWidth: 1,
+										borderColor: colors.border,
+										borderRadius: 12,
+										paddingVertical: 10,
+										paddingHorizontal: 16,
+										marginVertical: 6,
+										textAlign: 'center',
+										fontSize: 24,
+										letterSpacing: 8,
+										fontFamily: 'monospace',
+										color: colors.text
+									}}
+								/>
+								<View style={{ marginTop: 8 }}>
+									<Button
+										size='sm'
+										onPress={onSubmitTotp}
+										loading={isLoadingLogin}
+									>
+										Verify
+									</Button>
+								</View>
+								<Pressable
+									onPress={() => {
+										setTotpStep(false)
+										setSavedCredentials(null)
+										setTotpCode('')
+									}}
+								>
 									<Text
 										className='text-center text-base mt-6'
-										style={{ color: colors.text }}
+										style={{ color: colors.accent }}
 									>
-										{isReg
-											? t('alreadyHaveAccount')
-											: t('noAccount')}
-										<Text style={{ color: colors.accent }}>
-											{isReg ? t('login') : t('signUp')}
-										</Text>
+										{t('backToLogin')}
 									</Text>
 								</Pressable>
 							</>
+						) : (
+							<>
+								<Text
+									className='text-center text-3xl font-medium mb-8'
+									style={{ color: colors.text }}
+								>
+									{isReg ? t('signUp') : t('login')}
+								</Text>
+								{isLoading ? (
+									<Loader />
+								) : (
+									<>
+										<AuthFields
+											isReg={isReg}
+											control={form.control}
+											isPassRequired
+										/>
+
+										<Button
+											size='sm'
+											onPress={form.handleSubmit(
+												onSubmit
+											)}
+											loading={
+												isLoadingCreateUserWEmail ||
+												isLoadingSendPreKey ||
+												isLoadingLogin
+											}
+										>
+											{isReg ? t('signUp') : t('login')}
+										</Button>
+
+										<Pressable
+											onPress={() => setIsReg(!isReg)}
+										>
+											<Text
+												className='text-center text-base mt-6'
+												style={{ color: colors.text }}
+											>
+												{isReg
+													? t('alreadyHaveAccount')
+													: t('noAccount')}
+												<Text
+													style={{
+														color: colors.accent
+													}}
+												>
+													{isReg
+														? t('login')
+														: t('signUp')}
+												</Text>
+											</Text>
+										</Pressable>
+									</>
+								)}
+							</>
 						)}
-					</>
-				)}
-			</View>
-		</View>
+					</View>
+				</View>
+			</ScrollView>
+		</KeyboardAvoidingView>
 	)
 }
 

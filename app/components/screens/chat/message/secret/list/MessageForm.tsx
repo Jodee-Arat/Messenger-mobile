@@ -123,6 +123,7 @@ const MessageForm: FC<MessageFormProp> = ({
 					isSelected={isSelected}
 					files={files ?? []}
 					chatId={chatId}
+					isOwnMessage={isOwnMessage}
 				/>
 
 				<View

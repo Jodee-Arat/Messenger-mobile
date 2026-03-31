@@ -1,4 +1,3 @@
-import * as ImagePicker from 'expo-image-picker'
 import { Trash2, Upload } from 'lucide-react-native'
 import { useState } from 'react'
 import {
@@ -13,6 +12,7 @@ import {
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
+import { pickAvatarImage } from '@/utils/avatar-image-picker'
 import { createImageUploadFile } from '@/utils/create-image-upload-file'
 import { getMediaSource } from '@/utils/get-media-source'
 
@@ -34,12 +34,7 @@ const ChangeAvatarForm = () => {
 	const pickImage = async () => {
 		setIsPicking(true)
 		try {
-			const result = await ImagePicker.launchImageLibraryAsync({
-				mediaTypes: ['images'],
-				allowsEditing: true,
-				aspect: [1, 1],
-				quality: 0.8
-			})
+			const result = await pickAvatarImage()
 
 			if (result.canceled || !result.assets?.[0]) return
 

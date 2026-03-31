@@ -15,9 +15,7 @@ export type Scalars = {
   Boolean: { input: boolean; output: boolean; }
   Int: { input: number; output: number; }
   Float: { input: number; output: number; }
-  /** A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format. */
   DateTime: { input: any; output: any; }
-  /** The `Upload` scalar type represents a file upload. */
   Upload: { input: any; output: any; }
 };
 
@@ -76,6 +74,7 @@ export type ChatMemberModel = {
   id: Scalars['ID']['output'];
   isCreator?: Maybe<Scalars['Boolean']['output']>;
   joinedAt: Scalars['DateTime']['output'];
+  pinnedMessageId?: Maybe<Scalars['String']['output']>;
   roles?: Maybe<Array<ChatRoleModel>>;
   updatedAt: Scalars['DateTime']['output'];
   user: UserModel;
@@ -344,6 +343,8 @@ export type MemberRoleModel = {
 export type Mutation = {
   __typename?: 'Mutation';
   acceptFriendRequest: Scalars['Boolean']['output'];
+  ackSecretMessages: Scalars['Boolean']['output'];
+  ackSharedSecretKeys: Scalars['Boolean']['output'];
   assignGroupRoleToMember: Scalars['Boolean']['output'];
   assignRoleToUser: Scalars['Boolean']['output'];
   blockUser: Scalars['Boolean']['output'];
@@ -413,6 +414,18 @@ export type Mutation = {
 
 export type MutationAcceptFriendRequestArgs = {
   friendshipId: Scalars['String']['input'];
+};
+
+
+export type MutationAckSecretMessagesArgs = {
+  chatId: Scalars['String']['input'];
+  messageIds: Array<Scalars['String']['input']>;
+};
+
+
+export type MutationAckSharedSecretKeysArgs = {
+  chatId: Scalars['String']['input'];
+  sharedKeyIds: Array<Scalars['String']['input']>;
 };
 
 
@@ -514,6 +527,11 @@ export type MutationDeleteGroupArgs = {
 export type MutationDeleteGroupRoleArgs = {
   groupId: Scalars['String']['input'];
   roleId: Scalars['String']['input'];
+};
+
+
+export type MutationDisableTotpArgs = {
+  token: Scalars['String']['input'];
 };
 
 
@@ -789,7 +807,9 @@ export type Query = {
   getOutgoingFriendRequests: Array<FriendshipModel>;
   getPreKeys: Array<PreKeyModel>;
   getSecretMessage: QueueSecretMessageModel;
+  getSecretMessages: Array<QueueSecretMessageModel>;
   getSharedSecretKey: Array<QueueSharedSecretKeyModel>;
+  hasSharedSecretKey: Scalars['Boolean']['output'];
 };
 
 
@@ -870,7 +890,17 @@ export type QueryGetSecretMessageArgs = {
 };
 
 
+export type QueryGetSecretMessagesArgs = {
+  chatId: Scalars['String']['input'];
+};
+
+
 export type QueryGetSharedSecretKeyArgs = {
+  chatId: Scalars['String']['input'];
+};
+
+
+export type QueryHasSharedSecretKeyArgs = {
   chatId: Scalars['String']['input'];
 };
 
@@ -1204,7 +1234,9 @@ export type CreateUserWEmailMutationVariables = Exact<{
 
 export type CreateUserWEmailMutation = { __typename?: 'Mutation', createUserWEmail: boolean };
 
-export type DisableTotpMutationVariables = Exact<{ [key: string]: never; }>;
+export type DisableTotpMutationVariables = Exact<{
+  token: Scalars['String']['input'];
+}>;
 
 
 export type DisableTotpMutation = { __typename?: 'Mutation', disableTotp: boolean };
@@ -1595,6 +1627,22 @@ export type UpsertGroupRoleMutationVariables = Exact<{
 
 export type UpsertGroupRoleMutation = { __typename?: 'Mutation', upsertGroupRole: boolean };
 
+export type AckSecretMessagesMutationVariables = Exact<{
+  chatId: Scalars['String']['input'];
+  messageIds: Array<Scalars['String']['input']> | Scalars['String']['input'];
+}>;
+
+
+export type AckSecretMessagesMutation = { __typename?: 'Mutation', ackSecretMessages: boolean };
+
+export type AckSharedSecretKeysMutationVariables = Exact<{
+  chatId: Scalars['String']['input'];
+  sharedKeyIds: Array<Scalars['String']['input']> | Scalars['String']['input'];
+}>;
+
+
+export type AckSharedSecretKeysMutation = { __typename?: 'Mutation', ackSharedSecretKeys: boolean };
+
 export type DiscardSecretAttachmentMutationVariables = Exact<{
   chatId: Scalars['String']['input'];
   attachmentId: Scalars['String']['input'];
@@ -1686,14 +1734,14 @@ export type FindAllMessagesByChatQueryVariables = Exact<{
 }>;
 
 
-export type FindAllMessagesByChatQuery = { __typename?: 'Query', findAllMessagesByChat: Array<{ __typename?: 'ChatMessageModel', id: string, isEdited: boolean, text?: string | null, createdAt: any, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, repliedToLinks?: Array<{ __typename?: 'ChatMessageReplyModel', id: string, repliedTo?: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', avatarUrl?: string | null, username: string, id: string } } | null } | null> | null, chat: { __typename?: 'ChatModel', chatName?: string | null }, user: { __typename?: 'UserModel', avatarUrl?: string | null, id: string, username: string } }> };
+export type FindAllMessagesByChatQuery = { __typename?: 'Query', findAllMessagesByChat: Array<{ __typename?: 'ChatMessageModel', id: string, isEdited: boolean, isStarted: boolean, text?: string | null, createdAt: any, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, repliedToLinks?: Array<{ __typename?: 'ChatMessageReplyModel', id: string, repliedTo?: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', avatarUrl?: string | null, username: string, id: string } } | null } | null> | null, chat: { __typename?: 'ChatModel', chatName?: string | null }, user: { __typename?: 'UserModel', avatarUrl?: string | null, id: string, username: string } }> };
 
 export type FindChatByChatIdQueryVariables = Exact<{
   chatId: Scalars['String']['input'];
 }>;
 
 
-export type FindChatByChatIdQuery = { __typename?: 'Query', findChatByChatId: { __typename?: 'ChatModel', id: string, chatName?: string | null, avatarUrl?: string | null, updatedAt: any, isSecret: boolean, requireTotp: boolean, isGroup: boolean, groupId?: string | null, description?: string | null, pinnedMessage?: { __typename?: 'ChatMessageModel', id: string, text?: string | null, createdAt: any, isEdited: boolean, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, chat: { __typename?: 'ChatModel', id: string }, user: { __typename?: 'UserModel', id: string, username: string }, repliedToLinks?: Array<{ __typename?: 'ChatMessageReplyModel', id: string, repliedTo?: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', username: string, id: string } } | null } | null> | null } | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', editId?: string | null, id: string, text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }>, repliedToLinks: Array<{ __typename?: 'chatDraftMessageReplyModel', id: string, repliedTo: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', username: string, id: string } } }> }> | null, members: Array<{ __typename?: 'ChatMemberModel', id: string, isCreator?: boolean | null, user: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null }, roles?: Array<{ __typename?: 'ChatRoleModel', id: string, name: string, color: string, permissions: Array<ChatPermissionEnum> }> | null }> } };
+export type FindChatByChatIdQuery = { __typename?: 'Query', findChatByChatId: { __typename?: 'ChatModel', id: string, chatName?: string | null, avatarUrl?: string | null, updatedAt: any, isSecret: boolean, requireTotp: boolean, isGroup: boolean, groupId?: string | null, description?: string | null, pinnedMessage?: { __typename?: 'ChatMessageModel', id: string, text?: string | null, createdAt: any, isEdited: boolean, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', id: string, username: string }, repliedToLinks?: Array<{ __typename?: 'ChatMessageReplyModel', id: string, repliedTo?: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', username: string, id: string } } | null } | null> | null } | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', editId?: string | null, id: string, text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }>, repliedToLinks: Array<{ __typename?: 'chatDraftMessageReplyModel', id: string, repliedTo: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', username: string, id: string } } }> }> | null, members: Array<{ __typename?: 'ChatMemberModel', id: string, isCreator?: boolean | null, user: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null }, roles?: Array<{ __typename?: 'ChatRoleModel', id: string, name: string, color: string, permissions: Array<ChatPermissionEnum> }> | null }> } };
 
 export type GetChatRolesQueryVariables = Exact<{
   chatId: Scalars['String']['input'];
@@ -1769,7 +1817,14 @@ export type GetSecretMessageQueryVariables = Exact<{
 }>;
 
 
-export type GetSecretMessageQuery = { __typename?: 'Query', getSecretMessage: { __typename?: 'QueueSecretMessageModel', chatId: string, fromUserId: string, usedOpk?: string | null, ukm?: string | null, ekPub?: string | null, iv: string, encryptedMessage: string, sig: string } };
+export type GetSecretMessageQuery = { __typename?: 'Query', getSecretMessage: { __typename?: 'QueueSecretMessageModel', id: string, chatId: string, fromUserId: string, ikPub?: string | null, usedOpk?: string | null, ukm?: string | null, ekPub?: string | null, iv: string, encryptedMessage: string, sig: string } };
+
+export type GetSecretMessagesQueryVariables = Exact<{
+  chatId: Scalars['String']['input'];
+}>;
+
+
+export type GetSecretMessagesQuery = { __typename?: 'Query', getSecretMessages: Array<{ __typename?: 'QueueSecretMessageModel', id: string, groupId: string, isKey: boolean, chatId: string, fromUserId: string, toUserIds: Array<string>, whoCheckedIds: Array<string>, ukm?: string | null, iv: string, encryptedMessage: string, sig: string, secretAttachmentIds: Array<string>, ikPub?: string | null, ekPub?: string | null, usedOpk?: string | null, createdAt: any, updatedAt: any }> };
 
 export type GetSharedSecretKeyQueryVariables = Exact<{
   chatId: Scalars['String']['input'];
@@ -1777,6 +1832,13 @@ export type GetSharedSecretKeyQueryVariables = Exact<{
 
 
 export type GetSharedSecretKeyQuery = { __typename?: 'Query', getSharedSecretKey: Array<{ __typename?: 'QueueSharedSecretKeyModel', id: string, groupId: string, createdAt: any, updatedAt: any, ikPub: string, chatId: string, fromUserId: string, toUserId: string, ekPub: string, usedOpk?: string | null, ukm: string, iv: string, encryptedKey: string, sig: string }> };
+
+export type HasSharedSecretKeyQueryVariables = Exact<{
+  chatId: Scalars['String']['input'];
+}>;
+
+
+export type HasSharedSecretKeyQuery = { __typename?: 'Query', hasSharedSecretKey: boolean };
 
 export type FindAllUsersQueryVariables = Exact<{
   filters?: InputMaybe<FiltersInput>;
@@ -1836,7 +1898,7 @@ export type ChatMessageAddedSubscriptionVariables = Exact<{
 }>;
 
 
-export type ChatMessageAddedSubscription = { __typename?: 'Subscription', chatMessageAdded: { __typename?: 'ChatMessageModel', id: string, text?: string | null, isEdited: boolean, createdAt: any, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, repliedToLinks?: Array<{ __typename?: 'ChatMessageReplyModel', id: string, repliedTo?: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', avatarUrl?: string | null, username: string, id: string } } | null } | null> | null, chat: { __typename?: 'ChatModel', chatName?: string | null }, user: { __typename?: 'UserModel', avatarUrl?: string | null, username: string, id: string } } };
+export type ChatMessageAddedSubscription = { __typename?: 'Subscription', chatMessageAdded: { __typename?: 'ChatMessageModel', id: string, text?: string | null, isEdited: boolean, isStarted: boolean, createdAt: any, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, repliedToLinks?: Array<{ __typename?: 'ChatMessageReplyModel', id: string, repliedTo?: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', avatarUrl?: string | null, username: string, id: string } } | null } | null> | null, chat: { __typename?: 'ChatModel', chatName?: string | null }, user: { __typename?: 'UserModel', avatarUrl?: string | null, username: string, id: string } } };
 
 export type ChatMessageRemovedSubscriptionVariables = Exact<{
   chatId: Scalars['String']['input'];
@@ -1957,7 +2019,7 @@ export type AddSecretMessageSubscriptionVariables = Exact<{
 }>;
 
 
-export type AddSecretMessageSubscription = { __typename?: 'Subscription', addSecretMessage: { __typename?: 'QueueSecretMessageModel', chatId: string, fromUserId: string, ukm?: string | null, iv: string, encryptedMessage: string, sig: string } };
+export type AddSecretMessageSubscription = { __typename?: 'Subscription', addSecretMessage: { __typename?: 'QueueSecretMessageModel', id: string, chatId: string, fromUserId: string, ukm?: string | null, iv: string, encryptedMessage: string, sig: string } };
 
 export type AddSharedSecretKeySubscriptionVariables = Exact<{
   userId: Scalars['String']['input'];
@@ -2006,8 +2068,8 @@ export type CreateUserWEmailMutationHookResult = ReturnType<typeof useCreateUser
 export type CreateUserWEmailMutationResult = Apollo.MutationResult<CreateUserWEmailMutation>;
 export type CreateUserWEmailMutationOptions = Apollo.BaseMutationOptions<CreateUserWEmailMutation, CreateUserWEmailMutationVariables>;
 export const DisableTotpDocument = gql`
-    mutation DisableTotp {
-  disableTotp
+    mutation DisableTotp($token: String!) {
+  disableTotp(token: $token)
 }
     `;
 export type DisableTotpMutationFn = Apollo.MutationFunction<DisableTotpMutation, DisableTotpMutationVariables>;
@@ -2025,6 +2087,7 @@ export type DisableTotpMutationFn = Apollo.MutationFunction<DisableTotpMutation,
  * @example
  * const [disableTotpMutation, { data, loading, error }] = useDisableTotpMutation({
  *   variables: {
+ *      token: // value for 'token'
  *   },
  * });
  */
@@ -3684,6 +3747,70 @@ export function useUpsertGroupRoleMutation(baseOptions?: Apollo.MutationHookOpti
 export type UpsertGroupRoleMutationHookResult = ReturnType<typeof useUpsertGroupRoleMutation>;
 export type UpsertGroupRoleMutationResult = Apollo.MutationResult<UpsertGroupRoleMutation>;
 export type UpsertGroupRoleMutationOptions = Apollo.BaseMutationOptions<UpsertGroupRoleMutation, UpsertGroupRoleMutationVariables>;
+export const AckSecretMessagesDocument = gql`
+    mutation AckSecretMessages($chatId: String!, $messageIds: [String!]!) {
+  ackSecretMessages(chatId: $chatId, messageIds: $messageIds)
+}
+    `;
+export type AckSecretMessagesMutationFn = Apollo.MutationFunction<AckSecretMessagesMutation, AckSecretMessagesMutationVariables>;
+
+/**
+ * __useAckSecretMessagesMutation__
+ *
+ * To run a mutation, you first call `useAckSecretMessagesMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useAckSecretMessagesMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [ackSecretMessagesMutation, { data, loading, error }] = useAckSecretMessagesMutation({
+ *   variables: {
+ *      chatId: // value for 'chatId'
+ *      messageIds: // value for 'messageIds'
+ *   },
+ * });
+ */
+export function useAckSecretMessagesMutation(baseOptions?: Apollo.MutationHookOptions<AckSecretMessagesMutation, AckSecretMessagesMutationVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useMutation<AckSecretMessagesMutation, AckSecretMessagesMutationVariables>(AckSecretMessagesDocument, options);
+      }
+export type AckSecretMessagesMutationHookResult = ReturnType<typeof useAckSecretMessagesMutation>;
+export type AckSecretMessagesMutationResult = Apollo.MutationResult<AckSecretMessagesMutation>;
+export type AckSecretMessagesMutationOptions = Apollo.BaseMutationOptions<AckSecretMessagesMutation, AckSecretMessagesMutationVariables>;
+export const AckSharedSecretKeysDocument = gql`
+    mutation AckSharedSecretKeys($chatId: String!, $sharedKeyIds: [String!]!) {
+  ackSharedSecretKeys(chatId: $chatId, sharedKeyIds: $sharedKeyIds)
+}
+    `;
+export type AckSharedSecretKeysMutationFn = Apollo.MutationFunction<AckSharedSecretKeysMutation, AckSharedSecretKeysMutationVariables>;
+
+/**
+ * __useAckSharedSecretKeysMutation__
+ *
+ * To run a mutation, you first call `useAckSharedSecretKeysMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useAckSharedSecretKeysMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [ackSharedSecretKeysMutation, { data, loading, error }] = useAckSharedSecretKeysMutation({
+ *   variables: {
+ *      chatId: // value for 'chatId'
+ *      sharedKeyIds: // value for 'sharedKeyIds'
+ *   },
+ * });
+ */
+export function useAckSharedSecretKeysMutation(baseOptions?: Apollo.MutationHookOptions<AckSharedSecretKeysMutation, AckSharedSecretKeysMutationVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useMutation<AckSharedSecretKeysMutation, AckSharedSecretKeysMutationVariables>(AckSharedSecretKeysDocument, options);
+      }
+export type AckSharedSecretKeysMutationHookResult = ReturnType<typeof useAckSharedSecretKeysMutation>;
+export type AckSharedSecretKeysMutationResult = Apollo.MutationResult<AckSharedSecretKeysMutation>;
+export type AckSharedSecretKeysMutationOptions = Apollo.BaseMutationOptions<AckSharedSecretKeysMutation, AckSharedSecretKeysMutationVariables>;
 export const DiscardSecretAttachmentDocument = gql`
     mutation DiscardSecretAttachment($chatId: String!, $attachmentId: String!) {
   discardSecretAttachment(chatId: $chatId, attachmentId: $attachmentId)
@@ -4170,6 +4297,7 @@ export const FindAllMessagesByChatDocument = gql`
   findAllMessagesByChat(chatId: $chatId, filters: $filters) {
     id
     isEdited
+    isStarted
     text
     createdAt
     files {
@@ -4262,9 +4390,6 @@ export const FindChatByChatIdDocument = gql`
         fileName
         fileFormat
         fileSize
-        id
-      }
-      chat {
         id
       }
       user {
@@ -4897,8 +5022,10 @@ export type GetPreKeysQueryResult = Apollo.QueryResult<GetPreKeysQuery, GetPreKe
 export const GetSecretMessageDocument = gql`
     query GetSecretMessage($chatId: String!) {
   getSecretMessage(chatId: $chatId) {
+    id
     chatId
     fromUserId
+    ikPub
     usedOpk
     ukm
     ekPub
@@ -4941,6 +5068,62 @@ export type GetSecretMessageQueryHookResult = ReturnType<typeof useGetSecretMess
 export type GetSecretMessageLazyQueryHookResult = ReturnType<typeof useGetSecretMessageLazyQuery>;
 export type GetSecretMessageSuspenseQueryHookResult = ReturnType<typeof useGetSecretMessageSuspenseQuery>;
 export type GetSecretMessageQueryResult = Apollo.QueryResult<GetSecretMessageQuery, GetSecretMessageQueryVariables>;
+export const GetSecretMessagesDocument = gql`
+    query GetSecretMessages($chatId: String!) {
+  getSecretMessages(chatId: $chatId) {
+    id
+    groupId
+    isKey
+    chatId
+    fromUserId
+    toUserIds
+    whoCheckedIds
+    ukm
+    iv
+    encryptedMessage
+    sig
+    secretAttachmentIds
+    ikPub
+    ekPub
+    usedOpk
+    createdAt
+    updatedAt
+  }
+}
+    `;
+
+/**
+ * __useGetSecretMessagesQuery__
+ *
+ * To run a query within a React component, call `useGetSecretMessagesQuery` and pass it any options that fit your needs.
+ * When your component renders, `useGetSecretMessagesQuery` returns an object from Apollo Client that contains loading, error, and data properties
+ * you can use to render your UI.
+ *
+ * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
+ *
+ * @example
+ * const { data, loading, error } = useGetSecretMessagesQuery({
+ *   variables: {
+ *      chatId: // value for 'chatId'
+ *   },
+ * });
+ */
+export function useGetSecretMessagesQuery(baseOptions: Apollo.QueryHookOptions<GetSecretMessagesQuery, GetSecretMessagesQueryVariables> & ({ variables: GetSecretMessagesQueryVariables; skip?: boolean; } | { skip: boolean; }) ) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useQuery<GetSecretMessagesQuery, GetSecretMessagesQueryVariables>(GetSecretMessagesDocument, options);
+      }
+export function useGetSecretMessagesLazyQuery(baseOptions?: Apollo.LazyQueryHookOptions<GetSecretMessagesQuery, GetSecretMessagesQueryVariables>) {
+          const options = {...defaultOptions, ...baseOptions}
+          return Apollo.useLazyQuery<GetSecretMessagesQuery, GetSecretMessagesQueryVariables>(GetSecretMessagesDocument, options);
+        }
+export function useGetSecretMessagesSuspenseQuery(baseOptions?: Apollo.SkipToken | Apollo.SuspenseQueryHookOptions<GetSecretMessagesQuery, GetSecretMessagesQueryVariables>) {
+          const options = baseOptions === Apollo.skipToken ? baseOptions : {...defaultOptions, ...baseOptions}
+          return Apollo.useSuspenseQuery<GetSecretMessagesQuery, GetSecretMessagesQueryVariables>(GetSecretMessagesDocument, options);
+        }
+export type GetSecretMessagesQueryHookResult = ReturnType<typeof useGetSecretMessagesQuery>;
+export type GetSecretMessagesLazyQueryHookResult = ReturnType<typeof useGetSecretMessagesLazyQuery>;
+export type GetSecretMessagesSuspenseQueryHookResult = ReturnType<typeof useGetSecretMessagesSuspenseQuery>;
+export type GetSecretMessagesQueryResult = Apollo.QueryResult<GetSecretMessagesQuery, GetSecretMessagesQueryVariables>;
 export const GetSharedSecretKeyDocument = gql`
     query GetSharedSecretKey($chatId: String!) {
   getSharedSecretKey(chatId: $chatId) {
@@ -4994,6 +5177,44 @@ export type GetSharedSecretKeyQueryHookResult = ReturnType<typeof useGetSharedSe
 export type GetSharedSecretKeyLazyQueryHookResult = ReturnType<typeof useGetSharedSecretKeyLazyQuery>;
 export type GetSharedSecretKeySuspenseQueryHookResult = ReturnType<typeof useGetSharedSecretKeySuspenseQuery>;
 export type GetSharedSecretKeyQueryResult = Apollo.QueryResult<GetSharedSecretKeyQuery, GetSharedSecretKeyQueryVariables>;
+export const HasSharedSecretKeyDocument = gql`
+    query HasSharedSecretKey($chatId: String!) {
+  hasSharedSecretKey(chatId: $chatId)
+}
+    `;
+
+/**
+ * __useHasSharedSecretKeyQuery__
+ *
+ * To run a query within a React component, call `useHasSharedSecretKeyQuery` and pass it any options that fit your needs.
+ * When your component renders, `useHasSharedSecretKeyQuery` returns an object from Apollo Client that contains loading, error, and data properties
+ * you can use to render your UI.
+ *
+ * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
+ *
+ * @example
+ * const { data, loading, error } = useHasSharedSecretKeyQuery({
+ *   variables: {
+ *      chatId: // value for 'chatId'
+ *   },
+ * });
+ */
+export function useHasSharedSecretKeyQuery(baseOptions: Apollo.QueryHookOptions<HasSharedSecretKeyQuery, HasSharedSecretKeyQueryVariables> & ({ variables: HasSharedSecretKeyQueryVariables; skip?: boolean; } | { skip: boolean; }) ) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useQuery<HasSharedSecretKeyQuery, HasSharedSecretKeyQueryVariables>(HasSharedSecretKeyDocument, options);
+      }
+export function useHasSharedSecretKeyLazyQuery(baseOptions?: Apollo.LazyQueryHookOptions<HasSharedSecretKeyQuery, HasSharedSecretKeyQueryVariables>) {
+          const options = {...defaultOptions, ...baseOptions}
+          return Apollo.useLazyQuery<HasSharedSecretKeyQuery, HasSharedSecretKeyQueryVariables>(HasSharedSecretKeyDocument, options);
+        }
+export function useHasSharedSecretKeySuspenseQuery(baseOptions?: Apollo.SkipToken | Apollo.SuspenseQueryHookOptions<HasSharedSecretKeyQuery, HasSharedSecretKeyQueryVariables>) {
+          const options = baseOptions === Apollo.skipToken ? baseOptions : {...defaultOptions, ...baseOptions}
+          return Apollo.useSuspenseQuery<HasSharedSecretKeyQuery, HasSharedSecretKeyQueryVariables>(HasSharedSecretKeyDocument, options);
+        }
+export type HasSharedSecretKeyQueryHookResult = ReturnType<typeof useHasSharedSecretKeyQuery>;
+export type HasSharedSecretKeyLazyQueryHookResult = ReturnType<typeof useHasSharedSecretKeyLazyQuery>;
+export type HasSharedSecretKeySuspenseQueryHookResult = ReturnType<typeof useHasSharedSecretKeySuspenseQuery>;
+export type HasSharedSecretKeyQueryResult = Apollo.QueryResult<HasSharedSecretKeyQuery, HasSharedSecretKeyQueryVariables>;
 export const FindAllUsersDocument = gql`
     query FindAllUsers($filters: FiltersInput) {
   findAllUsers(filters: $filters) {
@@ -5362,6 +5583,7 @@ export const ChatMessageAddedDocument = gql`
     id
     text
     isEdited
+    isStarted
     createdAt
     files {
       fileName
@@ -6054,6 +6276,7 @@ export type GroupUpsertedRoleSubscriptionResult = Apollo.SubscriptionResult<Grou
 export const AddSecretMessageDocument = gql`
     subscription AddSecretMessage($userId: String!) {
   addSecretMessage(userId: $userId) {
+    id
     chatId
     fromUserId
     ukm

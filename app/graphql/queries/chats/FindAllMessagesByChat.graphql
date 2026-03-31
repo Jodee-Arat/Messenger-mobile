@@ -2,6 +2,7 @@ query FindAllMessagesByChat($chatId: String!, $filters: FiltersInput!) {
 	findAllMessagesByChat(chatId: $chatId, filters: $filters) {
 		id
 		isEdited
+		isStarted
 		text
 		createdAt
 		files {

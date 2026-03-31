@@ -21,7 +21,12 @@ import {
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 
-import { useUnblockUserMutation } from '@/graphql/generated/output'
+import {
+	FindAllChatsByUserDocument,
+	GetBlockedUsersDocument,
+	GetFriendsDocument,
+	useUnblockUserMutation
+} from '@/graphql/generated/output'
 
 const BlockedUsers: FC = () => {
 	const navigation = useTypedNavigation()
@@ -71,9 +76,12 @@ const BlockedUsers: FC = () => {
 							await unblockUser({
 								variables: { friendshipId },
 								refetchQueries: [
-									'GetBlockedUsers',
-									'GetFriends',
-									'FindAllChatsByUser'
+									GetBlockedUsersDocument,
+									GetFriendsDocument,
+									{
+										query: FindAllChatsByUserDocument,
+										variables: { filters: {} }
+									}
 								],
 								awaitRefetchQueries: true
 							})

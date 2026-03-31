@@ -4,15 +4,15 @@ import React, { FC, useEffect, useMemo, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import {
 	ActivityIndicator,
+	Animated,
+	Dimensions,
 	Image,
+	Pressable,
 	ScrollView,
 	Text,
 	TextInput,
 	TouchableOpacity,
-	View,
-	Animated,
-	Dimensions,
-	Pressable
+	View
 } from 'react-native'
 import Toast from 'react-native-toast-message'
 
@@ -23,12 +23,6 @@ import Checkbox from '@/components/ui/checkbox/Checkbox'
 import { useCenteredModalLayout } from '@/hooks/useModalLayout'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useUser } from '@/hooks/useUser'
-
-import { MessageType } from '@/types/message.type'
-
-import { setPendingForward } from '@/utils/pending-forward'
-
-import { navigate } from '@/navigation/navigate'
 
 import {
 	FindAllChatsByUserQuery,
@@ -41,12 +35,10 @@ import {
 } from '@/schemas/chat/forward-message.schema'
 
 interface ForwardMessageModalProp {
-	handleAddForwarded: (messageIds: string[], initialText?: string) => void
 	messageIds?: string[]
-	selectedMessages?: MessageType[]
 	handleClearMessagesId: () => void
 	chatId: string
-	currentGroupId?: string | null
+	groupId?: string | null
 }
 
 type ChatItem = FindAllChatsByUserQuery['findAllChatsByUser'][0]
@@ -73,18 +65,16 @@ const SCREEN_HEIGHT = Dimensions.get('window').height
 
 const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 	messageIds,
-	selectedMessages,
 	handleClearMessagesId,
-	handleAddForwarded,
 	chatId,
-	currentGroupId
+	groupId
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
 	const { userId } = useUser()
 	const { cardMarginBottom, cardMaxHeight } = useCenteredModalLayout(0.8)
 	const [isOpen, setIsOpen] = useState(false)
-	
+
 	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
 
 	const closeSheet = (cb?: () => void) => {
@@ -111,16 +101,11 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 	})
 
 	const chats = useMemo(() => {
-		const availableChats = (dataChats?.findAllChatsByUser ?? []).filter(
-			chat => !chat.isSecret
+		const allChats = dataChats?.findAllChatsByUser ?? []
+		return allChats.filter(
+			chat => !chat.isSecret && chat.isGroup && chat.groupId === groupId
 		)
-
-		if (!currentGroupId) {
-			return availableChats
-		}
-
-		return availableChats.filter(chat => chat.groupId === currentGroupId)
-	}, [currentGroupId, dataChats])
+	}, [dataChats, groupId])
 
 	const form = useForm<ForwardMessageSchemaType>({
 		resolver: zodResolver(forwardMessageSchema),
@@ -139,31 +124,10 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 		useForwardChatMessageMutation({
 			onCompleted() {
 				closeSheet(() => {
-					const selectedChats = form.getValues('targetChatsId')
-					const currentText = trimmedForwardText
-					if (selectedChats.length === 1) {
-						const selectedChat = chats.find(
-							chat => chat.id === selectedChats[0]
-						)
-
-						if (selectedChat) {
-							// Store forwarded messages so the target chat can show them immediately
-							if (selectedMessages && selectedMessages.length > 0) {
-								setPendingForward({
-									chatId: selectedChat.id,
-									messages: selectedMessages,
-									text: currentText
-								})
-							}
-							const preview = getChatPreview(selectedChat, userId)
-							navigate('Chat', {
-								chatId: selectedChat.id,
-								chatName: preview.title,
-								isSecret: selectedChat.isSecret,
-								groupId: selectedChat.groupId || undefined
-							})
-						}
-					}
+					Toast.show({
+						type: 'success',
+						text1: t('messageForwarded') || 'Message forwarded'
+					})
 					form.reset()
 				})
 			},
@@ -171,31 +135,12 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 		})
 
 	const canSubmitForward =
-		isValid &&
-		trimmedForwardText.length > 0 &&
-		!isLoadingForwardingMessage &&
-		!isLoadingFindAllChatsByUser
+		isValid && !isLoadingForwardingMessage && !isLoadingFindAllChatsByUser
 
 	const onSubmit = (data: ForwardMessageSchemaType) => {
 		if (!messageIds || messageIds.length === 0) return
 		if (data.targetChatsId.length === 0) return
-		if (!trimmedForwardText) {
-			Toast.show({
-				type: 'error',
-				text1: t('writeMessage')
-			})
-			return
-		}
-
-		if (
-			data.targetChatsId.length === 1 &&
-			data.targetChatsId[0] === chatId
-		) {
-			handleAddForwarded(messageIds, trimmedForwardText)
-			handleClearMessagesId()
-			closeSheet()
-			return
-		}
+		if (!trimmedForwardText) return
 
 		forwardMessage({
 			variables: {
@@ -243,7 +188,18 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 				navigationBarTranslucent
 			>
 				<View className='flex-1 justify-center'>
-					<Pressable className='flex-1' style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: colors.overlay }} onPress={() => closeSheet()} />
+					<Pressable
+						className='flex-1'
+						style={{
+							position: 'absolute',
+							top: 0,
+							bottom: 0,
+							left: 0,
+							right: 0,
+							backgroundColor: colors.overlay
+						}}
+						onPress={() => closeSheet()}
+					/>
 					<Animated.View
 						className='mx-4 rounded-2xl p-4 max-h-[80%]'
 						style={{

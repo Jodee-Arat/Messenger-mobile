@@ -9,7 +9,6 @@ import { MessageType } from '@/types/message.type'
 
 import ChatToolbar from '../toolbar/ChatToolbar'
 
-import PinnedMessage from './PinnedMessage'
 import SecretChatMessageDropdownTrigger from './SecretChatMessageDropdownTrigger'
 
 interface SecretChatMessageListProp {
@@ -18,8 +17,6 @@ interface SecretChatMessageListProp {
 	userId: string
 	onDelete: (id: string[]) => Promise<void>
 	onRefresh?: () => Promise<void> | void
-	pinnedMessage?: MessageType | null
-	setPinnedMessage?: (message: MessageType | null) => void
 	startEdit?: (
 		message: MessageType,
 		forwardedMessages?: ForwardedMessageType[]
@@ -33,8 +30,6 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 	onDelete,
 	onRefresh,
 	chatId,
-	pinnedMessage = null,
-	setPinnedMessage = () => {},
 	startEdit = () => {},
 	handleAddForwardedMessage = () => {}
 }) => {
@@ -111,15 +106,6 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 
 	return (
 		<View className='flex-1'>
-			{/* Прикреплённое сообщение */}
-			{pinnedMessage && (
-				<PinnedMessage
-					chatId={chatId}
-					pinnedMessage={pinnedMessage}
-					setPinnedMessage={setPinnedMessage}
-				/>
-			)}
-
 			{/* Список сообщений */}
 			<FlatList
 				data={messages}
@@ -142,6 +128,44 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 						!prevItem || prevItem.user.id !== item.user.id
 					const isLastInGroup =
 						!nextItem || nextItem.user.id !== item.user.id
+
+					if (item.isStarted) {
+						return (
+							<View
+								style={{
+									flexDirection: 'row',
+									alignItems: 'center',
+									paddingHorizontal: 24,
+									paddingVertical: 10
+								}}
+							>
+								<View
+									style={{
+										flex: 1,
+										height: 1,
+										backgroundColor: colors.border
+									}}
+								/>
+								<Text
+									style={{
+										color: colors.textMuted,
+										fontSize: 12,
+										marginHorizontal: 12
+									}}
+								>
+									{item.text}
+								</Text>
+								<View
+									style={{
+										flex: 1,
+										height: 1,
+										backgroundColor: colors.border
+									}}
+								/>
+							</View>
+						)
+					}
+
 					return (
 						<View style={{ marginBottom: isLastInGroup ? 8 : 2 }}>
 							<SecretChatMessageDropdownTrigger
@@ -157,8 +181,6 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 								messageId={item.id}
 								messageIds={messageIds}
 								isSelectionMode={isSelectionMode}
-								setPinnedMessage={setPinnedMessage}
-								pinnedMessageId={pinnedMessage?.id ?? null}
 								onDelete={onDelete}
 								isSelected={isSelected}
 								isFirstInGroup={isFirstInGroup}

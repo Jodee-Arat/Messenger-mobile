@@ -26,6 +26,7 @@ export interface ChatItemData {
 
 interface ChatItemRowProps {
 	chat: ChatItemData
+	disabled?: boolean
 	onPress: () => void
 	onLongPress?: () => void
 	onDrag?: () => void
@@ -36,6 +37,7 @@ interface ChatItemRowProps {
 
 const ChatItemRow: FC<ChatItemRowProps> = ({
 	chat,
+	disabled = false,
 	onPress,
 	onLongPress,
 	onDrag,
@@ -157,6 +159,7 @@ const ChatItemRow: FC<ChatItemRowProps> = ({
 		<View
 			className='w-full flex-row items-center'
 			style={{
+				opacity: disabled ? 0.55 : 1,
 				borderBottomWidth: 0.5,
 				borderBottomColor: colors.border,
 				...(chat.isSecret && {
@@ -167,6 +170,7 @@ const ChatItemRow: FC<ChatItemRowProps> = ({
 			}}
 		>
 			<Pressable
+				disabled={disabled}
 				onLongPress={onLongPress}
 				delayLongPress={300}
 				className='flex-1 px-4 py-3 flex-row items-center'

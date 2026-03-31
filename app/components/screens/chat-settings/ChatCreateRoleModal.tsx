@@ -47,6 +47,7 @@ const ChatCreateRoleModal: React.FC<ChatCreateRoleModalProps> = ({
 		sheetPaddingBottom
 	} = useBottomSheetModalLayout(0.85)
 	const slideAnim = useRef(new Animated.Value(windowHeight)).current
+	const [showModal, setShowModal] = useState(false)
 	const [roleName, setRoleName] = useState('')
 	const [selectedColor, setSelectedColor] = useState(CHAT_ROLE_COLORS[0])
 	const [perms, setPerms] = useState<Set<ChatPermissionEnum>>(
@@ -55,6 +56,8 @@ const ChatCreateRoleModal: React.FC<ChatCreateRoleModalProps> = ({
 
 	React.useEffect(() => {
 		if (isOpen) {
+			setShowModal(true)
+			slideAnim.setValue(windowHeight)
 			Animated.spring(slideAnim, {
 				toValue: 0,
 				useNativeDriver: true,
@@ -62,7 +65,7 @@ const ChatCreateRoleModal: React.FC<ChatCreateRoleModalProps> = ({
 				friction: 11
 			}).start()
 		}
-	}, [isOpen])
+	}, [isOpen, slideAnim, windowHeight])
 
 	const closeSheet = () => {
 		Animated.timing(slideAnim, {
@@ -70,6 +73,7 @@ const ChatCreateRoleModal: React.FC<ChatCreateRoleModalProps> = ({
 			duration: 200,
 			useNativeDriver: true
 		}).start(() => {
+			setShowModal(false)
 			onClose()
 			setRoleName('')
 			setSelectedColor(CHAT_ROLE_COLORS[0])
@@ -97,7 +101,7 @@ const ChatCreateRoleModal: React.FC<ChatCreateRoleModalProps> = ({
 
 	return (
 		<AppModal
-			visible={isOpen}
+			visible={showModal}
 			transparent
 			animationType='none'
 			onRequestClose={closeSheet}

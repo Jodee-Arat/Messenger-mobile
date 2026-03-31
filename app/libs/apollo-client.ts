@@ -344,6 +344,16 @@ export const client = new ApolloClient({
 						merge(_existing = [], incoming: any[]) {
 							return incoming
 						}
+					},
+					getSecretMessages: {
+						merge(_existing = [], incoming: any[]) {
+							return incoming
+						}
+					},
+					getSharedSecretKey: {
+						merge(_existing = [], incoming: any[]) {
+							return incoming
+						}
 					}
 				}
 			},

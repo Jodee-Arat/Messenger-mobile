@@ -3,9 +3,11 @@ import { FC } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import BrandMark from '@/components/ui/BrandMark'
 import EntityAvatar from '@/components/ui/EntityAvatar'
 
 import { useTheme, useTranslation } from '@/hooks/useTheme'
+
 import { navigate } from '@/navigation/navigate'
 
 interface SidebarHeaderProps {
@@ -33,6 +35,16 @@ const SidebarHeader: FC<SidebarHeaderProps> = ({
 				borderBottomColor: colors.border
 			}}
 		>
+			<View className='mb-4 flex-row items-center'>
+				<BrandMark size={34} />
+				<Text
+					className='ml-3 text-xs font-semibold uppercase'
+					style={{ color: colors.accent, letterSpacing: 3 }}
+				>
+					МесАгат
+				</Text>
+			</View>
+
 			<View className='flex-row items-center'>
 				<EntityAvatar name={username} avatarUrl={avatarUrl} size='lg' />
 				<View className='ml-3 flex-1'>

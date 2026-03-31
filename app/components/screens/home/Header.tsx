@@ -3,6 +3,8 @@ import { FC } from 'react'
 import { Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import BrandMark from '@/components/ui/BrandMark'
+
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
 interface HeaderProps {
@@ -73,12 +75,23 @@ const Header: FC<HeaderProps> = ({
 					/>
 				</View>
 			) : (
-				<Text
-					className='text-lg font-bold'
-					style={{ color: colors.text }}
-				>
-					{t('friends')}
-				</Text>
+				<View className='mx-3 flex-1 flex-row items-center'>
+					<BrandMark size={38} />
+					<View className='ml-3'>
+						<Text
+							className='text-[11px] font-semibold uppercase'
+							style={{ color: colors.accent, letterSpacing: 2.5 }}
+						>
+							МесАгат
+						</Text>
+						<Text
+							className='text-lg font-bold'
+							style={{ color: colors.text }}
+						>
+							{t('friends')}
+						</Text>
+					</View>
+				</View>
 			)}
 
 			<TouchableOpacity

@@ -1,17 +1,11 @@
-﻿import * as ExpoClipboard from 'expo-clipboard'
-import {
-	CheckCircle,
-	Clipboard,
-	Pin,
-	PinOff,
-	Trash2,
-	X
-} from 'lucide-react-native'
-import React, { FC, useCallback, useRef, useState } from 'react'
+import * as ExpoClipboard from 'expo-clipboard'
+import { CheckCircle, Clipboard, Trash2, X } from 'lucide-react-native'
+import React, { FC, useCallback, useEffect, useRef, useState } from 'react'
 import {
 	Animated,
 	Dimensions,
 	Pressable,
+	StyleSheet,
 	Text,
 	TouchableOpacity,
 	View
@@ -24,16 +18,10 @@ import { useTheme, useTranslation } from '@/hooks/useTheme'
 
 import { MessageType } from '@/types/message.type'
 
-import ChatMessageItem from '../../default/list/ChatMessageItem'
-
-import {
-	usePinMessageMutation,
-	useUnPinMessageMutation
-} from '@/graphql/generated/output'
+import MessageForm from './MessageForm'
 
 interface SecretChatMessageDropdownProp {
 	messageInfo: MessageType
-	setPinnedMessage?: (message: MessageType | null) => void
 	userId: string
 	messageId: string
 	chatId: string
@@ -44,7 +32,6 @@ interface SecretChatMessageDropdownProp {
 	handleClearMessagesId: () => void
 	onDelete: (id: string[]) => Promise<void>
 	isSelected: boolean
-	pinnedMessageId?: string | null
 	isFirstInGroup: boolean
 	isLastInGroup: boolean
 }
@@ -52,7 +39,6 @@ interface SecretChatMessageDropdownProp {
 const SCREEN_HEIGHT = Dimensions.get('window').height
 
 const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
-	setPinnedMessage = () => {},
 	chatId,
 	handleAddForwardedMessage = () => {},
 	handleClearMessagesId,
@@ -64,7 +50,6 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 	userId,
 	onDelete,
 	isSelected,
-	pinnedMessageId,
 	isFirstInGroup,
 	isLastInGroup
 }) => {
@@ -73,24 +58,45 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 	const [modalVisible, setModalVisible] = useState(false)
 	const [isDeleting, setIsDeleting] = useState(false)
 	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
-	const isPinnedMessage = pinnedMessageId === messageInfo.id
+	const backdropOpacity = useRef(new Animated.Value(0)).current
+
+	useEffect(() => {
+		return () => {
+			slideAnim.stopAnimation()
+			backdropOpacity.stopAnimation()
+		}
+	}, [backdropOpacity, slideAnim])
 
 	const openSheet = () => {
 		setModalVisible(true)
-		Animated.spring(slideAnim, {
-			toValue: 0,
-			useNativeDriver: true,
-			tension: 65,
-			friction: 11
-		}).start()
+		Animated.parallel([
+			Animated.spring(slideAnim, {
+				toValue: 0,
+				useNativeDriver: true,
+				tension: 65,
+				friction: 11
+			}),
+			Animated.timing(backdropOpacity, {
+				toValue: 1,
+				duration: 250,
+				useNativeDriver: true
+			})
+		]).start()
 	}
 
 	const closeSheet = (cb?: () => void) => {
-		Animated.timing(slideAnim, {
-			toValue: SCREEN_HEIGHT,
-			duration: 200,
-			useNativeDriver: true
-		}).start(() => {
+		Animated.parallel([
+			Animated.timing(slideAnim, {
+				toValue: SCREEN_HEIGHT,
+				duration: 200,
+				useNativeDriver: true
+			}),
+			Animated.timing(backdropOpacity, {
+				toValue: 0,
+				duration: 200,
+				useNativeDriver: true
+			})
+		]).start(() => {
 			setModalVisible(false)
 			cb?.()
 		})
@@ -114,43 +120,13 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 			setIsDeleting(false)
 			closeSheet()
 		}
-	}, [onDelete, messageId])
+	}, [messageId, onDelete, t])
 
 	const handleAddMessage = useCallback(() => {
 		handleAddForwardedMessage([messageInfo])
 		handleClearMessagesId()
 		closeSheet()
-	}, [messageInfo, handleAddForwardedMessage, handleClearMessagesId])
-
-	const [pinMessage] = usePinMessageMutation({
-		onCompleted() {
-			setPinnedMessage(messageInfo)
-			Toast.show({
-				type: 'success',
-				text1: t('messagePinned')
-			})
-		},
-		onError(error) {
-			Toast.show({
-				type: 'error',
-				text1: t('pinError'),
-				text2: error.message
-			})
-		}
-	})
-
-	const [unPinMessage] = useUnPinMessageMutation({
-		onCompleted() {
-			setPinnedMessage(null)
-		},
-		onError(error) {
-			Toast.show({
-				type: 'error',
-				text1: t('unpinError'),
-				text2: error.message
-			})
-		}
-	})
+	}, [handleAddForwardedMessage, handleClearMessagesId, messageInfo])
 
 	const actions = [
 		{
@@ -170,27 +146,6 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 					Toast.show({
 						type: 'info',
 						text1: t('copied')
-					})
-				}
-				closeSheet()
-			}
-		},
-		{
-			icon: isPinnedMessage ? (
-				<PinOff size={20} color={colors.text} />
-			) : (
-				<Pin size={20} color={colors.text} />
-			),
-			label: isPinnedMessage ? t('unpinChat') || 'Unpin' : t('pin'),
-			onPress: () => {
-				if (isPinnedMessage) {
-					unPinMessage({ variables: { chatId } })
-				} else {
-					pinMessage({
-						variables: {
-							chatId,
-							messageId: messageInfo.id
-						}
 					})
 				}
 				closeSheet()
@@ -232,14 +187,17 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 							: 'transparent'
 					}}
 				>
-					<ChatMessageItem
-						isSelectionMode={isSelectionMode}
+					<MessageForm
 						chatId={chatId}
-						messageInfo={messageInfo}
 						userId={userId}
+						user={messageInfo.user}
+						text={messageInfo.text}
+						files={messageInfo.files}
+						isEdited={messageInfo.isEdited}
 						isSelected={isSelected}
 						isFirstInGroup={isFirstInGroup}
 						isLastInGroup={isLastInGroup}
+						createdAt={messageInfo.createdAt}
 					/>
 				</View>
 			</Pressable>
@@ -253,14 +211,20 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 				onRequestClose={() => closeSheet()}
 			>
 				<View className='flex-1'>
-					{/* Dimmed backdrop */}
+					<Animated.View
+						style={[
+							{
+								...StyleSheet.absoluteFillObject,
+								backgroundColor: colors.overlay,
+								opacity: backdropOpacity
+							}
+						]}
+					/>
 					<Pressable
 						className='flex-1'
-						style={{ backgroundColor: colors.overlay }}
 						onPress={() => closeSheet()}
 					/>
 
-					{/* Bottom sheet */}
 					<Animated.View
 						style={{
 							transform: [{ translateY: slideAnim }],
@@ -273,7 +237,6 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 							paddingTop: 8
 						}}
 					>
-						{/* Handle bar */}
 						<View className='items-center mb-2'>
 							<View
 								style={{
@@ -285,7 +248,6 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 							/>
 						</View>
 
-						{/* Preview: sender + text */}
 						<View
 							className='mx-4 mb-3 px-3 py-2 rounded-xl'
 							style={{
@@ -311,7 +273,6 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 							)}
 						</View>
 
-						{/* Action buttons */}
 						<View className='px-3'>
 							{actions.map((action, i) => (
 								<TouchableOpacity

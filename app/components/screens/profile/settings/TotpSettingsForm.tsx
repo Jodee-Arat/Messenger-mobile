@@ -2,7 +2,6 @@ import * as Clipboard from 'expo-clipboard'
 import { Shield, ShieldCheck, ShieldOff } from 'lucide-react-native'
 import { useEffect, useState } from 'react'
 import {
-	Alert,
 	Image,
 	Text,
 	TextInput,
@@ -37,6 +36,8 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 		qrCodeUrl: string
 	} | null>(null)
 	const [verifyCode, setVerifyCode] = useState('')
+	const [disableCode, setDisableCode] = useState('')
+	const [isDisableMode, setIsDisableMode] = useState(false)
 
 	const [generateSecret, { loading: isGenerating }] =
 		useGenerateTotpSecretMutation({
@@ -80,6 +81,8 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 				text1: 'TOTP Disabled',
 				text2: 'Two-factor authentication has been removed'
 			})
+			setDisableCode('')
+			setIsDisableMode(false)
 			refetch()
 		},
 		onError(error) {
@@ -94,6 +97,13 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 	useEffect(() => {
 		void refetch()
 	}, [refreshSignal, refetch])
+
+	useEffect(() => {
+		if (!isTotpEnabled) {
+			setDisableCode('')
+			setIsDisableMode(false)
+		}
+	}, [isTotpEnabled])
 
 	const handleCopySecret = async (secret: string) => {
 		await Clipboard.setStringAsync(secret)
@@ -117,18 +127,16 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 	}
 
 	const handleDisableTotp = () => {
-		Alert.alert(
-			'Disable TOTP',
-			'Are you sure you want to disable two-factor authentication? This will make your account less secure.',
-			[
-				{ text: 'Cancel', style: 'cancel' },
-				{
-					text: 'Disable',
-					style: 'destructive',
-					onPress: () => disableTotp()
-				}
-			]
-		)
+		if (disableCode.length !== 6) {
+			Toast.show({
+				type: 'error',
+				text1: 'Invalid code',
+				text2: 'Enter your current 6-digit TOTP code to disable protection'
+			})
+			return
+		}
+
+		disableTotp({ variables: { token: disableCode } })
 	}
 
 	return (
@@ -421,10 +429,10 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 			)}
 
 			{/* Disable button */}
-			{isTotpEnabled && (
+			{isTotpEnabled && !isDisableMode && (
 				<TouchableOpacity
 					activeOpacity={0.7}
-					onPress={handleDisableTotp}
+					onPress={() => setIsDisableMode(true)}
 					disabled={isDisabling}
 					style={{
 						backgroundColor: colors.card,
@@ -438,23 +446,134 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 						gap: 8
 					}}
 				>
-					{isDisabling ? (
-						<Loader />
-					) : (
-						<>
-							<ShieldOff size={18} color='hsl(0, 70%, 55%)' />
+					<ShieldOff size={18} color='hsl(0, 70%, 55%)' />
+					<Text
+						style={{
+							fontSize: 15,
+							fontWeight: '600',
+							color: 'hsl(0, 70%, 55%)'
+						}}
+					>
+						Disable TOTP
+					</Text>
+				</TouchableOpacity>
+			)}
+
+			{isTotpEnabled && isDisableMode && (
+				<View
+					style={{
+						backgroundColor: colors.card,
+						borderRadius: 14,
+						borderWidth: 1.5,
+						borderColor: 'hsla(0, 70%, 50%, 0.3)',
+						padding: 18
+					}}
+				>
+					<Text
+						style={{
+							fontSize: 14,
+							fontWeight: '600',
+							color: colors.text,
+							marginBottom: 8
+						}}
+					>
+						Enter current TOTP code to disable
+					</Text>
+					<Text
+						style={{
+							fontSize: 13,
+							color: colors.textMuted,
+							marginBottom: 12
+						}}
+					>
+						This confirms that the person turning off two-factor
+						authentication still has access to the authenticator app.
+					</Text>
+					<TextInput
+						value={disableCode}
+						onChangeText={text =>
+							setDisableCode(text.replace(/[^0-9]/g, ''))
+						}
+						maxLength={6}
+						keyboardType='number-pad'
+						placeholder='000000'
+						placeholderTextColor={colors.textMuted}
+						style={{
+							backgroundColor: colors.backgroundSecondary,
+							borderRadius: 10,
+							borderWidth: 1,
+							borderColor: colors.border,
+							paddingHorizontal: 16,
+							paddingVertical: 12,
+							fontSize: 20,
+							fontWeight: '600',
+							fontFamily: 'monospace',
+							color: colors.text,
+							textAlign: 'center',
+							letterSpacing: 6,
+							width: '100%',
+							marginBottom: 14
+						}}
+					/>
+					<View
+						style={{
+							flexDirection: 'row',
+							gap: 10,
+							width: '100%'
+						}}
+					>
+						<TouchableOpacity
+							activeOpacity={0.7}
+							onPress={() => {
+								setDisableCode('')
+								setIsDisableMode(false)
+							}}
+							style={{
+								flex: 1,
+								backgroundColor: colors.backgroundTertiary,
+								borderRadius: 12,
+								paddingVertical: 12,
+								alignItems: 'center'
+							}}
+						>
 							<Text
 								style={{
-									fontSize: 15,
+									fontSize: 14,
 									fontWeight: '600',
-									color: 'hsl(0, 70%, 55%)'
+									color: colors.textSecondary
 								}}
 							>
-								Disable TOTP
+								Cancel
 							</Text>
-						</>
-					)}
-				</TouchableOpacity>
+						</TouchableOpacity>
+						<TouchableOpacity
+							activeOpacity={0.7}
+							onPress={handleDisableTotp}
+							disabled={isDisabling}
+							style={{
+								flex: 1,
+								backgroundColor: 'hsl(0, 70%, 55%)',
+								borderRadius: 12,
+								paddingVertical: 12,
+								alignItems: 'center'
+							}}
+						>
+							{isDisabling ? (
+								<Loader />
+							) : (
+								<Text
+									style={{
+										fontSize: 14,
+										fontWeight: '600',
+										color: '#fff'
+									}}
+								>
+									Verify & Disable
+								</Text>
+							)}
+						</TouchableOpacity>
+					</View>
+				</View>
 			)}
 		</View>
 	)

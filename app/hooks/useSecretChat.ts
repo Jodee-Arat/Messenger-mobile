@@ -7,8 +7,8 @@ import {
 
 import {
 	addMessages,
-	createSecretChat,
 	createMyKey,
+	createSecretChat,
 	deleteMyKeys,
 	loadMessages,
 	loadMyKeys,
@@ -22,11 +22,13 @@ import {
 	DM_STORAGE_GROUP_ID,
 	clearFormAction,
 	deleteMessagesAction,
+	encryptAndUploadFileAction,
 	ensureDirectChatDirectory,
 	initGroupSessionAction,
 	loadChatAction,
 	loadDMKeysAction,
 	pickFileAction,
+	pickImageAction,
 	processSecretSubscriptionAction,
 	pullSecretMessagesAction,
 	receiveGroupKeyAction,
@@ -40,11 +42,14 @@ import {
 	GetPreKeysQuery,
 	useAddSecretMessageSubscription,
 	useAddSharedSecretKeySubscription,
+	useAckSecretMessagesMutation,
+	useAckSharedSecretKeysMutation,
 	useChatUpdatedSubscription,
 	useDiscardSecretAttachmentMutation,
 	useFindChatByChatIdQuery,
 	useGetPreKeysLazyQuery,
 	useGetSecretMessageLazyQuery,
+	useGetSecretMessagesLazyQuery,
 	useGetSharedSecretKeyLazyQuery,
 	useSecretKeyRotationSubscription,
 	useSendSecretMessageMutation,
@@ -52,6 +57,22 @@ import {
 	useUploadSecretAttachmentMutation
 } from '@/graphql/generated/output'
 import { PreKeyBundleClient } from '@/libs/e2ee/gost'
+
+const mergeUniqueMessages = (
+	existing: MessageType[],
+	incoming: MessageType[]
+): MessageType[] => {
+	const seenIds = new Set(existing.map(message => message.id))
+	const uniqueIncoming = incoming.filter(message => {
+		if (seenIds.has(message.id)) {
+			return false
+		}
+		seenIds.add(message.id)
+		return true
+	})
+
+	return [...existing, ...uniqueIncoming]
+}
 
 export interface SecretChatData {
 	id: string
@@ -93,7 +114,9 @@ const getGroupKeyInitiatorId = (
 		.filter((id): id is string => Boolean(id))
 	if (memberIds.length === 0) return fallbackUserId
 
-	return [...memberIds].sort((a, b) => a.localeCompare(b))[0] ?? fallbackUserId
+	return (
+		[...memberIds].sort((a, b) => a.localeCompare(b))[0] ?? fallbackUserId
+	)
 }
 
 const hasCreatorMetadata = (chat: GroupChatShape) =>
@@ -140,6 +163,10 @@ export const useSecretChat = (
 	const [sessionKey, setSessionKey] =
 		useState<Uint8Array<ArrayBufferLike> | null>(null)
 	const [files, setFiles] = useState<SendFileType[]>([])
+	const filesRef = useRef<SendFileType[]>(files)
+	useEffect(() => {
+		filesRef.current = files
+	}, [files])
 	const [isSendingFiles, setIsSendingFiles] = useState(false)
 	const [loadingMessage, setLoadingMessage] = useState<string>(
 		'Происходит создание ключей...'
@@ -167,6 +194,9 @@ export const useSecretChat = (
 		fetchPolicy: 'network-only'
 	})
 	const [getSecretMessage] = useGetSecretMessageLazyQuery({
+		fetchPolicy: 'network-only'
+	})
+	const [getSecretMessages] = useGetSecretMessagesLazyQuery({
 		fetchPolicy: 'network-only'
 	})
 	const [getSharedSecretKey] = useGetSharedSecretKeyLazyQuery({
@@ -208,9 +238,101 @@ export const useSecretChat = (
 	const [sendSharedSecretKey] = useSendSharedSecretKeyMutation()
 	const [uploadSecretAttachment] = useUploadSecretAttachmentMutation()
 	const [discardSecretAttachment] = useDiscardSecretAttachmentMutation()
+	const [ackSecretMessages] = useAckSecretMessagesMutation()
+	const [ackSharedSecretKeys] = useAckSharedSecretKeysMutation()
 
 	const processedRef = useRef<Set<string>>(new Set())
 	const groupKeyReceiveInFlightRef = useRef(false)
+
+	const syncUnreadMessages = useCallback(
+		async (
+			currentChat:
+				| FindAllChatsByGroupQuery['findAllChatsByGroup'][0]
+				| FindChatByChatIdQuery['findChatByChatId']
+				| null,
+			currentSessionKey: Uint8Array<ArrayBufferLike> | null
+		) => {
+			if (!currentChat) return
+
+			const result = await pullSecretMessagesAction({
+				chatId,
+				groupId: effectiveGroupId,
+				userId,
+				chat: currentChat,
+				sessionKey: currentSessionKey,
+				mySecretPreKey,
+				preKeysPub,
+				getSecretMessage,
+				getSecretMessages,
+				getSharedSecretKey,
+				getPreKeys,
+				processedRef
+			})
+
+			if (result.sessionKey !== undefined) {
+				setSessionKey(result.sessionKey ?? null)
+			}
+
+			if (result.needPersistKey && result.sessionKey) {
+				await createMyKey(
+					chatId,
+					effectiveGroupId,
+					userId,
+					result.sessionKey
+				)
+
+				if (result.ackSharedKeyIds?.length) {
+					try {
+						await ackSharedSecretKeys({
+							variables: {
+								chatId,
+								sharedKeyIds: result.ackSharedKeyIds
+							}
+						})
+					} catch (error) {
+						console.warn(
+							'[SecretChat] Failed to ack shared secret keys:',
+							error
+						)
+					}
+				}
+			}
+
+			if (result.newMessages.length) {
+				setMessages(prev => mergeUniqueMessages(prev, result.newMessages))
+				await addMessages(result.newMessages, chatId, effectiveGroupId)
+			}
+
+			if (result.ackMessageIds?.length) {
+				try {
+					await ackSecretMessages({
+						variables: {
+							chatId,
+							messageIds: result.ackMessageIds
+						}
+					})
+				} catch (error) {
+					console.warn(
+						'[SecretChat] Failed to ack unread secret messages:',
+						error
+					)
+				}
+			}
+		},
+		[
+			ackSecretMessages,
+			ackSharedSecretKeys,
+			chatId,
+			effectiveGroupId,
+			getPreKeys,
+			getSecretMessage,
+			getSecretMessages,
+			getSharedSecretKey,
+			mySecretPreKey,
+			preKeysPub,
+			userId
+		]
+	)
 
 	const loadChat = useCallback(async () => {
 		setLoadingMessage('Загрузка чата...')
@@ -246,23 +368,29 @@ export const useSecretChat = (
 	}, [chatId, effectiveGroupId, getPreKeys, isDM, userId])
 
 	useEffect(() => {
-		const runLoadMessages = async () => {
+		let isCancelled = false
+
+		const bootstrapChatState = async () => {
 			if (isDM) await ensureDirectChatDirectory(chatId)
-			const chatMessagesData = await loadMessages(
-				chatId,
-				effectiveGroupId
-			)
+
+			const chatMessagesData = await loadMessages(chatId, effectiveGroupId)
+			if (isCancelled) return
 			setMessages(chatMessagesData || [])
+
+			await loadChat()
 		}
 
-		runLoadMessages()
-		void loadChat()
-		return () => {}
+		void bootstrapChatState()
+
+		return () => {
+			isCancelled = true
+		}
 	}, [chatId, effectiveGroupId, isDM, loadChat])
 
 	const receiveAndPersistGroupKey = useCallback(
 		async (reason: 'bootstrap' | 'subscription' | 'poll') => {
-			if (!chat || !mySecretPreKey || preKeysPub.length === 0) return false
+			if (!chat || !mySecretPreKey || preKeysPub.length === 0)
+				return false
 			if (groupKeyReceiveInFlightRef.current) return false
 
 			groupKeyReceiveInFlightRef.current = true
@@ -297,18 +425,33 @@ export const useSecretChat = (
 						userId,
 						receiveResult.groupKey
 					)
+
+					if (receiveResult.ackSharedKeyIds?.length) {
+						try {
+							await ackSharedSecretKeys({
+								variables: {
+									chatId,
+									sharedKeyIds: receiveResult.ackSharedKeyIds
+								}
+							})
+						} catch (error) {
+							console.warn(
+								'[SecretChat] Failed to ack group shared secret key:',
+								error
+							)
+						}
+					}
 				}
 
-				console.log(
-					`[SecretChat] Group key received and saved via ${reason}`
-				)
 				setLoadingMessage('')
+				await syncUnreadMessages(chat, receiveResult.groupKey)
 				return true
 			} finally {
 				groupKeyReceiveInFlightRef.current = false
 			}
 		},
 		[
+			ackSharedSecretKeys,
 			chat,
 			chatId,
 			effectiveGroupId,
@@ -316,6 +459,7 @@ export const useSecretChat = (
 			getSharedSecretKey,
 			mySecretPreKey,
 			preKeysPub,
+			syncUnreadMessages,
 			userId
 		]
 	)
@@ -348,13 +492,57 @@ export const useSecretChat = (
 					userId,
 					result.sessionKey
 				)
+			if (
+				result.needPersistKey &&
+				result.sessionKey &&
+				result.ackSharedKeyIds?.length
+			) {
+				try {
+					await ackSharedSecretKeys({
+						variables: {
+							chatId,
+							sharedKeyIds: result.ackSharedKeyIds
+						}
+					})
+				} catch (error) {
+					console.warn(
+						'[SecretChat][Sub] Failed to ack shared secret keys:',
+						error
+					)
+				}
+			}
 			if (result.newMessage) {
 				const nm = result.newMessage
-				setMessages(prev => [...prev, nm])
-				addMessages([nm], chatId, effectiveGroupId)
+				setMessages(prev => mergeUniqueMessages(prev, [nm]))
+				await addMessages([nm], chatId, effectiveGroupId)
+			}
+			if (result.ackMessageIds?.length) {
+				try {
+					await ackSecretMessages({
+						variables: {
+							chatId,
+							messageIds: result.ackMessageIds
+						}
+					})
+				} catch (error) {
+					console.warn(
+						'[SecretChat][Sub] Failed to ack secret message:',
+						error
+					)
+				}
 			}
 		})()
-	}, [subSecretMessage, chat, sessionKey, preKeysPub, mySecretPreKey])
+	}, [
+		ackSecretMessages,
+		ackSharedSecretKeys,
+		chat,
+		chatId,
+		effectiveGroupId,
+		mySecretPreKey,
+		preKeysPub,
+		sessionKey,
+		subSecretMessage
+	])
 
 	// Получение секретных сообщений при наличии сессионного ключа
 	// Для DM разрешаем запуск без sessionKey - pullSecretMessagesAction
@@ -362,33 +550,9 @@ export const useSecretChat = (
 	useEffect(() => {
 		if (!sessionKey && !isDM) return
 		;(async () => {
-			const result = await pullSecretMessagesAction({
-				chatId,
-				groupId: effectiveGroupId,
-				userId,
-				chat,
-				sessionKey,
-				mySecretPreKey,
-				preKeysPub,
-				getSecretMessage,
-				getPreKeys,
-				processedRef
-			})
-			if (result.sessionKey !== undefined)
-				setSessionKey(result.sessionKey ?? null)
-			if (result.needPersistKey && result.sessionKey)
-				await createMyKey(
-					chatId,
-					effectiveGroupId,
-					userId,
-					result.sessionKey
-				)
-			if (result.newMessages.length) {
-				setMessages(prev => [...prev, ...result.newMessages])
-				addMessages(result.newMessages, chatId, effectiveGroupId)
-			}
+			await syncUnreadMessages(chat, sessionKey)
 		})()
-	}, [chatId, chat, preKeysPub, mySecretPreKey, sessionKey])
+	}, [chat, sessionKey, syncUnreadMessages])
 
 	// ─── Group-only: инициализация/получение группового ключа ───────
 	useEffect(() => {
@@ -406,12 +570,8 @@ export const useSecretChat = (
 
 			setLoadingMessage('Получение ключа шифрования...')
 
-
 			setLoadingMessage('Генерация ключа шифрования...')
 			if (initiatorUserId !== userId) {
-				console.log(
-					`[SecretChat][InitGroup] Waiting for group key from initiator ${initiatorUserId}`
-				)
 				setLoadingMessage('Ожидание общего ключа от инициатора...')
 				return
 			}
@@ -440,7 +600,6 @@ export const useSecretChat = (
 						initResult.groupKey
 					)
 				}
-				console.log('[SecretChat] Group key generated and distributed')
 			}
 			setLoadingMessage('')
 		})()
@@ -524,7 +683,6 @@ export const useSecretChat = (
 		const rotationData = subKeyRotation?.secretKeyRotation
 		if (!rotationData || rotationData.chatId !== chatId) return
 		;(async () => {
-			console.log('[SecretChat] Key rotation triggered for chat:', chatId)
 			await deleteMyKeys(chatId, effectiveGroupId)
 			setSessionKey(null)
 		})()
@@ -545,7 +703,7 @@ export const useSecretChat = (
 				chatId,
 				groupId: effectiveGroupId,
 				userId,
-				files,
+				files: filesRef.current,
 				setFiles,
 				sessionKey,
 				mySecretPreKey,
@@ -562,7 +720,7 @@ export const useSecretChat = (
 			}
 			if (res.newMessage) {
 				const nm = res.newMessage
-				setMessages(prev => [...prev, nm])
+				setMessages(prev => mergeUniqueMessages(prev, [nm]))
 				addMessages([nm], chatId, effectiveGroupId)
 			}
 			if (res.sessionKey !== undefined)
@@ -605,11 +763,41 @@ export const useSecretChat = (
 	const pickFile = async () => {
 		const { newFile, errorMessage: err } = await pickFileAction()
 		if (err) setErrorMessage(err)
-		if (newFile) setFiles(prev => [...prev, newFile])
+		if (newFile) {
+			setFiles(prev => [...prev, newFile])
+			// Signal-style: шифруем и загружаем сразу при выборе файла
+			void encryptAndUploadFileAction({
+				chatId,
+				file: newFile,
+				setFiles,
+				uploadSecretAttachment
+			})
+		}
+	}
+
+	const pickImage = async () => {
+		const { newFile, errorMessage: err } = await pickImageAction()
+		if (err) setErrorMessage(err)
+		if (newFile) {
+			setFiles(prev => [...prev, newFile])
+			// Signal-style: шифруем и загружаем сразу при выборе файла
+			void encryptAndUploadFileAction({
+				chatId,
+				file: newFile,
+				setFiles,
+				uploadSecretAttachment
+			})
+		}
 	}
 
 	const removeFile = (fileId: string) => {
-		setFiles(prev => prev.filter(file => file.id !== fileId))
+		const file = files.find(f => f.id === fileId)
+		if (file?.attachmentId) {
+			void discardSecretAttachment({
+				variables: { chatId, attachmentId: file.attachmentId }
+			})
+		}
+		setFiles(prev => prev.filter(f => f.id !== fileId))
 	}
 
 	const clearForm = () => {
@@ -665,6 +853,7 @@ export const useSecretChat = (
 		setDraftText,
 		files,
 		pickFile,
+		pickImage,
 		removeFile,
 		isSendingFiles,
 		errorMessage,

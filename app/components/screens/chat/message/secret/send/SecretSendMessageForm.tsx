@@ -1,9 +1,10 @@
-﻿import { Paperclip, SendHorizonal, X } from 'lucide-react-native'
+﻿import { ImageIcon, Paperclip, SendHorizonal, X } from 'lucide-react-native'
 import React, { FC, useEffect } from 'react'
 import { Controller, useForm } from 'react-hook-form'
-import { Keyboard, Platform, TextInput, TouchableOpacity, View } from 'react-native'
+import { Keyboard, TextInput, TouchableOpacity, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import { useKeyboardVisible } from '@/hooks/useKeyboardVisible'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
 import { ForwardedMessageType } from '@/types/forward/forwarded-message.type'
@@ -18,6 +19,7 @@ interface SecretSendMessageFormProps {
 	filesEdited: SendFileType[]
 	isSendingFiles: boolean
 	pickAndSendFile: () => void
+	pickAndSendImage?: () => void
 	onDeleteFile: (id: string) => void
 	clearMessageId: () => void
 	handleClearForm: () => void
@@ -41,6 +43,7 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 	filesEdited,
 	isSendingFiles,
 	pickAndSendFile,
+	pickAndSendImage,
 	onDeleteFile,
 	clearMessageId,
 	handleClearForm,
@@ -55,12 +58,18 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 	const { colors } = useTheme()
 	const { t } = useTranslation()
 	const { bottom } = useSafeAreaInsets()
+	const isKeyboardVisible = useKeyboardVisible()
 	const { control, handleSubmit, watch, reset } = useForm<FormValues>({
 		defaultValues: { text: draftText ?? '' }
 	})
 
+	const allFilesReady =
+		files.length === 0 ||
+		files.every(f => f.status === 'uploaded' || !f.status)
+
 	const canSendMessage =
 		((watch('text')?.trim() ?? '') !== '' || files.length > 0) &&
+		allFilesReady &&
 		!isSendingFiles
 
 	// синхронизация draftText с полем ввода
@@ -88,10 +97,7 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 		<View
 			className='flex-col'
 			style={{
-				paddingBottom:
-					Platform.OS === 'android'
-						? Math.max(bottom, 12)
-						: Math.max(bottom, 8)
+				paddingBottom: isKeyboardVisible ? 4 : Math.max(bottom, 8)
 			}}
 		>
 			{(files.length > 0 || filesEdited.length > 0) && (
@@ -110,18 +116,48 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 				/>
 			)}
 
-			<View className='flex-row items-center mt-3 space-x-2'>
+			<View
+				style={{
+					flexDirection: 'row',
+					alignItems: 'center',
+					paddingHorizontal: 8,
+					paddingVertical: 6,
+					borderTopWidth: 1,
+					borderTopColor: colors.borderLight,
+					gap: 6
+				}}
+			>
 				<TouchableOpacity
 					onPress={pickAndSendFile}
 					disabled={isSendingFiles}
-					className='p-2 rounded-lg'
 					style={{
-						backgroundColor: colors.cardHover,
+						width: 40,
+						height: 40,
+						borderRadius: 20,
+						alignItems: 'center',
+						justifyContent: 'center',
 						opacity: isSendingFiles ? 0.6 : 1
 					}}
 				>
-					<Paperclip size={24} color={colors.textSecondary} />
+					<Paperclip size={22} color={colors.textSecondary} />
 				</TouchableOpacity>
+
+				{pickAndSendImage && (
+					<TouchableOpacity
+						onPress={pickAndSendImage}
+						disabled={isSendingFiles}
+						style={{
+							width: 40,
+							height: 40,
+							borderRadius: 20,
+							alignItems: 'center',
+							justifyContent: 'center',
+							opacity: isSendingFiles ? 0.6 : 1
+						}}
+					>
+						<ImageIcon size={22} color={colors.textSecondary} />
+					</TouchableOpacity>
+				)}
 
 				<Controller
 					control={control}
@@ -140,13 +176,11 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 								flex: 1,
 								minHeight: 40,
 								maxHeight: 120,
-								paddingHorizontal: 12,
+								paddingHorizontal: 16,
 								paddingVertical: 8,
-								borderWidth: 1,
-								borderColor: colors.borderLight,
 								backgroundColor: colors.inputBg,
 								color: colors.text,
-								borderRadius: 12
+								borderRadius: 24
 							}}
 							onSubmitEditing={() => {
 								Keyboard.dismiss()
@@ -160,8 +194,14 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 				{editId && (
 					<TouchableOpacity
 						onPress={() => setEditId(null)}
-						className='p-2 rounded-lg'
-						style={{ backgroundColor: colors.cardHover }}
+						style={{
+							width: 40,
+							height: 40,
+							borderRadius: 20,
+							alignItems: 'center',
+							justifyContent: 'center',
+							backgroundColor: colors.cardHover
+						}}
 					>
 						<X size={20} color={colors.textSecondary} />
 					</TouchableOpacity>
@@ -170,14 +210,18 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 				<TouchableOpacity
 					onPress={() => void handleSubmit(handleSubmitMessage)()}
 					disabled={!canSendMessage}
-					className='p-2 rounded-lg'
 					style={{
+						width: 40,
+						height: 40,
+						borderRadius: 20,
+						alignItems: 'center',
+						justifyContent: 'center',
 						backgroundColor: canSendMessage
 							? colors.accent
 							: colors.cardHover
 					}}
 				>
-					<SendHorizonal size={24} color='#fff' />
+					<SendHorizonal size={20} color='#fff' />
 				</TouchableOpacity>
 			</View>
 		</View>

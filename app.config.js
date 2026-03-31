@@ -2,7 +2,7 @@ import 'dotenv/config'
 
 export default {
 	expo: {
-		name: 'messenger mobile',
+		name: 'МесАгат',
 		slug: 'client',
 		version: '1.0.0',
 		orientation: 'portrait',
@@ -11,7 +11,7 @@ export default {
 		splash: {
 			image: './app/assets/splash.png',
 			resizeMode: 'contain',
-			backgroundColor: '#4fae5a'
+			backgroundColor: '#161320'
 		},
 		ios: {
 			supportsTablet: true,
@@ -20,7 +20,7 @@ export default {
 		android: {
 			adaptiveIcon: {
 				foregroundImage: './app/assets/adaptive-icon.png',
-				backgroundColor: '#4fae5a'
+				backgroundColor: '#161320'
 			},
 			softwareKeyboardLayoutMode: 'resize',
 			package: 'com.vadim_teacoder.client'

@@ -10,6 +10,7 @@ import { FindAllChatsByGroupQuery } from '@/graphql/generated/output'
 
 interface ChatsItemProps {
 	chat: FindAllChatsByGroupQuery['findAllChatsByGroup'][0]
+	disabled?: boolean
 	handleLongPress?: () => void
 	onDrag?: () => void
 	isActive?: boolean
@@ -18,6 +19,7 @@ interface ChatsItemProps {
 
 const ChatsItem: FC<ChatsItemProps> = ({
 	chat,
+	disabled = false,
 	handleLongPress,
 	onDrag,
 	isActive,
@@ -26,6 +28,8 @@ const ChatsItem: FC<ChatsItemProps> = ({
 	const navigation = useTypedNavigation()
 
 	const handlePress = () => {
+		if (disabled) return
+
 		navigation.navigate('Chat', {
 			chatId: chat.id,
 			chatName: chat.chatName!,
@@ -41,8 +45,9 @@ const ChatsItem: FC<ChatsItemProps> = ({
 	return (
 		<ChatItemRow
 			chat={chat}
+			disabled={disabled}
 			onPress={handlePress}
-			onLongPress={handleLongPress}
+			onLongPress={disabled ? undefined : handleLongPress}
 			onDrag={onDrag}
 			isActive={isActive}
 		/>

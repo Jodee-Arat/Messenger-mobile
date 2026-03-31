@@ -1,5 +1,5 @@
 import { useFocusEffect } from '@react-navigation/native'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Toast from 'react-native-toast-message'
 
 import { useUser } from '@/hooks/useUser'
@@ -8,17 +8,24 @@ import { chatEvents } from '@/utils/chatEvents'
 import {
 	createSecretChat,
 	deleteSecretChat,
+	loadMyKeys,
 	updateSecretChatUpdatedAt
 } from '@/utils/secret-chat/secretChat'
+import {
+	isSecretChatBootstrapPending,
+	onSecretChatBootstrapChange
+} from '@/utils/secret-chat/secretChatBootstrap'
 
 import {
 	ChatUpdatedSubscription,
 	FindAllChatsByGroupQuery,
+	useAddSharedSecretKeySubscription,
 	useChatAddedSubscription,
 	useChatDeletedSubscription,
 	useChatUpdatedSubscription,
 	useDeleteChatMutation,
 	useFindAllChatsByGroupQuery,
+	useHasSharedSecretKeyLazyQuery,
 	usePinChatMutation,
 	useUnPinChatMutation,
 	useUpdatePinnedChatsOrderMutation
@@ -29,10 +36,21 @@ type ChatUpdatedItem = ChatUpdatedSubscription['chatUpdated']
 
 function sortChatsWithPinned(chats: ChatItem[]): ChatItem[] {
 	const pinned = chats
-		.filter(c => c.isPinned)
+		.filter(chat => chat.isPinned)
 		.sort((a, b) => (a.pinnedOrder ?? 0) - (b.pinnedOrder ?? 0))
-	const unpinned = chats.filter(c => !c.isPinned)
+	const unpinned = chats.filter(chat => !chat.isPinned)
 	return [...pinned, ...unpinned]
+}
+
+function cloneChat(chat: ChatItem): ChatItem {
+	return {
+		...chat,
+		members:
+			chat.members?.map(member => ({
+				...member,
+				user: { ...member.user }
+			})) ?? []
+	}
 }
 
 function mergeUpdatedChat(
@@ -49,11 +67,14 @@ function mergeUpdatedChat(
 }
 
 export function useGroupChats(groupId: string, searchTerm?: string) {
+	const [allChatsRaw, setAllChatsRaw] = useState<ChatItem[]>([])
 	const [allChats, setAllChats] = useState<ChatItem[]>([])
+	const [disabledChatIds, setDisabledChatIds] = useState<string[]>([])
 	const [isRefreshingChats, setIsRefreshingChats] = useState(false)
+	const initialLoadDone = useRef(false)
+	const readySecretChatIdsRef = useRef<Set<string>>(new Set())
 	const { userId } = useUser()
 
-	// ── Queries ──────────────────────────────────────────────
 	const {
 		data: allChatsData,
 		loading: isLoadingFindAllChats,
@@ -66,7 +87,6 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 		fetchPolicy: 'network-only'
 	})
 
-	// ── Subscriptions ────────────────────────────────────────
 	const { data: newChatData } = useChatAddedSubscription({
 		variables: { userId, groupId },
 		skip: !(userId && groupId)
@@ -77,13 +97,19 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 		skip: !(userId && groupId)
 	})
 
-	// это надо переписать и добавить на сервер в secret update
 	const { data: updateChatData } = useChatUpdatedSubscription({
 		variables: { userId },
 		skip: !(userId && groupId)
 	})
 
-	// ── Mutations ────────────────────────────────────────────
+	const { data: sharedKeyData } = useAddSharedSecretKeySubscription({
+		variables: { userId },
+		skip: !userId
+	})
+	const [hasSharedSecretKey] = useHasSharedSecretKeyLazyQuery({
+		fetchPolicy: 'network-only'
+	})
+
 	const [deleteChat, { loading: isLoadingDeleteChat }] =
 		useDeleteChatMutation({
 			onCompleted() {
@@ -102,7 +128,6 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 	const [unPinChatMutation] = useUnPinChatMutation()
 	const [updatePinnedChatsOrderMutation] = useUpdatePinnedChatsOrderMutation()
 
-	// Handles
 	const handleDeleteChat = (chatId: string) => {
 		deleteChat({ variables: { chatId } })
 	}
@@ -111,10 +136,10 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 		try {
 			await pinChatMutation({ variables: { chatId } })
 			setAllChats(prev => {
-				const updated = prev.map(c =>
-					c.id === chatId
-						? { ...c, isPinned: true, pinnedOrder: 0 }
-						: c
+				const updated = prev.map(chat =>
+					chat.id === chatId
+						? { ...chat, isPinned: true, pinnedOrder: 0 }
+						: chat
 				)
 				return sortChatsWithPinned(updated)
 			})
@@ -131,10 +156,10 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 		try {
 			await unPinChatMutation({ variables: { chatId } })
 			setAllChats(prev => {
-				const updated = prev.map(c =>
-					c.id === chatId
-						? { ...c, isPinned: false, pinnedOrder: null }
-						: c
+				const updated = prev.map(chat =>
+					chat.id === chatId
+						? { ...chat, isPinned: false, pinnedOrder: null }
+						: chat
 				)
 				return sortChatsWithPinned(updated)
 			})
@@ -148,17 +173,17 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 	}
 
 	const handleReorderPinnedChats = async (reorderedPinned: ChatItem[]) => {
-		const unpinned = allChats.filter(c => !c.isPinned)
-		const updatedPinned = reorderedPinned.map((c, i) => ({
-			...c,
-			pinnedOrder: i
+		const unpinned = allChats.filter(chat => !chat.isPinned)
+		const updatedPinned = reorderedPinned.map((chat, index) => ({
+			...chat,
+			pinnedOrder: index
 		}))
 		setAllChats([...updatedPinned, ...unpinned])
 
 		try {
 			await updatePinnedChatsOrderMutation({
 				variables: {
-					chatIds: reorderedPinned.map(c => c.id)
+					chatIds: reorderedPinned.map(chat => chat.id)
 				}
 			})
 		} catch (error) {
@@ -173,6 +198,7 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 
 	const handleRefreshChats = useCallback(async () => {
 		if (!groupId) return
+
 		setIsRefreshingChats(true)
 		try {
 			await refetchChats()
@@ -181,17 +207,91 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 		}
 	}, [groupId, refetchChats])
 
-	// ── Effects ──────────────────────────────────────────────
+	const handleSilentRefreshChats = useCallback(async () => {
+		if (!groupId) return
+		await refetchChats()
+	}, [groupId, refetchChats])
+
+	const refreshSecretChatAvailability = useCallback(async () => {
+		const nextDisabledIds: string[] = []
+
+		try {
+			for (const chat of allChatsRaw) {
+				if (!chat.isSecret) continue
+
+				if (isSecretChatBootstrapPending(groupId, chat.id)) {
+					nextDisabledIds.push(chat.id)
+					continue
+				}
+
+				if (!chat.groupId) {
+					nextDisabledIds.push(chat.id)
+					continue
+				}
+
+				const localKeys = await loadMyKeys(chat.id, chat.groupId)
+				if (
+					localKeys?.sessionKeyHex?.length ||
+					readySecretChatIdsRef.current.has(chat.id)
+				) {
+					continue
+				}
+
+				const hasQueuedSharedKey =
+					(
+						await hasSharedSecretKey({
+							variables: { chatId: chat.id },
+							fetchPolicy: 'network-only'
+						})
+					).data?.hasSharedSecretKey ?? false
+
+				if (hasQueuedSharedKey) {
+					readySecretChatIdsRef.current.add(chat.id)
+					continue
+				}
+
+				nextDisabledIds.push(chat.id)
+			}
+		} catch (error) {
+			console.warn(
+				'[SecretChat][ChatsList] failed to refresh secret chat availability:',
+				error
+			)
+		}
+
+		setDisabledChatIds(nextDisabledIds)
+	}, [allChatsRaw, groupId, hasSharedSecretKey])
 
 	useEffect(() => {
 		if (!allChatsData?.findAllChatsByGroup) return
-		setAllChats(sortChatsWithPinned(allChatsData.findAllChatsByGroup))
+
+		initialLoadDone.current = true
+		const nextChats = sortChatsWithPinned(
+			allChatsData.findAllChatsByGroup.map(cloneChat)
+		)
+		setAllChatsRaw(nextChats)
+		setAllChats(nextChats)
 	}, [allChatsData])
+
+	useEffect(() => {
+		void refreshSecretChatAvailability()
+	}, [refreshSecretChatAvailability])
+
+	useEffect(() => {
+		if (!disabledChatIds.length) return
+
+		const timeoutId = setTimeout(() => {
+			void refreshSecretChatAvailability()
+		}, 1500)
+
+		return () => clearTimeout(timeoutId)
+	}, [disabledChatIds, refreshSecretChatAvailability])
 
 	useFocusEffect(
 		useCallback(() => {
-			void handleRefreshChats()
-		}, [handleRefreshChats])
+			void handleSilentRefreshChats()
+			void refreshSecretChatAvailability()
+		}, [handleSilentRefreshChats, refreshSecretChatAvailability])
 	)
 
 	useEffect(() => {
@@ -199,15 +299,16 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 
 		const addNewChat = async () => {
 			try {
-				if (allChats.some(c => c.id === newChatData.chatAdded.id))
-					return
+				const addedChat = cloneChat(newChatData.chatAdded as ChatItem)
 
-				if (newChatData.chatAdded.isSecret) {
+				if (addedChat.isSecret) {
 					await createSecretChat(newChatData.chatAdded)
 				}
-				setAllChats(prev =>
-					sortChatsWithPinned([newChatData.chatAdded, ...prev])
-				)
+
+				setAllChatsRaw(prev => {
+					if (prev.some(chat => chat.id === addedChat.id)) return prev
+					return sortChatsWithPinned([addedChat, ...prev])
+				})
 			} catch (error) {
 				Toast.show({
 					type: 'error',
@@ -217,7 +318,7 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 			}
 		}
 
-		addNewChat()
+		void addNewChat()
 	}, [newChatData])
 
 	useEffect(() => {
@@ -236,13 +337,19 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 		}
 
 		if (deletedChatData.chatDeleted.isSecret) {
-			handleDelete()
+			void handleDelete()
 		}
 
+		setAllChatsRaw(prev =>
+			prev.filter(chat => chat.id !== deletedChatData.chatDeleted.id)
+		)
 		setAllChats(prev =>
 			prev.filter(chat => chat.id !== deletedChatData.chatDeleted.id)
 		)
-	}, [deletedChatData])
+		setDisabledChatIds(prev =>
+			prev.filter(chatId => chatId !== deletedChatData.chatDeleted.id)
+		)
+	}, [deletedChatData, groupId])
 
 	useEffect(() => {
 		if (!updateChatData?.chatUpdated) return
@@ -250,10 +357,7 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 
 		const handleUpdate = async () => {
 			try {
-				await updateSecretChatUpdatedAt(
-					groupId,
-					updateChatData.chatUpdated.id
-				)
+				await updateSecretChatUpdatedAt(groupId, updateChatData.chatUpdated.id)
 			} catch (error) {
 				Toast.show({
 					type: 'error',
@@ -264,12 +368,12 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 		}
 
 		if (updateChatData.chatUpdated.isSecret) {
-			handleUpdate()
+			void handleUpdate()
 		}
 
-		setAllChats(prev => {
+		setAllChatsRaw(prev => {
 			const previousChat = prev.find(
-				c => c.id === updateChatData.chatUpdated.id
+				chat => chat.id === updateChatData.chatUpdated.id
 			)
 
 			if (!previousChat) {
@@ -277,34 +381,53 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 				return prev
 			}
 
-			const nextChat = mergeUpdatedChat(
-				previousChat,
-				updateChatData.chatUpdated
-			)
+			const nextChat = mergeUpdatedChat(previousChat, updateChatData.chatUpdated)
 
 			return sortChatsWithPinned([
-				nextChat,
-				...prev.filter(c => c.id !== nextChat.id)
+				cloneChat(nextChat),
+				...prev.filter(chat => chat.id !== nextChat.id)
 			])
 		})
 	}, [groupId, refetchChats, updateChatData])
 
-	const pinnedChats = allChats.filter(c => c.isPinned)
-	const unpinnedChats = allChats.filter(c => !c.isPinned)
-
-	// Remove chat from local state when the current user leaves
 	useEffect(() => {
 		return chatEvents.onLeave(leftChatId => {
-			setAllChats(prev => prev.filter(c => c.id !== leftChatId))
+			setAllChatsRaw(prev => prev.filter(chat => chat.id !== leftChatId))
+			setAllChats(prev => prev.filter(chat => chat.id !== leftChatId))
+			setDisabledChatIds(prev => prev.filter(chatId => chatId !== leftChatId))
 		})
 	}, [])
+
+	useEffect(() => {
+		return onSecretChatBootstrapChange(event => {
+			if (event.groupId !== groupId) return
+			void refreshSecretChatAvailability()
+		})
+	}, [groupId, refreshSecretChatAvailability])
+
+	useEffect(() => {
+		const chatId = sharedKeyData?.addSharedSecretKey?.chatId
+		if (!chatId) return
+		readySecretChatIdsRef.current.add(chatId)
+		void refreshSecretChatAvailability()
+	}, [refreshSecretChatAvailability, sharedKeyData])
+
+	const pinnedChats = useMemo(
+		() => allChats.filter(chat => chat.isPinned),
+		[allChats]
+	)
+	const unpinnedChats = useMemo(
+		() => allChats.filter(chat => !chat.isPinned),
+		[allChats]
+	)
 
 	return {
 		allChats,
 		pinnedChats,
 		unpinnedChats,
+		disabledChatIds,
 		setAllChats,
-		isLoadingFindAllChats,
+		isInitialLoading: isLoadingFindAllChats && !initialLoadDone.current,
 		isRefreshingChats,
 		handleRefreshChats,
 		handleDeleteChat,

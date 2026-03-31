@@ -1,5 +1,5 @@
 import { Trash2 } from 'lucide-react-native'
-import React, { useRef, useState } from 'react'
+import React, { useRef } from 'react'
 import {
 	Animated,
 	Pressable,
@@ -60,11 +60,12 @@ const RoleDetailModal: React.FC<RoleDetailModalProps> = ({
 		sheetPaddingBottom
 	} = useBottomSheetModalLayout(0.8)
 	const slideAnim = useRef(new Animated.Value(windowHeight)).current
-	const [isOpen, setIsOpen] = useState(false)
+	const [showModal, setShowModal] = React.useState(false)
 
 	React.useEffect(() => {
 		if (role) {
-			setIsOpen(true)
+			setShowModal(true)
+			slideAnim.setValue(windowHeight)
 			Animated.spring(slideAnim, {
 				toValue: 0,
 				useNativeDriver: true,
@@ -72,7 +73,7 @@ const RoleDetailModal: React.FC<RoleDetailModalProps> = ({
 				friction: 11
 			}).start()
 		}
-	}, [role])
+	}, [role, slideAnim, windowHeight])
 
 	const closeSheet = () => {
 		Animated.timing(slideAnim, {
@@ -80,14 +81,14 @@ const RoleDetailModal: React.FC<RoleDetailModalProps> = ({
 			duration: 200,
 			useNativeDriver: true
 		}).start(() => {
-			setIsOpen(false)
+			setShowModal(false)
 			onClose()
 		})
 	}
 
 	return (
 		<AppModal
-			visible={isOpen}
+			visible={showModal}
 			transparent
 			animationType='none'
 			onRequestClose={closeSheet}

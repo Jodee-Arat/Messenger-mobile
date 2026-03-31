@@ -1,5 +1,5 @@
 import { FC } from 'react'
-import { View } from 'react-native'
+import { ScrollView } from 'react-native'
 
 import { SendFileType } from '@/types/send-file.type'
 
@@ -19,7 +19,15 @@ const FileList: FC<FileListProp> = ({
 	isLoadingSend
 }) => {
 	return (
-		<View className='flex gap-x-4 overflow-x-auto'>
+		<ScrollView
+			horizontal
+			showsHorizontalScrollIndicator={false}
+			contentContainerStyle={{
+				gap: 8,
+				paddingHorizontal: 4,
+				paddingVertical: 4
+			}}
+		>
 			{files.map((file, index) => (
 				<FileItem
 					key={index}
@@ -30,7 +38,7 @@ const FileList: FC<FileListProp> = ({
 					isLoadingSend={isLoadingSend}
 				/>
 			))}
-		</View>
+		</ScrollView>
 	)
 }
 

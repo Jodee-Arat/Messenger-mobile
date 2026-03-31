@@ -2,6 +2,7 @@ import {
 	type FC,
 	type PropsWithChildren,
 	useEffect,
+	useLayoutEffect,
 	useRef
 } from 'react'
 import {
@@ -31,7 +32,7 @@ const AppModal: FC<AppModalProps> = ({
 	const { upsertEntry, removeEntry } = useAppModalContext()
 	const idRef = useRef(`app-modal-${modalId++}`)
 
-	useEffect(() => {
+	useLayoutEffect(() => {
 		if (Platform.OS !== 'android') return
 
 		if (!visible) {

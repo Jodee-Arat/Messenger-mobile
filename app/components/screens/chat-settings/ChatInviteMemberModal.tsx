@@ -48,6 +48,7 @@ const ChatInviteMemberModal: React.FC<ChatInviteMemberModalProps> = ({
 		sheetPaddingBottom
 	} = useBottomSheetModalLayout(0.7)
 	const slideAnim = useRef(new Animated.Value(windowHeight)).current
+	const [showModal, setShowModal] = useState(false)
 	const [searchQuery, setSearchQuery] = useState('')
 	const isGroupScopedInvite = !!groupId
 
@@ -101,7 +102,9 @@ const ChatInviteMemberModal: React.FC<ChatInviteMemberModalProps> = ({
 
 	React.useEffect(() => {
 		if (isOpen) {
+			setShowModal(true)
 			setSearchQuery('')
+			slideAnim.setValue(windowHeight)
 			Animated.spring(slideAnim, {
 				toValue: 0,
 				useNativeDriver: true,
@@ -109,7 +112,7 @@ const ChatInviteMemberModal: React.FC<ChatInviteMemberModalProps> = ({
 				friction: 11
 			}).start()
 		}
-	}, [isOpen])
+	}, [isOpen, slideAnim, windowHeight])
 
 	const closeSheet = () => {
 		Animated.timing(slideAnim, {
@@ -117,6 +120,7 @@ const ChatInviteMemberModal: React.FC<ChatInviteMemberModalProps> = ({
 			duration: 200,
 			useNativeDriver: true
 		}).start(() => {
+			setShowModal(false)
 			onClose()
 		})
 	}
@@ -128,7 +132,7 @@ const ChatInviteMemberModal: React.FC<ChatInviteMemberModalProps> = ({
 
 	return (
 		<AppModal
-			visible={isOpen}
+			visible={showModal}
 			transparent
 			animationType='none'
 			onRequestClose={closeSheet}

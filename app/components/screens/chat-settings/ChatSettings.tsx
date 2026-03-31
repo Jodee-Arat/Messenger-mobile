@@ -158,46 +158,37 @@ const ChatSettings = () => {
 	const isCreator = !!currentRole?.isCreator
 	const isDM = chat && !chat.isGroup
 
-	// In DM chats both members have full permissions
 	const canManageRoles =
-		isDM ||
 		currentRole?.permissions?.includes(ChatPermissionEnum.ManageRoles) ||
 		currentRole?.isCreator
 
 	const canCreateRoles =
-		isDM ||
 		currentRole?.permissions?.includes(ChatPermissionEnum.CreateRoles) ||
 		currentRole?.isCreator
 
 	const canChangeRoleInfo =
-		isDM ||
 		currentRole?.permissions?.includes(ChatPermissionEnum.ChangeRoleInfo) ||
 		currentRole?.isCreator
 
 	const canDeleteRoles =
-		isDM ||
 		currentRole?.permissions?.includes(ChatPermissionEnum.DeleteRoles) ||
 		currentRole?.isCreator
 
 	const canChangeChatInfo =
-		isDM ||
 		currentRole?.permissions?.includes(ChatPermissionEnum.ChangeChatInfo) ||
 		currentRole?.isCreator
 
 	const canChangeChatAvatar =
-		isDM ||
 		currentRole?.permissions?.includes(
 			ChatPermissionEnum.ChangeChatAvatar
 		) ||
 		currentRole?.isCreator
 
 	const canInviteMembers =
-		isDM ||
 		currentRole?.permissions?.includes(ChatPermissionEnum.InviteMembers) ||
 		currentRole?.isCreator
 
 	const canRemoveMembers =
-		isDM ||
 		currentRole?.permissions?.includes(ChatPermissionEnum.RemoveMembers) ||
 		currentRole?.isCreator
 
@@ -351,14 +342,16 @@ const ChatSettings = () => {
 							</View>
 						)}
 
-						<ChatRolesSection
-							roles={roles}
-							permissions={PERMISSIONS}
-							onRolePress={setSelectedRole}
-							onCreatePress={() => setIsCreateRoleOpen(true)}
-							canManageRoles={!!canManageRoles}
-							canCreateRoles={!!canCreateRoles}
-						/>
+						{!isDM && (
+							<ChatRolesSection
+								roles={roles}
+								permissions={PERMISSIONS}
+								onRolePress={setSelectedRole}
+								onCreatePress={() => setIsCreateRoleOpen(true)}
+								canManageRoles={!!canManageRoles}
+								canCreateRoles={!!canCreateRoles}
+							/>
+						)}
 
 						<ChatMembersSection
 							members={members}
@@ -432,43 +425,51 @@ const ChatSettings = () => {
 						)}
 					</ScrollView>
 
-					<ChatCreateRoleModal
-						isOpen={isCreateRoleOpen}
-						onClose={() => setIsCreateRoleOpen(false)}
-						onCreateRole={handleCreateRole}
-					/>
+					{!isDM && (
+						<ChatCreateRoleModal
+							isOpen={isCreateRoleOpen}
+							onClose={() => setIsCreateRoleOpen(false)}
+							onCreateRole={handleCreateRole}
+						/>
+					)}
 
-					<ChatRoleDetailModal
-						role={selectedRole}
-						permissions={PERMISSIONS}
-						onClose={() => setSelectedRole(null)}
-						onDeleteRole={handleDeleteRole}
-						onTogglePermission={handleTogglePermission}
-						membersWithRole={
-							selectedRole
-								? getMembersWithRole(selectedRole.id)
-								: []
-						}
-						canDeleteRoles={!!canDeleteRoles}
-						canChangeRoleInfo={!!canChangeRoleInfo}
-					/>
+					{!isDM && (
+						<ChatRoleDetailModal
+							role={selectedRole}
+							permissions={PERMISSIONS}
+							onClose={() => setSelectedRole(null)}
+							onDeleteRole={handleDeleteRole}
+							onTogglePermission={handleTogglePermission}
+							membersWithRole={
+								selectedRole
+									? getMembersWithRole(selectedRole.id)
+									: []
+							}
+							canDeleteRoles={!!canDeleteRoles}
+							canChangeRoleInfo={!!canChangeRoleInfo}
+						/>
+					)}
 
-					<ChatAssignRoleModal
-						userId={assignUserId}
-						roles={roles}
-						userRoles={userRoles}
-						members={members}
-						onAssign={handleAssignRole}
-						onClose={() => setAssignUserId(null)}
-					/>
+					{!isDM && (
+						<ChatAssignRoleModal
+							userId={assignUserId}
+							roles={roles}
+							userRoles={userRoles}
+							members={members}
+							onAssign={handleAssignRole}
+							onClose={() => setAssignUserId(null)}
+						/>
+					)}
 
-					<ChatInviteMemberModal
-						isOpen={isInviteOpen}
-						onClose={() => setIsInviteOpen(false)}
-						onInvite={handleInviteMember}
-						existingMemberIds={members.map(m => m.user.id)}
-						groupId={chat?.groupId ?? null}
-					/>
+					{!isDM && (
+						<ChatInviteMemberModal
+							isOpen={isInviteOpen}
+							onClose={() => setIsInviteOpen(false)}
+							onInvite={handleInviteMember}
+							existingMemberIds={members.map(m => m.user.id)}
+							groupId={chat?.groupId ?? null}
+						/>
+					)}
 				</>
 			)}
 		</View>

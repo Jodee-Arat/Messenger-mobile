@@ -1,3 +1,4 @@
+import { useFocusEffect } from '@react-navigation/native'
 import {
 	ArrowLeft,
 	Fingerprint,
@@ -7,7 +8,6 @@ import {
 	ShieldCheck,
 	UserPlus
 } from 'lucide-react-native'
-import { useFocusEffect } from '@react-navigation/native'
 import React, { FC, useCallback, useEffect, useRef, useState } from 'react'
 import {
 	ActivityIndicator,
@@ -22,36 +22,36 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import EntityAvatar from '@/components/ui/EntityAvatar'
+import Loader from '@/components/ui/Loader'
 
 import {
 	isChatMembershipRevokedError,
 	isDirectContactBlockedError
 } from '@/hooks/useBlockedUsers'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
-import { DM_STORAGE_GROUP_ID } from '@/hooks/useSecretChat.actions'
+import { useKeyboardVisible } from '@/hooks/useKeyboardVisible'
 import { useSecretChat } from '@/hooks/useSecretChat'
+import { DM_STORAGE_GROUP_ID } from '@/hooks/useSecretChat.actions'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 import { useUser } from '@/hooks/useUser'
-import { resetToHome } from '@/navigation/navigate'
-
-import { MessageType } from '@/types/message.type'
 
 import { chatEvents } from '@/utils/chatEvents'
 import { deleteSecretChat } from '@/utils/secret-chat/secretChat'
+
+import { resetToHome } from '@/navigation/navigate'
 
 import ChatInviteMemberModal from '../chat-settings/ChatInviteMemberModal'
 
 import ChatSkeleton from './ChatSkeleton'
 import FingerprintVerificationModal from './FingerprintVerificationModal'
-import Loader from '@/components/ui/Loader'
 import SecretChatMessageList from './message/secret/list/SecretChatMessageList'
 import SecretSendMessageForm from './message/secret/send/SecretSendMessageForm'
 import {
 	ChatPermissionEnum,
 	useChatAssignedRoleSubscription,
-	useChatDeletedSubscription,
 	useChatDeletedRoleSubscription,
+	useChatDeletedSubscription,
 	useChatRemovedRoleSubscription,
 	useChatUpsertedRoleSubscription,
 	useGetMemberChatRoleQuery,
@@ -80,6 +80,7 @@ const SecretChat: FC<SecretChatProps> = ({
 	const { t } = useTranslation()
 	const { top } = useSafeAreaInsets()
 	const { userId } = useUser()
+	const isKeyboardVisible = useKeyboardVisible()
 	const navigation = useTypedNavigation()
 	const [rolesVisible, setRolesVisible] = useState(false)
 	const [fingerprintVisible, setFingerprintVisible] = useState(false)
@@ -87,9 +88,6 @@ const SecretChat: FC<SecretChatProps> = ({
 	const [totpVerified, setTotpVerified] = useState(false)
 	const [totpCode, setTotpCode] = useState('')
 	const [totpError, setTotpError] = useState('')
-	const [pinnedMessage, setPinnedMessage] = useState<MessageType | null>(
-		null
-	)
 	const handledAccessLossRef = useRef(false)
 	const hasFocusedOnceRef = useRef(false)
 
@@ -102,10 +100,10 @@ const SecretChat: FC<SecretChatProps> = ({
 
 	const { data: roleData, refetch: refetchMemberRole } =
 		useGetMemberChatRoleQuery({
-		variables: { chatId },
-		skip: isDM,
-		fetchPolicy: 'network-only'
-	})
+			variables: { chatId },
+			skip: isDM,
+			fetchPolicy: 'network-only'
+		})
 
 	const refreshMemberRole = useCallback(() => {
 		if (isDM) return
@@ -162,6 +160,7 @@ const SecretChat: FC<SecretChatProps> = ({
 		messages,
 		loadingMessage,
 		pickFile,
+		pickImage,
 		removeFile,
 		reload,
 		sendMessage,
@@ -243,7 +242,7 @@ const SecretChat: FC<SecretChatProps> = ({
 			groupId: groupId ?? '',
 			userId
 		},
-		skip: !(userId && groupId),
+		skip: !userId,
 		onData: ({ data }) => {
 			if (data.data?.chatDeleted.id !== chatId) return
 			void handleAccessLoss('chat')
@@ -258,15 +257,6 @@ const SecretChat: FC<SecretChatProps> = ({
 			void handleAccessLoss('group')
 		}
 	})
-
-	useEffect(() => {
-		if (!chat || !('pinnedMessage' in chat)) {
-			setPinnedMessage(null)
-			return
-		}
-
-		setPinnedMessage((chat.pinnedMessage as MessageType | null) ?? null)
-	}, [chat])
 
 	const renderBlockedState = () => (
 		<View
@@ -700,40 +690,12 @@ const SecretChat: FC<SecretChatProps> = ({
 				</View>
 
 				{/* Messages */}
-				{Platform.OS === 'ios' ? (
-					<KeyboardAvoidingView behavior='padding' style={{ flex: 1 }}>
-						<View className='flex-1 px-2 pb-2 justify-end'>
-							<SecretChatMessageList
-								messages={messages}
-								userId={user.id}
-								onDelete={deleteMessage}
-								onRefresh={handleRefresh}
-								chatId={chatId}
-								pinnedMessage={pinnedMessage}
-								setPinnedMessage={setPinnedMessage}
-							/>
-
-							<SecretSendMessageForm
-								setDraftText={setDraftText}
-								chatId={chatId}
-								draftText={draftText}
-								setEditId={() => {}}
-								editId={null}
-								files={files}
-								filesEdited={[]}
-								isSendingFiles={isSendingFiles}
-								setFilesEdited={() => {}}
-								pickAndSendFile={pickFile}
-								onDeleteFile={removeFile}
-								clearMessageId={clearForm}
-								forwardedMessages={[]}
-								setForwardedMessages={() => {}}
-								handleClearForm={clearForm}
-								onSend={handleSend}
-							/>
-						</View>
-					</KeyboardAvoidingView>
-				) : (
+				<KeyboardAvoidingView
+					behavior='padding'
+					style={{ flex: 1 }}
+					keyboardVerticalOffset={0}
+					enabled={Platform.OS === 'ios' || isKeyboardVisible}
+				>
 					<View className='flex-1 px-2 pb-2 justify-end'>
 						<SecretChatMessageList
 							messages={messages}
@@ -741,8 +703,6 @@ const SecretChat: FC<SecretChatProps> = ({
 							onDelete={deleteMessage}
 							onRefresh={handleRefresh}
 							chatId={chatId}
-							pinnedMessage={pinnedMessage}
-							setPinnedMessage={setPinnedMessage}
 						/>
 
 						<SecretSendMessageForm
@@ -756,6 +716,7 @@ const SecretChat: FC<SecretChatProps> = ({
 							isSendingFiles={isSendingFiles}
 							setFilesEdited={() => {}}
 							pickAndSendFile={pickFile}
+							pickAndSendImage={pickImage}
 							onDeleteFile={removeFile}
 							clearMessageId={clearForm}
 							forwardedMessages={[]}
@@ -764,7 +725,7 @@ const SecretChat: FC<SecretChatProps> = ({
 							onSend={handleSend}
 						/>
 					</View>
-				)}
+				</KeyboardAvoidingView>
 			</View>
 
 			<FingerprintVerificationModal

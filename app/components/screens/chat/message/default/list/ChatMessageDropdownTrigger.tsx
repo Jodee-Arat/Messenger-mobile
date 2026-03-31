@@ -9,11 +9,12 @@ import {
 	Trash2,
 	X
 } from 'lucide-react-native'
-import React, { FC, useCallback, useRef, useState } from 'react'
+import React, { FC, useCallback, useEffect, useRef, useState } from 'react'
 import {
 	Animated,
 	Dimensions,
 	Pressable,
+	StyleSheet,
 	Text,
 	TouchableOpacity,
 	View
@@ -51,6 +52,7 @@ interface ChatMessageDropdownProp {
 		forwardedMessages?: ForwardedMessageType[]
 	) => void
 	pinnedMessageId?: string | null
+	canSendMessages?: boolean
 	canEditMessages?: boolean
 	canDeleteMessages?: boolean
 	canPinMessages?: boolean
@@ -74,6 +76,7 @@ const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
 	messageInfo,
 	pinnedMessageId,
 	userId,
+	canSendMessages = true,
 	canEditMessages = true,
 	canDeleteMessages = true,
 	canPinMessages = true,
@@ -84,25 +87,48 @@ const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
 	const { t } = useTranslation()
 	const [modalVisible, setModalVisible] = useState(false)
 	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+	const backdropOpacity = useRef(new Animated.Value(0)).current
+
+	useEffect(() => {
+		return () => {
+			slideAnim.stopAnimation()
+			backdropOpacity.stopAnimation()
+		}
+	}, [])
+
 	const isPinnedMessage = pinnedMessageId === messageInfo.id
 	const canEditThisMessage = canEditMessages && messageInfo.user.id === userId
 
 	const openSheet = () => {
 		setModalVisible(true)
-		Animated.spring(slideAnim, {
-			toValue: 0,
-			useNativeDriver: true,
-			tension: 65,
-			friction: 11
-		}).start()
+		Animated.parallel([
+			Animated.spring(slideAnim, {
+				toValue: 0,
+				useNativeDriver: true,
+				tension: 65,
+				friction: 11
+			}),
+			Animated.timing(backdropOpacity, {
+				toValue: 1,
+				duration: 250,
+				useNativeDriver: true
+			})
+		]).start()
 	}
 
 	const closeSheet = (cb?: () => void) => {
-		Animated.timing(slideAnim, {
-			toValue: SCREEN_HEIGHT,
-			duration: 200,
-			useNativeDriver: true
-		}).start(() => {
+		Animated.parallel([
+			Animated.timing(slideAnim, {
+				toValue: SCREEN_HEIGHT,
+				duration: 200,
+				useNativeDriver: true
+			}),
+			Animated.timing(backdropOpacity, {
+				toValue: 0,
+				duration: 200,
+				useNativeDriver: true
+			})
+		]).start(() => {
 			setModalVisible(false)
 			cb?.()
 		})
@@ -176,11 +202,15 @@ const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
 				closeSheet()
 			}
 		},
-		{
-			icon: <Reply size={20} color={colors.text} />,
-			label: t('reply'),
-			onPress: () => handleAddMessage()
-		},
+		...(canSendMessages
+			? [
+					{
+						icon: <Reply size={20} color={colors.text} />,
+						label: t('reply'),
+						onPress: () => handleAddMessage()
+					}
+				]
+			: []),
 		{
 			icon: <Clipboard size={20} color={colors.text} />,
 			label: t('copy'),
@@ -295,9 +325,17 @@ const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
 				onRequestClose={() => closeSheet()}
 			>
 				<View className='flex-1'>
+					<Animated.View
+						style={[
+							{
+								...StyleSheet.absoluteFillObject,
+								backgroundColor: colors.overlay,
+								opacity: backdropOpacity
+							}
+						]}
+					/>
 					<Pressable
 						className='flex-1'
-						style={{ backgroundColor: colors.overlay }}
 						onPress={() => closeSheet()}
 					/>
 

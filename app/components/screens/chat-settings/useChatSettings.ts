@@ -46,6 +46,7 @@ export function useChatSettings(chatId: string) {
 
 	const chat = chatData?.findChatByChatId
 	const members = chat?.members ?? []
+	const isDM = !!chat && !chat.isGroup
 
 	const { sendKeyToNewMember } = useSendSecretKey(
 		chatId,
@@ -61,7 +62,8 @@ export function useChatSettings(chatId: string) {
 	} =
 		useGetMemberChatRoleQuery({
 			variables: { chatId },
-			fetchPolicy: 'network-only'
+			fetchPolicy: 'network-only',
+			skip: !chat || isDM
 		})
 
 	const currentRole = memberRoleData?.getMemberChatRole
@@ -72,16 +74,21 @@ export function useChatSettings(chatId: string) {
 		refetch: refetchRoles
 	} = useGetChatRolesQuery({
 		variables: { chatId },
-		fetchPolicy: 'network-only'
+		fetchPolicy: 'network-only',
+		skip: !chat || isDM
 	})
 
 	const [roles, setRoles] = useState<ChatRoleData[]>([])
 
 	useEffect(() => {
+		if (isDM) {
+			setRoles([])
+			return
+		}
 		if (rolesData?.getChatRoles) {
 			setRoles(rolesData.getChatRoles)
 		}
-	}, [rolesData])
+	}, [isDM, rolesData])
 
 	const [upsertChatRole, { loading: isUpserting }] =
 		useUpsertChatRoleMutation()
@@ -107,6 +114,7 @@ export function useChatSettings(chatId: string) {
 
 	useChatUpsertedRoleSubscription({
 		variables: { chatId },
+		skip: isDM,
 		onData: ({ data: subData }) => {
 			const upserted = subData.data?.chatUpsertedRole
 			if (!upserted) return
@@ -124,6 +132,7 @@ export function useChatSettings(chatId: string) {
 
 	useChatDeletedRoleSubscription({
 		variables: { chatId },
+		skip: isDM,
 		onData: ({ data: subData }) => {
 			const deleted = subData.data?.chatDeletedRole
 			if (!deleted) return
@@ -140,6 +149,7 @@ export function useChatSettings(chatId: string) {
 
 	useChatAssignedRoleSubscription({
 		variables: { chatId },
+		skip: isDM,
 		onData: () => {
 			refetchRoles()
 			refetchChat()
@@ -148,6 +158,7 @@ export function useChatSettings(chatId: string) {
 
 	useChatRemovedRoleSubscription({
 		variables: { chatId },
+		skip: isDM,
 		onData: () => {
 			refetchRoles()
 			refetchChat()
@@ -157,6 +168,10 @@ export function useChatSettings(chatId: string) {
 	const [userRoles, setUserRoles] = useState<Record<string, string>>({})
 
 	useEffect(() => {
+		if (isDM) {
+			setUserRoles({})
+			return
+		}
 		if (members.length > 0) {
 			const mapping: Record<string, string> = {}
 			for (const member of members) {
@@ -166,7 +181,7 @@ export function useChatSettings(chatId: string) {
 			}
 			setUserRoles(mapping)
 		}
-	}, [members])
+	}, [isDM, members])
 
 	const [isCreateRoleOpen, setIsCreateRoleOpen] = useState(false)
 	const [selectedRole, setSelectedRole] = useState<ChatRoleData | null>(null)
@@ -253,6 +268,24 @@ export function useChatSettings(chatId: string) {
 	const getMembersWithRole = (roleId: string) =>
 		members.filter(m => userRoles[m.user.id] === roleId)
 
+	const chatListRefetchQueries = [
+		{
+			query: FindAllChatsByUserDocument,
+			variables: { filters: {} }
+		},
+		...(chat?.groupId
+			? [
+					{
+						query: FindAllChatsByGroupDocument,
+						variables: {
+							groupId: chat.groupId,
+							filters: {}
+						}
+					}
+				]
+			: [])
+	]
+
 	const handleChangeChatInfo = async (
 		chatName: string,
 		description: string
@@ -260,10 +293,7 @@ export function useChatSettings(chatId: string) {
 		try {
 			await changeChatInfo({
 				variables: { chatId, data: { chatName, description } },
-				refetchQueries: [
-					FindAllChatsByUserDocument,
-					FindAllChatsByGroupDocument
-				],
+				refetchQueries: chatListRefetchQueries,
 				awaitRefetchQueries: true
 			})
 			await refetchChat()
@@ -281,10 +311,7 @@ export function useChatSettings(chatId: string) {
 		try {
 			await changeChatAvatar({
 				variables: { chatId, avatar: file },
-				refetchQueries: [
-					FindAllChatsByUserDocument,
-					FindAllChatsByGroupDocument
-				],
+				refetchQueries: chatListRefetchQueries,
 				awaitRefetchQueries: true
 			})
 			await refetchChat()
@@ -297,10 +324,7 @@ export function useChatSettings(chatId: string) {
 		try {
 			await removeChatAvatar({
 				variables: { chatId },
-				refetchQueries: [
-					FindAllChatsByUserDocument,
-					FindAllChatsByGroupDocument
-				],
+				refetchQueries: chatListRefetchQueries,
 				awaitRefetchQueries: true
 			})
 			await refetchChat()
@@ -358,11 +382,11 @@ export function useChatSettings(chatId: string) {
 	}
 
 	const refreshChatSettings = async () => {
-		await Promise.allSettled([
-			refetchChat(),
-			refetchRoles(),
-			refetchMemberRole()
-		])
+		const tasks: Promise<unknown>[] = [refetchChat()]
+		if (!isDM) {
+			tasks.push(refetchRoles(), refetchMemberRole())
+		}
+		await Promise.allSettled(tasks)
 	}
 
 	return {

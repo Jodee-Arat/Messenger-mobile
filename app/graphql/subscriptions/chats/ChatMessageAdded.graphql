@@ -3,6 +3,7 @@ subscription ChatMessageAdded($chatId: String!, $userId: String!) {
 		id
 		text
 		isEdited
+		isStarted
 		createdAt
 		files {
 			fileName

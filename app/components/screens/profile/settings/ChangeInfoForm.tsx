@@ -28,6 +28,8 @@ const ChangeInfoForm = () => {
 	const { control, handleSubmit, formState, reset } =
 		useForm<TypeChangeInfoProfileSchema>({
 			resolver: zodResolver(ChangeInfoProfileSchema),
+			mode: 'onChange',
+			reValidateMode: 'onChange',
 			defaultValues: {
 				username: '',
 				bio: ''
@@ -63,7 +65,14 @@ const ChangeInfoForm = () => {
 		})
 
 	const onSubmit = (data: TypeChangeInfoProfileSchema) => {
-		update({ variables: { data } })
+		update({
+			variables: {
+				data: {
+					username: data.username.trim(),
+					bio: data.bio.trim()
+				}
+			}
+		})
 	}
 
 	if (isLoadingProfile) {

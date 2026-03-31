@@ -36,6 +36,13 @@ const ChatMessageItem: FC<ChatMessageItemProp> = ({
 	const selectedAnim = useRef(new Animated.Value(isSelected ? 1 : 0)).current
 
 	useEffect(() => {
+		return () => {
+			selectionModeAnim.stopAnimation()
+			selectedAnim.stopAnimation()
+		}
+	}, [])
+
+	useEffect(() => {
 		Animated.timing(selectionModeAnim, {
 			toValue: isSelectionMode ? 1 : 0,
 			duration: 190,
@@ -90,6 +97,15 @@ const ChatMessageItem: FC<ChatMessageItemProp> = ({
 		outputRange: [colors.borderLight, colors.accent]
 	})
 
+	const checkboxWidth = selectionModeAnim.interpolate({
+		inputRange: [0, 1],
+		outputRange: [0, 24]
+	})
+	const checkboxMargin = selectionModeAnim.interpolate({
+		inputRange: [0, 1],
+		outputRange: [0, 10]
+	})
+
 	const bubbleTransform = isOwnMessage
 		? [{ translateX: Animated.multiply(shift, -1) }]
 		: [{ translateX: shift }]
@@ -102,7 +118,7 @@ const ChatMessageItem: FC<ChatMessageItemProp> = ({
 			<Animated.View
 				style={{
 					opacity: selectionModeAnim,
-					width: 24,
+					width: checkboxWidth,
 					height: 24,
 					borderRadius: 12,
 					borderWidth: 2,
@@ -110,8 +126,9 @@ const ChatMessageItem: FC<ChatMessageItemProp> = ({
 					backgroundColor: isSelected ? colors.accent : 'transparent',
 					alignItems: 'center',
 					justifyContent: 'center',
-					marginRight: isOwnMessage ? 0 : 10,
-					marginLeft: isOwnMessage ? 10 : 0
+					marginRight: isOwnMessage ? 0 : checkboxMargin,
+					marginLeft: isOwnMessage ? checkboxMargin : 0,
+					overflow: 'hidden'
 				}}
 			>
 				{isSelected && <Check size={14} color='#fff' />}
@@ -119,7 +136,9 @@ const ChatMessageItem: FC<ChatMessageItemProp> = ({
 
 			<Animated.View
 				className={`flex max-w-[80%] flex-col gap-2 ${
-					isOwnMessage ? 'items-end text-right' : 'items-start text-left'
+					isOwnMessage
+						? 'items-end text-right'
+						: 'items-start text-left'
 				}`}
 				style={{ transform: bubbleTransform }}
 			>
@@ -155,7 +174,7 @@ const ChatMessageItem: FC<ChatMessageItemProp> = ({
 							/>
 						</View>
 					)}
-			</View>
+			</Animated.View>
 		</Animated.View>
 	)
 }

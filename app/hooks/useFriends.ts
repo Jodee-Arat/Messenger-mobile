@@ -54,20 +54,18 @@ export function useFriends() {
 		data: incomingData,
 		loading: isLoadingIncoming,
 		refetch: refetchIncoming
-	} =
-		useGetIncomingFriendRequestsQuery({
-			skip: !userId,
-			fetchPolicy: 'network-only'
-		})
+	} = useGetIncomingFriendRequestsQuery({
+		skip: !userId,
+		fetchPolicy: 'network-only'
+	})
 	const {
 		data: outgoingData,
 		loading: isLoadingOutgoing,
 		refetch: refetchOutgoing
-	} =
-		useGetOutgoingFriendRequestsQuery({
-			skip: !userId,
-			fetchPolicy: 'network-only'
-		})
+	} = useGetOutgoingFriendRequestsQuery({
+		skip: !userId,
+		fetchPolicy: 'network-only'
+	})
 
 	useEffect(() => {
 		setFriends([])
@@ -173,7 +171,11 @@ export function useFriends() {
 			refetchQueries: ['GetOutgoingFriendRequests']
 		})
 	const [acceptRequest] = useAcceptFriendRequestMutation({
-		refetchQueries: ['GetFriends', 'GetIncomingFriendRequests']
+		refetchQueries: [
+			'GetFriends',
+			'GetIncomingFriendRequests',
+			'GetOutgoingFriendRequests'
+		]
 	})
 	const [declineRequest] = useDeclineFriendRequestMutation({
 		refetchQueries: ['GetIncomingFriendRequests']

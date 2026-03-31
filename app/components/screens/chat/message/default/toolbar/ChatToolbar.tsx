@@ -200,13 +200,16 @@ const ChatToolbar: FC<ChatToolbarProp> = ({
 								<Reply size={20} color={colors.text} />
 							</TouchableOpacity>
 
-							<ForwardMessageModal
-								handleAddForwarded={handleAddForwarded}
-								handleClearMessagesId={handleClearMessagesId}
-								chatId={chatId}
-								messageIds={messageIds}
-								selectedMessages={selectedMessages}
-							/>
+							{!!groupId && (
+								<ForwardMessageModal
+									handleClearMessagesId={
+										handleClearMessagesId
+									}
+									chatId={chatId}
+									messageIds={messageIds}
+									groupId={groupId}
+								/>
+							)}
 						</>
 					)}
 					<TouchableOpacity

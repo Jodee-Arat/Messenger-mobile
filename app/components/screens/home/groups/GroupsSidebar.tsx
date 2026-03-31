@@ -3,6 +3,7 @@ import React, { FC, useEffect, useState } from 'react'
 import {
 	Animated,
 	Pressable,
+	StyleSheet,
 	Text,
 	TextInput,
 	TouchableOpacity,
@@ -53,6 +54,7 @@ const GroupsSidebar: FC<GroupsSidebarProps> = ({ visible, onClose }) => {
 
 	const {
 		slideAnim,
+		backdropOpacity,
 		showModal,
 		isCreateOpen,
 		setIsCreateOpen,
@@ -77,10 +79,25 @@ const GroupsSidebar: FC<GroupsSidebarProps> = ({ visible, onClose }) => {
 			statusBarTranslucent
 			navigationBarTranslucent
 		>
-			<View className='flex-1 flex-row'>
+			<View className='flex-1'>
+				{/* Backdrop */}
+				<Animated.View
+					style={{
+						...StyleSheet.absoluteFillObject,
+						backgroundColor: colors.overlay,
+						opacity: backdropOpacity
+					}}
+				>
+					<Pressable className='flex-1' onPress={onClose} />
+				</Animated.View>
+
 				{/* Sidebar panel */}
 				<Animated.View
 					style={{
+						position: 'absolute',
+						top: 0,
+						left: 0,
+						bottom: 0,
 						width: SIDEBAR_WIDTH,
 						transform: [{ translateX: slideAnim }],
 						backgroundColor: colors.backgroundSecondary,
@@ -179,15 +196,6 @@ const GroupsSidebar: FC<GroupsSidebarProps> = ({ visible, onClose }) => {
 						</TouchableOpacity>
 					</View>
 				</Animated.View>
-
-				{/* Backdrop */}
-				<View style={{ flex: 1 }}>
-					<Pressable
-						className='flex-1'
-						style={{ backgroundColor: colors.overlay }}
-						onPress={onClose}
-					/>
-				</View>
 			</View>
 
 			{/* Long-press group bottom sheet */}

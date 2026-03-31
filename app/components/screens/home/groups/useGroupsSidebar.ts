@@ -23,6 +23,7 @@ export function useGroupsSidebar(
 	searchTerm?: string
 ) {
 	const slideAnim = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current
+	const backdropOpacity = useRef(new Animated.Value(0)).current
 	const [showModal, setShowModal] = useState(false)
 	const [isCreateOpen, setIsCreateOpen] = useState(false)
 	const [longPressGroup, setLongPressGroup] = useState<
@@ -115,23 +116,38 @@ export function useGroupsSidebar(
 	useEffect(() => {
 		if (visible) {
 			setShowModal(true)
-			Animated.spring(slideAnim, {
-				toValue: 0,
-				useNativeDriver: true,
-				tension: 65,
-				friction: 11
-			}).start()
+			Animated.parallel([
+				Animated.spring(slideAnim, {
+					toValue: 0,
+					useNativeDriver: true,
+					tension: 65,
+					friction: 11
+				}),
+				Animated.timing(backdropOpacity, {
+					toValue: 1,
+					duration: 250,
+					useNativeDriver: true
+				})
+			]).start()
 		} else {
-			Animated.timing(slideAnim, {
-				toValue: -SIDEBAR_WIDTH,
-				duration: 200,
-				useNativeDriver: true
-			}).start(() => setShowModal(false))
+			Animated.parallel([
+				Animated.timing(slideAnim, {
+					toValue: -SIDEBAR_WIDTH,
+					duration: 200,
+					useNativeDriver: true
+				}),
+				Animated.timing(backdropOpacity, {
+					toValue: 0,
+					duration: 200,
+					useNativeDriver: true
+				})
+			]).start(() => setShowModal(false))
 		}
 	}, [visible])
 
 	return {
 		slideAnim,
+		backdropOpacity,
 		showModal,
 		isCreateOpen,
 		setIsCreateOpen,

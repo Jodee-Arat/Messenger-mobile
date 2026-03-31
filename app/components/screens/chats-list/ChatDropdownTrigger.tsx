@@ -1,5 +1,5 @@
 import { Pin, PinOff, Trash2 } from 'lucide-react-native'
-import React, { FC, useRef, useState } from 'react'
+import React, { FC, useEffect, useRef, useState } from 'react'
 import {
 	Animated,
 	Dimensions,
@@ -24,6 +24,7 @@ import {
 
 interface ChatDropdownTrigger {
 	chat: FindAllChatsByGroupQuery['findAllChatsByGroup'][0]
+	disabled?: boolean
 	deleteChat: (chatId: string) => void
 	groupId: string
 	onPinChat?: (chatId: string) => void
@@ -37,6 +38,7 @@ const SCREEN_HEIGHT = Dimensions.get('window').height
 const ChatDropdownTrigger: FC<ChatDropdownTrigger> = ({
 	deleteChat,
 	chat,
+	disabled = false,
 	groupId,
 	onPinChat,
 	onUnPinChat,
@@ -45,6 +47,13 @@ const ChatDropdownTrigger: FC<ChatDropdownTrigger> = ({
 }) => {
 	const [modalVisible, setModalVisible] = useState(false)
 	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+
+	useEffect(() => {
+		return () => {
+			slideAnim.stopAnimation()
+		}
+	}, [])
+
 	const { colors } = useTheme()
 	const { t } = useTranslation()
 	const { bottom } = useSafeAreaInsets()
@@ -61,6 +70,7 @@ const ChatDropdownTrigger: FC<ChatDropdownTrigger> = ({
 		!!currentRole?.isCreator
 
 	const openSheet = () => {
+		if (disabled) return
 		setModalVisible(true)
 		Animated.spring(slideAnim, {
 			toValue: 0,
@@ -108,6 +118,7 @@ const ChatDropdownTrigger: FC<ChatDropdownTrigger> = ({
 			<ChatsItem
 				groupId={groupId}
 				chat={chat}
+				disabled={disabled}
 				handleLongPress={openSheet}
 				onDrag={onDrag}
 				isActive={isActive}

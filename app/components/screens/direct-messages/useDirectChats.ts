@@ -8,11 +8,14 @@ import { useUser } from '@/hooks/useUser'
 import { chatEvents } from '@/utils/chatEvents'
 import {
 	forgetStartedDirectChat,
-	loadStartedDirectChats
+	loadStartedDirectChats,
+	markDirectChatStarted
 } from '@/utils/direct-chat-visibility'
 
 import {
+	ChatDeletedSubscription,
 	FindAllChatsByUserQuery,
+	useChatDeletedSubscription,
 	useChatUpdatedSubscription,
 	useDeleteChatMutation,
 	useFindAllChatsByUserQuery,
@@ -29,6 +32,17 @@ function sortChatsWithPinned(chats: ChatItem[]): ChatItem[] {
 		.sort((a, b) => (a.pinnedOrder ?? 0) - (b.pinnedOrder ?? 0))
 	const unpinned = chats.filter(chat => !chat.isPinned)
 	return [...pinned, ...unpinned]
+}
+
+function cloneChat(chat: ChatItem): ChatItem {
+	return {
+		...chat,
+		members:
+			chat.members?.map(member => ({
+				...member,
+				user: { ...member.user }
+			})) ?? []
+	}
 }
 
 function normalizeDirectChat(chat: ChatItem, userId: string): ChatItem {
@@ -79,7 +93,7 @@ export function useDirectChats(searchQuery = '') {
 	const { userId } = useUser()
 
 	const normalizedSearchTerm = searchQuery.trim()
-	const debouncedSearchTerm = useDebouncedValue(normalizedSearchTerm, 3000)
+	const debouncedSearchTerm = useDebouncedValue(normalizedSearchTerm, 1500)
 	const chatFilters = useMemo(
 		() =>
 			debouncedSearchTerm
@@ -100,6 +114,13 @@ export function useDirectChats(searchQuery = '') {
 
 	const { data: updateChatData } = useChatUpdatedSubscription({
 		variables: { userId },
+		skip: !userId
+	})
+	const { data: deletedChatData } = useChatDeletedSubscription({
+		variables: {
+			groupId: '',
+			userId
+		},
 		skip: !userId
 	})
 
@@ -222,9 +243,11 @@ export function useDirectChats(searchQuery = '') {
 		if (!allChatsData?.findAllChatsByUser) return
 
 		const directChats = allChatsData.findAllChatsByUser
+			.map(cloneChat)
 			.filter(chat => !chat.isGroup)
 			.filter(
 				chat =>
+					chat.isSecret ||
 					hasDirectChatActivity(chat) ||
 					startedDirectChatIds.includes(chat.id)
 			)
@@ -249,14 +272,26 @@ export function useDirectChats(searchQuery = '') {
 		if (!updateChatData?.chatUpdated) return
 		if (updateChatData.chatUpdated.isGroup) return
 
-		setAllChats(prev => {
-			const previousChat = prev.find(
-				chat => chat.id === updateChatData.chatUpdated.id
+		const incomingChat = cloneChat(updateChatData.chatUpdated as ChatItem)
+
+		if (userId) {
+			setStartedDirectChatIds(prev =>
+				prev.includes(incomingChat.id)
+					? prev
+					: [...prev, incomingChat.id]
 			)
+			void markDirectChatStarted(userId, incomingChat.id)
+		}
+
+		setAllChats(prev => {
+			const previousChat = prev.find(chat => chat.id === incomingChat.id)
 
 			if (!previousChat) {
-				refetchChats()
-				return prev
+				void refetchChats()
+				return upsertDirectChat(
+					prev,
+					normalizeDirectChat(incomingChat, userId)
+				)
 			}
 
 			return upsertDirectChat(
@@ -264,17 +299,32 @@ export function useDirectChats(searchQuery = '') {
 				normalizeDirectChat(
 					{
 						...previousChat,
-						...updateChatData.chatUpdated,
-						members:
-							updateChatData.chatUpdated.members?.length
-								? updateChatData.chatUpdated.members
-								: previousChat.members
+						...incomingChat,
+						members: incomingChat.members?.length
+							? incomingChat.members
+							: previousChat.members
 					},
 					userId
 				)
 			)
 		})
 	}, [refetchChats, updateChatData, userId])
+
+	useEffect(() => {
+		const deletedChat = deletedChatData?.chatDeleted as
+			| ChatDeletedSubscription['chatDeleted']
+			| undefined
+		if (!deletedChat) return
+
+		setAllChats(prev => prev.filter(chat => chat.id !== deletedChat.id))
+
+		if (userId) {
+			setStartedDirectChatIds(prev =>
+				prev.filter(chatId => chatId !== deletedChat.id)
+			)
+			void forgetStartedDirectChat(userId, deletedChat.id)
+		}
+	}, [deletedChatData, userId])
 
 	const pinnedChats = allChats.filter(chat => chat.isPinned)
 	const unpinnedChats = allChats.filter(chat => !chat.isPinned)
