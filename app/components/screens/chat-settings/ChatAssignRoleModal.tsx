@@ -109,7 +109,8 @@ const ChatAssignRoleModal: React.FC<ChatAssignRoleModalProps> = ({
 						borderColor: colors.border,
 						paddingBottom: sheetPaddingBottom,
 						paddingTop: 8,
-						maxHeight: sheetMaxHeight
+						maxHeight: sheetMaxHeight,
+						overflow: 'hidden'
 					}}
 				>
 					{/* Handle */}
@@ -137,10 +138,14 @@ const ChatAssignRoleModal: React.FC<ChatAssignRoleModalProps> = ({
 						{username}
 					</Text>
 
-					<ScrollView
-						showsVerticalScrollIndicator={false}
-						className='px-4'
-					>
+					<View style={{ flex: 1, minHeight: 0 }}>
+						<ScrollView
+							showsVerticalScrollIndicator={false}
+							contentContainerStyle={{
+								paddingHorizontal: 16,
+								paddingBottom: 16
+							}}
+						>
 						{/* No role option */}
 						<TouchableOpacity
 							activeOpacity={0.6}
@@ -230,7 +235,8 @@ const ChatAssignRoleModal: React.FC<ChatAssignRoleModalProps> = ({
 								</TouchableOpacity>
 							)
 						})}
-					</ScrollView>
+						</ScrollView>
+					</View>
 				</Animated.View>
 			</View>
 		</AppModal>

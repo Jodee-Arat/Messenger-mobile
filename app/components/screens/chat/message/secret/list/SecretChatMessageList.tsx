@@ -1,6 +1,7 @@
 ﻿import React, { FC, useCallback, useState } from 'react'
 import { ActivityIndicator, FlatList, Text, View } from 'react-native'
 import Toast from 'react-native-toast-message'
+import { useEffect } from 'react'
 
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
@@ -16,6 +17,7 @@ interface SecretChatMessageListProp {
 	chatId: string
 	userId: string
 	onDelete: (id: string[]) => Promise<void>
+	canDeleteMessages?: boolean
 	onRefresh?: () => Promise<void> | void
 	startEdit?: (
 		message: MessageType,
@@ -28,6 +30,7 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 	messages,
 	userId,
 	onDelete,
+	canDeleteMessages = true,
 	onRefresh,
 	chatId,
 	startEdit = () => {},
@@ -93,6 +96,12 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 			setIsRefreshing(false)
 		}
 	}, [onRefresh])
+
+	useEffect(() => {
+		if (!canDeleteMessages && messageIds.length > 0) {
+			setMessageIds([])
+		}
+	}, [canDeleteMessages, messageIds.length])
 
 	if (isDeleting) {
 		return (
@@ -185,6 +194,9 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 								isSelected={isSelected}
 								isFirstInGroup={isFirstInGroup}
 								isLastInGroup={isLastInGroup}
+								canDeleteMessages={
+									canDeleteMessages
+								}
 							/>
 						</View>
 					)
@@ -192,12 +204,14 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 			/>
 
 			{/* Панель управления сообщениями — снизу */}
-			<ChatToolbar
-				chatId={chatId}
-				messageIds={messageIds}
-				handleRemoveMessages={handleRemoveMessages}
-				handleClearMessagesId={handleClearMessagesId}
-			/>
+			{canDeleteMessages && (
+				<ChatToolbar
+					chatId={chatId}
+					messageIds={messageIds}
+					handleRemoveMessages={handleRemoveMessages}
+					handleClearMessagesId={handleClearMessagesId}
+				/>
+			)}
 		</View>
 	)
 }

@@ -14,14 +14,7 @@ import {
 } from 'lucide-react-native'
 import React, { FC, useEffect, useRef } from 'react'
 import { Controller, useForm } from 'react-hook-form'
-import {
-	Keyboard,
-	Platform,
-	Text,
-	TextInput,
-	TouchableOpacity,
-	View
-} from 'react-native'
+import { Platform, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Toast from 'react-native-toast-message'
 
@@ -100,7 +93,6 @@ const SendMessageForm: FC<SendMessageFormProp> = ({
 	const draftTextRef = useRef(draftText)
 	const editIdRef = useRef(editId)
 	const filesEditedRef = useRef(filesEdited)
-
 	const { control, handleSubmit, watch, reset, getValues } =
 		useForm<SendMessageSchemaType>({
 			resolver: zodResolver(sendMessageSchema),
@@ -409,6 +401,7 @@ const SendMessageForm: FC<SendMessageFormProp> = ({
 					name='text'
 					render={({ field }) => (
 						<TextInput
+							ref={field.ref}
 							value={field.value ?? ''}
 							onChangeText={text => {
 								field.onChange(text)
@@ -428,11 +421,11 @@ const SendMessageForm: FC<SendMessageFormProp> = ({
 								borderRadius: 24
 							}}
 							onSubmitEditing={() => {
-								Keyboard.dismiss()
 								handleSubmit(() =>
 									onSubmit({ text: field.value ?? '' })
 								)()
 							}}
+							blurOnSubmit={false}
 							returnKeyType='send'
 						/>
 					)}

@@ -8,7 +8,14 @@ import {
 	ShieldCheck,
 	UserPlus
 } from 'lucide-react-native'
-import React, { FC, useCallback, useEffect, useRef, useState } from 'react'
+import React, {
+	FC,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState
+} from 'react'
 import {
 	ActivityIndicator,
 	Alert,
@@ -23,11 +30,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import EntityAvatar from '@/components/ui/EntityAvatar'
 import Loader from '@/components/ui/Loader'
+import ProtectedScreenState from '@/components/ui/ProtectedScreenState'
 
 import {
+	getGraphQLErrorMessage,
 	isChatMembershipRevokedError,
-	isDirectContactBlockedError
+	isDirectContactBlockedError,
+	isUnauthorizedError
 } from '@/hooks/useBlockedUsers'
+import { useAuth } from '@/hooks/useAuth'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useKeyboardVisible } from '@/hooks/useKeyboardVisible'
 import { useSecretChat } from '@/hooks/useSecretChat'
@@ -39,7 +50,7 @@ import { useUser } from '@/hooks/useUser'
 import { chatEvents } from '@/utils/chatEvents'
 import { deleteSecretChat } from '@/utils/secret-chat/secretChat'
 
-import { resetToHome } from '@/navigation/navigate'
+import { resetToAuth, resetToHome } from '@/navigation/navigate'
 
 import ChatInviteMemberModal from '../chat-settings/ChatInviteMemberModal'
 
@@ -76,6 +87,7 @@ const SecretChat: FC<SecretChatProps> = ({
 }) => {
 	const isDM = !groupId
 	const { isLoadingProfile, user } = useCurrentUser()
+	const { isAuthenticated } = useAuth()
 	const { colors } = useTheme()
 	const { t } = useTranslation()
 	const { top } = useSafeAreaInsets()
@@ -98,7 +110,11 @@ const SecretChat: FC<SecretChatProps> = ({
 		useVerifyChatTotpMutation()
 	const [inviteMemberMutation] = useInviteMemberToChatMutation()
 
-	const { data: roleData, refetch: refetchMemberRole } =
+	const {
+		data: roleData,
+		loading: isLoadingMemberRole,
+		refetch: refetchMemberRole
+	} =
 		useGetMemberChatRoleQuery({
 			variables: { chatId },
 			skip: isDM,
@@ -143,6 +159,36 @@ const SecretChat: FC<SecretChatProps> = ({
 	})
 
 	const isCreator = !!roleData?.getMemberChatRole?.isCreator
+	const messagePermissions = useMemo(() => {
+		if (isDM) {
+			return {
+				canSendMessages: true,
+				canEditMessages: true,
+				canDeleteMessages: true,
+				canPinMessages: true
+			}
+		}
+
+		const role = roleData?.getMemberChatRole
+		if (role?.isCreator) {
+			return {
+				canSendMessages: true,
+				canEditMessages: true,
+				canDeleteMessages: true,
+				canPinMessages: true
+			}
+		}
+
+		const perms = role?.permissions ?? []
+		return {
+			canSendMessages: perms.includes(ChatPermissionEnum.SendMessages),
+			canEditMessages: perms.includes(ChatPermissionEnum.EditMessages),
+			canDeleteMessages: perms.includes(
+				ChatPermissionEnum.DeleteMessages
+			),
+			canPinMessages: perms.includes(ChatPermissionEnum.PinMessages)
+		}
+	}, [isDM, roleData])
 	const canInviteMembers =
 		!isDM &&
 		(isCreator ||
@@ -220,10 +266,23 @@ const SecretChat: FC<SecretChatProps> = ({
 		[chatId, groupId, navigation]
 	)
 
+	const isCheckingAccess =
+		loadingMessage !== '' || isLoadingProfile || (!isDM && isLoadingMemberRole)
 	const isBlockedSecretChatAccess =
+		!isCheckingAccess &&
 		isDM &&
 		(isDirectContactBlockedError(chatAccessError) ||
 			isDirectContactBlockedError(errorMessage))
+	const isAuthRequired =
+		!isAuthenticated ||
+		(!isLoadingProfile && !user) ||
+		(!isCheckingAccess && isUnauthorizedError(chatAccessError)) ||
+		(!isCheckingAccess && isUnauthorizedError(errorMessage))
+	const isAccessDenied =
+		!isCheckingAccess &&
+		!isBlockedSecretChatAccess &&
+		(isChatMembershipRevokedError(chatAccessError) ||
+			isChatMembershipRevokedError(errorMessage))
 
 	useEffect(() => {
 		if (!isBlockedSecretChatAccess) return
@@ -231,11 +290,9 @@ const SecretChat: FC<SecretChatProps> = ({
 	}, [chatId, isBlockedSecretChatAccess])
 
 	useEffect(() => {
-		if (isBlockedSecretChatAccess) return
-		if (!isChatMembershipRevokedError(chatAccessError)) return
-
-		void handleAccessLoss('chat')
-	}, [chatAccessError, handleAccessLoss, isBlockedSecretChatAccess])
+		if (!isAuthRequired) return
+		resetToAuth()
+	}, [isAuthRequired])
 
 	useChatDeletedSubscription({
 		variables: {
@@ -432,20 +489,87 @@ const SecretChat: FC<SecretChatProps> = ({
 	const shouldShowSecretSetupState =
 		!isDM && !isLoadingProfile && !!user && !!chat && !isKeyReady
 
+	if (isAuthRequired) {
+		return (
+			<ProtectedScreenState
+				variant='auth'
+				title={t('authRequiredTitle')}
+				description={t('authRequiredDescription')}
+				primaryActionLabel={t('goToLogin')}
+				onPrimaryAction={resetToAuth}
+			/>
+		)
+	}
+
+	if (isCheckingAccess) {
+		return <ChatSkeleton />
+	}
+
 	if (isBlockedSecretChatAccess) {
 		return renderBlockedState()
 	}
 
+	if (isAccessDenied) {
+		return (
+			<ProtectedScreenState
+				title={t('accessDeniedTitle')}
+				description={t('chatAccessDeniedDescription')}
+				primaryActionLabel={t('goHome')}
+				onPrimaryAction={resetToHome}
+				secondaryActionLabel={navigation.canGoBack() ? t('back') : undefined}
+				onSecondaryAction={navigation.canGoBack() ? () => navigation.goBack() : undefined}
+			/>
+		)
+	}
+
 	if (errorMessage !== '') {
 		return (
-			<View
-				className='flex-1 justify-center items-center'
-				style={{ backgroundColor: colors.background }}
-			>
-				<Text style={{ color: colors.textSecondary }}>
-					{errorMessage}
-				</Text>
-			</View>
+			<ProtectedScreenState
+				variant='error'
+				title={t('screenLoadErrorTitle')}
+				description={errorMessage || t('somethingWentWrong')}
+				primaryActionLabel={t('retry')}
+				onPrimaryAction={() => void handleRefresh()}
+				secondaryActionLabel={t('goHome')}
+				onSecondaryAction={resetToHome}
+			/>
+		)
+	}
+
+	if (chatAccessError && !chat) {
+		return (
+			<ProtectedScreenState
+				variant='error'
+				title={t('screenLoadErrorTitle')}
+				description={
+					getGraphQLErrorMessage(chatAccessError) ||
+					t('somethingWentWrong')
+				}
+				primaryActionLabel={t('retry')}
+				onPrimaryAction={() => void handleRefresh()}
+				secondaryActionLabel={t('goHome')}
+				onSecondaryAction={resetToHome}
+			/>
+		)
+	}
+
+	if (
+		loadingMessage === '' &&
+		!isLoadingProfile &&
+		!!user &&
+		!chat &&
+		!chatAccessError
+	) {
+		return (
+			<ProtectedScreenState
+				variant='error'
+				title={t('screenLoadErrorTitle')}
+				description={t('somethingWentWrong')}
+				primaryActionLabel={t('retry')}
+				onPrimaryAction={() => void handleRefresh()}
+				secondaryActionLabel={t('goHome')}
+				onSecondaryAction={resetToHome}
+			/>
 		)
 	}
 
@@ -460,13 +584,7 @@ const SecretChat: FC<SecretChatProps> = ({
 		)
 	}
 
-	if (
-		loadingMessage !== '' ||
-		isLoadingProfile ||
-		!user ||
-		!chat ||
-		(!isDM && !isKeyReady)
-	) {
+	if (!user || !chat || (!isDM && !isKeyReady)) {
 		return <ChatSkeleton />
 	}
 
@@ -703,6 +821,9 @@ const SecretChat: FC<SecretChatProps> = ({
 							onDelete={deleteMessage}
 							onRefresh={handleRefresh}
 							chatId={chatId}
+							canDeleteMessages={
+								messagePermissions.canDeleteMessages
+							}
 						/>
 
 						<SecretSendMessageForm
@@ -722,6 +843,14 @@ const SecretChat: FC<SecretChatProps> = ({
 							forwardedMessages={[]}
 							setForwardedMessages={() => {}}
 							handleClearForm={clearForm}
+							canSendMessages={
+								messagePermissions.canSendMessages
+							}
+							blockedStateMessage={
+								messagePermissions.canSendMessages
+									? null
+									: t('noSendPermission')
+							}
 							onSend={handleSend}
 						/>
 					</View>

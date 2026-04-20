@@ -217,6 +217,7 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 				chatId={chatId}
 				pinnedMessage={pinnedMessage}
 				setPinnedMessage={setPinnedMessage}
+				canPinMessages={canPinMessages}
 			/>
 
 			<FlatList
@@ -326,6 +327,7 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 				userId={userId}
 				groupId={groupId}
 				canEditMessages={canEditMessages}
+				canDeleteMessages={canDeleteMessages}
 				canPinMessages={canPinMessages}
 			/>
 		</View>

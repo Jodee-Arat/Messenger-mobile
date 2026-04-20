@@ -132,7 +132,8 @@ const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
 						borderColor: colors.border,
 						paddingBottom: sheetPaddingBottom,
 						paddingTop: 8,
-						maxHeight: sheetMaxHeight
+						maxHeight: sheetMaxHeight,
+						overflow: 'hidden'
 					}}
 				>
 					{/* Handle */}
@@ -178,102 +179,107 @@ const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
 						/>
 					</View>
 
-					<ScrollView
-						showsVerticalScrollIndicator={false}
-						className='px-4'
-						keyboardShouldPersistTaps='handled'
-					>
-						{isLoadingUsers ? (
-							<View className='py-6 items-center'>
-								<ActivityIndicator
-									size='small'
-									color={colors.accent}
-								/>
-							</View>
-						) : filteredFriends.length === 0 ? (
-							<Text
-								className='text-sm text-center py-6'
-								style={{ color: colors.textMuted }}
-							>
-								{t('noUsersFound')}
-							</Text>
-						) : (
-							filteredFriends.map(friend => {
-								const isMember = existingMemberIds.includes(
-									friend.id
-								)
+					<View style={{ flex: 1, minHeight: 0 }}>
+						<ScrollView
+							showsVerticalScrollIndicator={false}
+							keyboardShouldPersistTaps='handled'
+							contentContainerStyle={{
+								paddingHorizontal: 16,
+								paddingBottom: 16
+							}}
+						>
+							{isLoadingUsers ? (
+								<View className='py-6 items-center'>
+									<ActivityIndicator
+										size='small'
+										color={colors.accent}
+									/>
+								</View>
+							) : filteredFriends.length === 0 ? (
+								<Text
+									className='text-sm text-center py-6'
+									style={{ color: colors.textMuted }}
+								>
+									{t('noUsersFound')}
+								</Text>
+							) : (
+								filteredFriends.map(friend => {
+									const isMember = existingMemberIds.includes(
+										friend.id
+									)
 
-								return (
-									<TouchableOpacity
-										key={friend.id}
-										activeOpacity={isMember ? 1 : 0.6}
-										onPress={() =>
-											!isMember && handleInvite(friend.id)
-										}
-										className='flex-row items-center px-4 py-3 rounded-xl mb-2'
-										style={{
-											backgroundColor:
-												colors.backgroundTertiary,
-											borderWidth: 1,
-											borderColor: colors.border,
-											opacity: isMember ? 0.5 : 1
-										}}
-									>
-										<EntityAvatar
-											name={friend.username}
-											avatarUrl={friend.avatarUrl}
-											size='default'
-										/>
-										<View className='flex-1 ml-3'>
-											<Text
-												className='text-sm font-semibold'
-												style={{
-													color: colors.text
-												}}
-											>
-												{friend.username}
-											</Text>
-										</View>
-										{isMember ? (
-											<View
-												className='px-2.5 py-1 rounded-full'
-												style={{
-													backgroundColor:
-														colors.successMuted
-												}}
-											>
+									return (
+										<TouchableOpacity
+											key={friend.id}
+											activeOpacity={isMember ? 1 : 0.6}
+											onPress={() =>
+												!isMember && handleInvite(friend.id)
+											}
+											className='flex-row items-center px-4 py-3 rounded-xl mb-2'
+											style={{
+												backgroundColor:
+													colors.backgroundTertiary,
+												borderWidth: 1,
+												borderColor: colors.border,
+												opacity: isMember ? 0.5 : 1
+											}}
+										>
+											<EntityAvatar
+												name={friend.username}
+												avatarUrl={friend.avatarUrl}
+												size='default'
+											/>
+											<View className='flex-1 ml-3'>
 												<Text
-													className='text-xs font-semibold'
-													style={{
-														color: colors.success
-													}}
-												>
-													{t('alreadyMember')}
-												</Text>
-											</View>
-										) : (
-											<View
-												className='px-3 py-1.5 rounded-full'
-												style={{
-													backgroundColor:
-														colors.accent
-												}}
-											>
-												<Text
-													className='text-xs font-semibold'
+													className='text-sm font-semibold'
 													style={{
 														color: colors.text
 													}}
 												>
-													{t('invite')}
+													{friend.username}
 												</Text>
 											</View>
-										)}
-									</TouchableOpacity>
-								)
-							})
-						)}
-					</ScrollView>
+											{isMember ? (
+												<View
+													className='px-2.5 py-1 rounded-full'
+													style={{
+														backgroundColor:
+															colors.successMuted
+													}}
+												>
+													<Text
+														className='text-xs font-semibold'
+														style={{
+															color: colors.success
+														}}
+													>
+														{t('alreadyMember')}
+													</Text>
+												</View>
+											) : (
+												<View
+													className='px-3 py-1.5 rounded-full'
+													style={{
+														backgroundColor:
+															colors.accent
+													}}
+												>
+													<Text
+														className='text-xs font-semibold'
+														style={{
+															color: colors.text
+														}}
+													>
+														{t('invite')}
+													</Text>
+												</View>
+											)}
+										</TouchableOpacity>
+									)
+								})
+							)}
+						</ScrollView>
+					</View>
 				</Animated.View>
 			</View>
 		</AppModal>

@@ -31,6 +31,7 @@ interface SecretChatMessageDropdownProp {
 	handleChooseMessage: (messageId: string) => void
 	handleClearMessagesId: () => void
 	onDelete: (id: string[]) => Promise<void>
+	canDeleteMessages?: boolean
 	isSelected: boolean
 	isFirstInGroup: boolean
 	isLastInGroup: boolean
@@ -49,6 +50,7 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 	messageInfo,
 	userId,
 	onDelete,
+	canDeleteMessages = true,
 	isSelected,
 	isFirstInGroup,
 	isLastInGroup
@@ -129,14 +131,18 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 	}, [handleAddForwardedMessage, handleClearMessagesId, messageInfo])
 
 	const actions = [
-		{
-			icon: <CheckCircle size={20} color={colors.text} />,
-			label: isSelected ? t('deselect') : t('select'),
-			onPress: () => {
-				handleChooseMessage(messageId)
-				closeSheet()
-			}
-		},
+		...(canDeleteMessages
+			? [
+					{
+						icon: <CheckCircle size={20} color={colors.text} />,
+						label: isSelected ? t('deselect') : t('select'),
+						onPress: () => {
+							handleChooseMessage(messageId)
+							closeSheet()
+						}
+					}
+				]
+			: []),
 		{
 			icon: <Clipboard size={20} color={colors.text} />,
 			label: t('copy'),
@@ -151,13 +157,17 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 				closeSheet()
 			}
 		},
-		{
-			icon: <Trash2 size={20} color={colors.destructive} />,
-			label: isDeleting ? t('deleting') : t('delete'),
-			destructive: true,
-			disabled: isDeleting,
-			onPress: handleRemoveMessage
-		}
+		...(canDeleteMessages
+			? [
+					{
+						icon: <Trash2 size={20} color={colors.destructive} />,
+						label: isDeleting ? t('deleting') : t('delete'),
+						destructive: true,
+						disabled: isDeleting,
+						onPress: handleRemoveMessage
+					}
+				]
+			: [])
 	]
 
 	const handlePressMessage = () => {
@@ -169,6 +179,7 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 	}
 
 	const handleLongPressMessage = () => {
+		if (!canDeleteMessages) return
 		handleChooseMessage(messageId)
 	}
 

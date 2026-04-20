@@ -10,7 +10,7 @@ import {
 	Sun,
 	User
 } from 'lucide-react-native'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
 	Animated,
 	Dimensions,
@@ -24,8 +24,12 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useCurrentUser } from '@/hooks/useCurrentUser'
+import { useAuth } from '@/hooks/useAuth'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
+import { resetToAuth } from '@/navigation/navigate'
+
+import ProtectedScreenState from '@/components/ui/ProtectedScreenState'
 
 import ChangeAvatarForm from './ChangeAvatarForm'
 import ChangeInfoForm from './ChangeInfoForm'
@@ -39,6 +43,7 @@ type Tab = 'profile' | 'appearance' | 'security' | 'sessions'
 
 const UserSettings = () => {
 	const navigation = useTypedNavigation()
+	const { isAuthenticated } = useAuth()
 	const { isLoadingProfile, user, refetch } = useCurrentUser()
 	const { colors, isDark, theme, setTheme, language, setLanguage } =
 		useTheme()
@@ -48,6 +53,12 @@ const UserSettings = () => {
 	const [activeTab, setActiveTab] = useState<Tab>('profile')
 	const [isRefreshing, setIsRefreshing] = useState(false)
 	const [refreshSignal, setRefreshSignal] = useState(0)
+	const isAuthRequired = !isAuthenticated || (!isLoadingProfile && !user)
+
+	useEffect(() => {
+		if (!isAuthRequired) return
+		resetToAuth()
+	}, [isAuthRequired])
 
 	const handleRefresh = useCallback(async () => {
 		try {
@@ -118,7 +129,19 @@ const UserSettings = () => {
 		}
 	]
 
-	if (isLoadingProfile || !user) {
+	if (isAuthRequired) {
+		return (
+			<ProtectedScreenState
+				variant='auth'
+				title={t('authRequiredTitle')}
+				description={t('authRequiredDescription')}
+				primaryActionLabel={t('goToLogin')}
+				onPrimaryAction={resetToAuth}
+			/>
+		)
+	}
+
+	if (isLoadingProfile) {
 		return <UserSettingsSkeleton />
 	}
 

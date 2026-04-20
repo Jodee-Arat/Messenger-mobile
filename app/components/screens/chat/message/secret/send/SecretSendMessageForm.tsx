@@ -1,7 +1,7 @@
 ﻿import { ImageIcon, Paperclip, SendHorizonal, X } from 'lucide-react-native'
 import React, { FC, useEffect } from 'react'
 import { Controller, useForm } from 'react-hook-form'
-import { Keyboard, TextInput, TouchableOpacity, View } from 'react-native'
+import { Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useKeyboardVisible } from '@/hooks/useKeyboardVisible'
@@ -30,6 +30,8 @@ interface SecretSendMessageFormProps {
 	editId: string | null
 	setEditId: (id: string | null) => void
 	setFilesEdited: (files: SendFileType[]) => void
+	canSendMessages?: boolean
+	blockedStateMessage?: string | null
 	onSend: (text: string) => Promise<boolean>
 }
 
@@ -53,6 +55,8 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 	editId,
 	setEditId,
 	setFilesEdited,
+	canSendMessages = true,
+	blockedStateMessage,
 	onSend
 }) => {
 	const { colors } = useTheme()
@@ -71,6 +75,7 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 		((watch('text')?.trim() ?? '') !== '' || files.length > 0) &&
 		allFilesReady &&
 		!isSendingFiles
+	const isComposerBlocked = !!blockedStateMessage
 
 	// синхронизация draftText с полем ввода
 	useEffect(() => {
@@ -91,6 +96,30 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 
 		reset({ text: '' })
 		handleClearForm()
+	}
+
+	if (!canSendMessages || isComposerBlocked) {
+		return (
+			<View className='flex-col'>
+				<View
+					className='flex-row items-center mt-3 px-3 py-3 rounded-xl'
+					style={{ backgroundColor: colors.cardHover }}
+				>
+					<Text
+						style={{
+							color: colors.textMuted,
+							flex: 1,
+							textAlign: 'center',
+							fontSize: 14
+						}}
+					>
+						{blockedStateMessage ||
+							t('noSendPermission') ||
+							'У вас нет разрешения отправлять сообщения'}
+					</Text>
+				</View>
+			</View>
+		)
 	}
 
 	return (
@@ -164,6 +193,7 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 					name='text'
 					render={({ field }) => (
 						<TextInput
+							ref={field.ref}
 							value={field.value}
 							onChangeText={text => {
 								field.onChange(text)
@@ -183,9 +213,9 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 								borderRadius: 24
 							}}
 							onSubmitEditing={() => {
-								Keyboard.dismiss()
 								void handleSubmit(handleSubmitMessage)()
 							}}
+							blurOnSubmit={false}
 							returnKeyType='send'
 						/>
 					)}

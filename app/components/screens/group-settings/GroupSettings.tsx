@@ -11,13 +11,19 @@ import {
 	View
 } from 'react-native'
 
+import ProtectedScreenState from '@/components/ui/ProtectedScreenState'
 import SettingsSkeleton from '@/components/ui/SettingsSkeleton'
 
-import { isGroupMembershipRevokedError } from '@/hooks/useBlockedUsers'
+import {
+	getGraphQLErrorMessage,
+	isGroupMembershipRevokedError,
+	isUnauthorizedError
+} from '@/hooks/useBlockedUsers'
+import { useAuth } from '@/hooks/useAuth'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 import { useUser } from '@/hooks/useUser'
-import { resetToHome } from '@/navigation/navigate'
+import { resetToAuth, resetToHome } from '@/navigation/navigate'
 
 import {
 	type GroupSettingsRouteParams,
@@ -44,6 +50,7 @@ const GroupSettings = () => {
 	const navigation = useTypedNavigation()
 	const { groupId, groupName } = route.params as GroupSettingsRouteParams
 	const { userId } = useUser()
+	const { isAuthenticated } = useAuth()
 	const handledAccessLossRef = useRef(false)
 
 	const { colors } = useTheme()
@@ -55,6 +62,7 @@ const GroupSettings = () => {
 
 	const {
 		data: currentRoleData,
+		error: currentRoleError,
 		loading: isLoadingGetMemberRole,
 		refetch: refetchCurrentRole
 	} =
@@ -82,6 +90,12 @@ const GroupSettings = () => {
 
 	const canChangeGroupInfo =
 		groupPermissions.includes(GroupPermissionEnum.ChangeGroupInfo) ||
+		isCreator
+	const canChangeGroupName =
+		groupPermissions.includes(GroupPermissionEnum.ChangeGroupName) ||
+		isCreator
+	const canChangeGroupAvatar =
+		groupPermissions.includes(GroupPermissionEnum.ChangeGroupAvatar) ||
 		isCreator
 
 	const canInviteMembers =
@@ -146,11 +160,6 @@ const GroupSettings = () => {
 		}
 	}, [refetchCurrentRole, refreshGroupSettings])
 
-	useEffect(() => {
-		if (!isGroupMembershipRevokedError(groupError)) return
-		handleGroupAccessLoss()
-	}, [groupError, handleGroupAccessLoss])
-
 	useFocusEffect(
 		useCallback(() => {
 			void refreshGroupSettings()
@@ -165,6 +174,25 @@ const GroupSettings = () => {
 			handleGroupAccessLoss()
 		}
 	})
+
+	const isCheckingAccess = isLoadingGetMemberRole || isLoadingGroup
+	const isAuthRequired =
+		!isAuthenticated ||
+		(!isCheckingAccess && isUnauthorizedError(groupError)) ||
+		(!isCheckingAccess && isUnauthorizedError(currentRoleError))
+	const isAccessDenied =
+		!isCheckingAccess &&
+		(isGroupMembershipRevokedError(groupError) ||
+			isGroupMembershipRevokedError(currentRoleError))
+	const loadError =
+		!isCheckingAccess
+			? (!isAccessDenied && groupError) || currentRoleError || null
+			: null
+
+	useEffect(() => {
+		if (!isAuthRequired) return
+		resetToAuth()
+	}, [isAuthRequired])
 
 	const isSavingGroupInfo =
 		isChangingInfo || isChangingAvatar || isRemovingAvatar
@@ -185,10 +213,69 @@ const GroupSettings = () => {
 		])
 	}
 
+	if (isAuthRequired) {
+		return (
+			<ProtectedScreenState
+				variant='auth'
+				title={t('authRequiredTitle')}
+				description={t('authRequiredDescription')}
+				primaryActionLabel={t('goToLogin')}
+				onPrimaryAction={resetToAuth}
+			/>
+		)
+	}
+
+	if (isCheckingAccess) {
+		return <SettingsSkeleton />
+	}
+
+	if (isAccessDenied) {
+		return (
+			<ProtectedScreenState
+				title={t('accessDeniedTitle')}
+				description={t('settingsAccessDeniedDescription')}
+				primaryActionLabel={t('goHome')}
+				onPrimaryAction={resetToHome}
+				secondaryActionLabel={navigation.canGoBack() ? t('back') : undefined}
+				onSecondaryAction={navigation.canGoBack() ? () => navigation.goBack() : undefined}
+			/>
+		)
+	}
+
+	if (!isLoadingGetMemberRole && !isLoadingGroup && loadError) {
+		return (
+			<ProtectedScreenState
+				variant='error'
+				title={t('screenLoadErrorTitle')}
+				description={
+					getGraphQLErrorMessage(loadError) ||
+					t('somethingWentWrong')
+				}
+				primaryActionLabel={t('retry')}
+				onPrimaryAction={() => void handleRefresh()}
+				secondaryActionLabel={t('goHome')}
+				onSecondaryAction={resetToHome}
+			/>
+		)
+	}
+
+	if (!isLoadingGetMemberRole && !isLoadingGroup && !group) {
+		return (
+			<ProtectedScreenState
+				title={t('accessDeniedTitle')}
+				description={t('settingsAccessDeniedDescription')}
+				primaryActionLabel={t('goHome')}
+				onPrimaryAction={resetToHome}
+				secondaryActionLabel={navigation.canGoBack() ? t('back') : undefined}
+				onSecondaryAction={navigation.canGoBack() ? () => navigation.goBack() : undefined}
+			/>
+		)
+	}
+
 	return (
 		<View className='flex-1' style={{ backgroundColor: colors.background }}>
 			<GroupSettingsHeader groupName={resolvedGroupName} />
-			{isLoadingGetMemberRole || isLoadingGroup ? (
+			{isCheckingAccess ? (
 				<SettingsSkeleton />
 			) : (
 				<>
@@ -210,6 +297,8 @@ const GroupSettings = () => {
 							group={group}
 							isFindGroupByGroupIdLoading={isLoadingGroup}
 							canChangeGroupInfo={!!canChangeGroupInfo}
+							canChangeGroupName={!!canChangeGroupName}
+							canChangeGroupAvatar={!!canChangeGroupAvatar}
 							onSaveInfo={handleChangeGroupInfo}
 							onChangeAvatar={handleChangeAvatar}
 							onRemoveAvatar={handleRemoveAvatar}

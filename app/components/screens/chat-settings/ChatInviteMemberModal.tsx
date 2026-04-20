@@ -154,7 +154,8 @@ const ChatInviteMemberModal: React.FC<ChatInviteMemberModalProps> = ({
 						borderColor: colors.border,
 						paddingBottom: sheetPaddingBottom,
 						paddingTop: 8,
-						maxHeight: sheetMaxHeight
+						maxHeight: sheetMaxHeight,
+						overflow: 'hidden'
 					}}
 				>
 					{/* Handle */}
@@ -202,11 +203,15 @@ const ChatInviteMemberModal: React.FC<ChatInviteMemberModalProps> = ({
 						/>
 					</View>
 
-					<ScrollView
-						showsVerticalScrollIndicator={false}
-						className='px-4'
-						keyboardShouldPersistTaps='handled'
-					>
+					<View style={{ flex: 1, minHeight: 0 }}>
+						<ScrollView
+							showsVerticalScrollIndicator={false}
+							keyboardShouldPersistTaps='handled'
+							contentContainerStyle={{
+								paddingHorizontal: 16,
+								paddingBottom: 16
+							}}
+						>
 						{isLoadingUsers ? (
 							<View className='py-6 items-center'>
 								<ActivityIndicator
@@ -299,7 +304,8 @@ const ChatInviteMemberModal: React.FC<ChatInviteMemberModalProps> = ({
 								)
 							})
 						)}
-					</ScrollView>
+						</ScrollView>
+					</View>
 				</Animated.View>
 			</View>
 		</AppModal>

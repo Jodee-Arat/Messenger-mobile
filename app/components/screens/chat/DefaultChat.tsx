@@ -20,11 +20,15 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import EntityAvatar from '@/components/ui/EntityAvatar'
+import ProtectedScreenState from '@/components/ui/ProtectedScreenState'
 
 import {
+	getGraphQLErrorMessage,
 	isChatMembershipRevokedError,
-	isDirectContactBlockedError
+	isDirectContactBlockedError,
+	isUnauthorizedError
 } from '@/hooks/useBlockedUsers'
+import { useAuth } from '@/hooks/useAuth'
 import { useChat } from '@/hooks/useChat'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useKeyboardVisible } from '@/hooks/useKeyboardVisible'
@@ -35,7 +39,7 @@ import { useUser } from '@/hooks/useUser'
 
 import { chatEvents } from '@/utils/chatEvents'
 
-import { resetToHome } from '@/navigation/navigate'
+import { resetToAuth, resetToHome } from '@/navigation/navigate'
 
 import ChatInviteMemberModal from '../chat-settings/ChatInviteMemberModal'
 
@@ -69,6 +73,7 @@ const DefaultChat: FC<DefaultChatProps> = ({
 	isSecret
 }) => {
 	const { isLoadingProfile, user } = useCurrentUser()
+	const { isAuthenticated } = useAuth()
 	const { colors } = useTheme()
 	const { t } = useTranslation()
 	const { top } = useSafeAreaInsets()
@@ -119,8 +124,18 @@ const DefaultChat: FC<DefaultChatProps> = ({
 	const resolvedChatName =
 		isGroup && chat?.chatName ? chat.chatName : chatName
 	const resolvedAvatarUrl = isGroup && chat?.avatarUrl ? chat.avatarUrl : null
+	const isCheckingAccess = isLoadingFindChat || isLoadingProfile
 	const isBlockedChatAccess =
-		hasBlockedRuntimeError || isDirectContactBlockedError(findChatError)
+		!isLoadingFindChat &&
+		(hasBlockedRuntimeError || isDirectContactBlockedError(findChatError))
+	const isAuthRequired =
+		!isAuthenticated ||
+		(!isLoadingProfile && !user) ||
+		(!isLoadingFindChat && isUnauthorizedError(findChatError))
+	const isAccessDenied =
+		!isLoadingFindChat &&
+		!isBlockedChatAccess &&
+		isChatMembershipRevokedError(findChatError)
 
 	const handleAccessLoss = useCallback(
 		(scope: 'chat' | 'group') => {
@@ -169,11 +184,9 @@ const DefaultChat: FC<DefaultChatProps> = ({
 	)
 
 	useEffect(() => {
-		if (isBlockedChatAccess) return
-		if (!isChatMembershipRevokedError(findChatError)) return
-
-		handleAccessLoss('chat')
-	}, [findChatError, handleAccessLoss, isBlockedChatAccess])
+		if (!isAuthRequired) return
+		resetToAuth()
+	}, [isAuthRequired])
 
 	useChatDeletedSubscription({
 		variables: {
@@ -433,11 +446,71 @@ const DefaultChat: FC<DefaultChatProps> = ({
 		}
 	}
 
-	if (!isLoadingProfile && user && isBlockedChatAccess) {
+	if (isAuthRequired) {
+		return (
+			<ProtectedScreenState
+				variant='auth'
+				title={t('authRequiredTitle')}
+				description={t('authRequiredDescription')}
+				primaryActionLabel={t('goToLogin')}
+				onPrimaryAction={resetToAuth}
+			/>
+		)
+	}
+
+	if (isCheckingAccess) {
+		return <ChatSkeleton />
+	}
+
+	if (user && isBlockedChatAccess) {
 		return renderBlockedState()
 	}
 
-	if (isLoadingFindChat || isLoadingProfile || !user || !chat) {
+	if (isAccessDenied) {
+		return (
+			<ProtectedScreenState
+				title={t('accessDeniedTitle')}
+				description={t('chatAccessDeniedDescription')}
+				primaryActionLabel={t('goHome')}
+				onPrimaryAction={resetToHome}
+				secondaryActionLabel={navigation.canGoBack() ? t('back') : undefined}
+				onSecondaryAction={navigation.canGoBack() ? () => navigation.goBack() : undefined}
+			/>
+		)
+	}
+
+	if (!isLoadingFindChat && !isLoadingProfile && !chat && findChatError) {
+		return (
+			<ProtectedScreenState
+				variant='error'
+				title={t('screenLoadErrorTitle')}
+				description={
+					getGraphQLErrorMessage(findChatError) ||
+					t('somethingWentWrong')
+				}
+				primaryActionLabel={t('retry')}
+				onPrimaryAction={() => void handleRefresh()}
+				secondaryActionLabel={t('goHome')}
+				onSecondaryAction={resetToHome}
+			/>
+		)
+	}
+
+	if (!isLoadingFindChat && !isLoadingProfile && user && !chat) {
+		return (
+			<ProtectedScreenState
+				variant='error'
+				title={t('screenLoadErrorTitle')}
+				description={t('somethingWentWrong')}
+				primaryActionLabel={t('retry')}
+				onPrimaryAction={() => void handleRefresh()}
+				secondaryActionLabel={t('goHome')}
+				onSecondaryAction={resetToHome}
+			/>
+		)
+	}
+
+	if (!user || !chat) {
 		return <ChatSkeleton />
 	}
 

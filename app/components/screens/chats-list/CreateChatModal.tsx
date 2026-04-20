@@ -1,9 +1,11 @@
 import { zodResolver } from '@hookform/resolvers/zod'
+import type { ImagePickerAsset } from 'expo-image-picker'
 import { Lock, X } from 'lucide-react-native'
 import React, { FC, useEffect, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import {
 	ActivityIndicator,
+	Image,
 	ScrollView,
 	Text,
 	TextInput,
@@ -17,13 +19,14 @@ import Toast from 'react-native-toast-message'
 
 import AppModal from '@/components/ui/AppModal'
 import EntityAvatar from '@/components/ui/EntityAvatar'
-import { Button } from '@/components/ui/button/Button'
 import Checkbox from '@/components/ui/checkbox/Checkbox'
 
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useBottomSheetModalLayout } from '@/hooks/useModalLayout'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { initGroupSessionAction } from '@/hooks/useSecretChat.actions'
+import { pickAvatarImage } from '@/utils/avatar-image-picker'
+import { createImageUploadFile } from '@/utils/create-image-upload-file'
 
 import {
 	createMyKey,
@@ -37,8 +40,9 @@ import {
 
 import {
 	FindAllChatsByGroupQuery,
+	FindAllChatsByGroupDocument,
+	useChangeChatAvatarMutation,
 	useCreateChatMutation,
-	useFindAllUsersQuery,
 	useFindChatByChatIdLazyQuery,
 	useFindGroupByGroupIdQuery,
 	useGetPreKeysLazyQuery,
@@ -70,8 +74,21 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 	const { t } = useTranslation()
 	const { containerPaddingBottom, sheetMaxHeight, sheetPaddingBottom } =
 		useBottomSheetModalLayout(0.85)
-		
+	const [selectedAvatar, setSelectedAvatar] = useState<ImagePickerAsset | null>(
+		null
+	)
+	const [isPickingAvatar, setIsPickingAvatar] = useState(false)
+
 	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+
+	const resetState = () => {
+		form.reset({
+			chatName: '',
+			userIds: [],
+			isSecretChat: false
+		})
+		setSelectedAvatar(null)
+	}
 
 	const closeSheet = (cb?: () => void) => {
 		Animated.timing(slideAnim, {
@@ -83,7 +100,7 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 			cb?.()
 		})
 	}
-	
+
 	const { user: currentUser } = useCurrentUser()
 	const {
 		data,
@@ -99,7 +116,8 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 		mode: 'onChange',
 		defaultValues: {
 			chatName: '',
-			userIds: []
+			userIds: [],
+			isSecretChat: false
 		}
 	})
 
@@ -107,7 +125,6 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 		m => m.user.id !== currentUser?.id
 	)
 	const selectedUserIds = form.watch('userIds')
-	const isSecret = form.watch('isSecretChat')
 	const [getPreKeys] = useGetPreKeysLazyQuery({
 		fetchPolicy: 'network-only'
 	})
@@ -115,6 +132,8 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 		fetchPolicy: 'network-only'
 	})
 	const [sendSharedSecretKey] = useSendSharedSecretKeyMutation()
+	const [changeChatAvatar, { loading: isUploadingAvatar }] =
+		useChangeChatAvatarMutation()
 
 	const bootstrapSecretGroupChat = async (chatId: string) => {
 		try {
@@ -185,13 +204,6 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 	}
 
 	const [createChat, { loading: isLoadingCreate }] = useCreateChatMutation({
-		onCompleted() {
-			Toast.show({
-				type: 'success',
-				text1: t('chatCreated')
-			})
-			closeSheet(() => form.reset())
-		},
 		onError(error) {
 			Toast.show({
 				type: 'error',
@@ -200,6 +212,18 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 			})
 		}
 	})
+	const isBusy = isLoadingCreate || isPickingAvatar || isUploadingAvatar
+
+	const handlePickAvatar = async () => {
+		try {
+			setIsPickingAvatar(true)
+			const result = await pickAvatarImage()
+			if (result.canceled || !result.assets?.[0]) return
+			setSelectedAvatar(result.assets[0])
+		} finally {
+			setIsPickingAvatar(false)
+		}
+	}
 
 	const onSubmit = async (data: createChatSchemaType) => {
 		const result = await createChat({
@@ -215,10 +239,50 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 		})
 
 		const newChatId = result.data?.createChat?.id
+		if (selectedAvatar && newChatId) {
+			try {
+				const avatarFile = createImageUploadFile(
+					selectedAvatar,
+					'chat-avatar.jpg'
+				)
+				await changeChatAvatar({
+					variables: {
+						chatId: newChatId,
+						avatar: avatarFile
+					},
+					refetchQueries: [
+						{
+							query: FindAllChatsByGroupDocument,
+							variables: {
+								groupId,
+								filters: {}
+							}
+						}
+					],
+					awaitRefetchQueries: true
+				})
+			} catch (error) {
+				Toast.show({
+					type: 'error',
+					text1: t('errorUpdatingAvatar'),
+					text2:
+						error instanceof Error
+							? error.message
+							: undefined
+				})
+			}
+		}
+
 		if (data.isSecretChat && newChatId) {
 			markSecretChatBootstrapPending(groupId, newChatId)
 			void bootstrapSecretGroupChat(newChatId)
 		}
+
+		Toast.show({
+			type: 'success',
+			text1: t('chatCreated')
+		})
+		closeSheet(() => resetState())
 	}
 
 	useEffect(() => {
@@ -255,7 +319,8 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 						borderTopWidth: 1,
 						borderColor: colors.border,
 						maxHeight: sheetMaxHeight,
-						paddingBottom: sheetPaddingBottom
+						paddingBottom: sheetPaddingBottom,
+						overflow: 'hidden'
 					}}
 				>
 					{/* Header */}
@@ -282,7 +347,123 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 						</TouchableOpacity>
 					</View>
 
-					<View className='px-5 pt-4 pb-6'>
+					<ScrollView
+						style={{ flex: 1 }}
+						contentContainerStyle={{
+							paddingHorizontal: 20,
+							paddingTop: 16,
+							paddingBottom: 24
+						}}
+						showsVerticalScrollIndicator={false}
+						keyboardShouldPersistTaps='handled'
+					>
+						<View
+							className='rounded-2xl px-4 py-4 mb-4'
+							style={{
+								backgroundColor: colors.cardHover,
+								borderWidth: 1,
+								borderColor: colors.borderLight
+							}}
+						>
+							<View className='flex-row items-center'>
+								<View
+									style={{
+										width: 72,
+										height: 72,
+										borderRadius: 36,
+										overflow: 'hidden',
+										backgroundColor:
+											colors.backgroundTertiary,
+										alignItems: 'center',
+										justifyContent: 'center',
+										marginRight: 16
+									}}
+								>
+									{selectedAvatar?.uri ? (
+										<Image
+											source={{
+												uri: selectedAvatar.uri
+											}}
+											resizeMode='cover'
+											style={{
+												width: '100%',
+												height: '100%'
+											}}
+										/>
+									) : (
+										<Text
+											style={{
+												fontSize: 28,
+												fontWeight: '700',
+												color: colors.textSecondary
+											}}
+										>
+											{form
+												.watch('chatName')
+												?.[0]
+												?.toUpperCase() ?? 'C'}
+										</Text>
+									)}
+								</View>
+
+								<View style={{ flex: 1 }}>
+									<TouchableOpacity
+										activeOpacity={0.7}
+										onPress={() =>
+											void handlePickAvatar()
+										}
+										disabled={isBusy}
+										className='rounded-xl px-4 py-3'
+										style={{
+											backgroundColor: colors.accent,
+											opacity: isBusy ? 0.5 : 1
+										}}
+									>
+										{isPickingAvatar ? (
+											<ActivityIndicator
+												size='small'
+												color='#fff'
+											/>
+										) : (
+											<Text
+												className='text-sm font-semibold text-center'
+												style={{ color: '#fff' }}
+											>
+												{selectedAvatar
+													? t('changeAvatar')
+													: t('uploadAvatar')}
+											</Text>
+										)}
+									</TouchableOpacity>
+
+									{selectedAvatar ? (
+										<TouchableOpacity
+											activeOpacity={0.7}
+											onPress={() =>
+												setSelectedAvatar(null)
+											}
+											disabled={isBusy}
+											className='rounded-xl px-4 py-3 mt-2'
+											style={{
+												backgroundColor:
+													colors.destructiveMuted,
+												opacity: isBusy ? 0.5 : 1
+											}}
+										>
+											<Text
+												className='text-sm font-semibold text-center'
+												style={{
+													color: colors.destructive
+												}}
+											>
+												{t('removeAvatar')}
+											</Text>
+										</TouchableOpacity>
+									) : null}
+								</View>
+							</View>
+						</View>
+
 						{/* Chat name input */}
 						<Controller
 							control={form.control}
@@ -368,12 +549,7 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 								className='my-4'
 							/>
 						) : (
-							<ScrollView
-								className='mb-4'
-								style={{ maxHeight: 240 }}
-								showsVerticalScrollIndicator={false}
-								keyboardShouldPersistTaps='handled'
-							>
+							<View className='mb-4'>
 								{users.map(user => (
 									<Controller
 										key={user.user.id}
@@ -462,14 +638,14 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 										}}
 									/>
 								))}
-							</ScrollView>
+							</View>
 						)}
 
 						{/* Submit */}
 						<TouchableOpacity
 							disabled={
 								!form.formState.isValid ||
-								isLoadingCreate ||
+								isBusy ||
 								isLoadingFindGroup
 							}
 							onPress={form.handleSubmit(onSubmit)}
@@ -477,16 +653,16 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 							className='rounded-xl py-3.5 items-center'
 							style={{
 								backgroundColor:
-									!form.formState.isValid || isLoadingCreate
+									!form.formState.isValid || isBusy
 										? colors.borderLight
 										: colors.accent,
 								opacity:
-									!form.formState.isValid || isLoadingCreate
+									!form.formState.isValid || isBusy
 										? 0.5
 										: 1
 							}}
 						>
-							{isLoadingCreate ? (
+							{isLoadingCreate || isUploadingAvatar ? (
 								<ActivityIndicator size='small' color='#fff' />
 							) : (
 								<Text
@@ -497,7 +673,7 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 								</Text>
 							)}
 						</TouchableOpacity>
-					</View>
+					</ScrollView>
 				</Animated.View>
 			</View>
 		</AppModal>

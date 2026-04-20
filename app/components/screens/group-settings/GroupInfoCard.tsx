@@ -23,6 +23,8 @@ interface GroupInfoCardProps {
 	group?: FindGroupByGroupIdQuery['findGroupByGroupId']
 	isFindGroupByGroupIdLoading: boolean
 	canChangeGroupInfo?: boolean
+	canChangeGroupName?: boolean
+	canChangeGroupAvatar?: boolean
 	onSaveInfo?: (
 		groupName: string,
 		description: string
@@ -36,6 +38,8 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 	group,
 	isFindGroupByGroupIdLoading,
 	canChangeGroupInfo = false,
+	canChangeGroupName = false,
+	canChangeGroupAvatar = false,
 	onSaveInfo,
 	onChangeAvatar,
 	onRemoveAvatar,
@@ -47,6 +51,7 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 	const [editName, setEditName] = useState('')
 	const [editDescription, setEditDescription] = useState('')
 	const [isPicking, setIsPicking] = useState(false)
+	const canEditGroupInfo = canChangeGroupInfo || canChangeGroupName
 
 	useEffect(() => {
 		if (group) {
@@ -56,11 +61,14 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 	}, [group])
 
 	const hasChanges =
-		editName !== (group?.groupName || '') ||
-		editDescription !== (group?.description || '')
+		(canChangeGroupName && editName !== (group?.groupName || '')) ||
+		(canChangeGroupInfo &&
+			editDescription !== (group?.description || ''))
 
 	const handleSave = async () => {
-		if (!editName.trim() || isSaving) return
+		if ((canChangeGroupName && !editName.trim()) || isSaving || !hasChanges)
+			return
+
 		const isSaved = await onSaveInfo?.(
 			editName.trim(),
 			editDescription.trim()
@@ -126,8 +134,8 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 			>
 				<TouchableOpacity
 					className='w-14 h-14 rounded-2xl items-center justify-center mr-4'
-					onPress={canChangeGroupInfo ? handlePickAvatar : undefined}
-					activeOpacity={canChangeGroupInfo ? 0.7 : 1}
+					onPress={canChangeGroupAvatar ? handlePickAvatar : undefined}
+					activeOpacity={canChangeGroupAvatar ? 0.7 : 1}
 					disabled={isPicking || isSaving}
 				>
 					{isPicking ? (
@@ -139,7 +147,7 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 								name={groupName}
 								size='lg'
 							/>
-							{canChangeGroupInfo && (
+							{canChangeGroupAvatar && (
 								<View
 									className='absolute bottom-0 right-0 w-5 h-5 rounded-full items-center justify-center'
 									style={{
@@ -155,7 +163,7 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 				</TouchableOpacity>
 
 				<View className='flex-1'>
-					{isEditing ? (
+					{isEditing && canChangeGroupName ? (
 						<View
 							className='rounded-2xl px-3 py-2'
 							style={{
@@ -200,7 +208,7 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 					)}
 				</View>
 
-				{canChangeGroupInfo && (
+				{canEditGroupInfo && (
 					<TouchableOpacity
 						onPress={() =>
 							isEditing ? void handleSave() : setIsEditing(true)
@@ -222,7 +230,7 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 				)}
 			</View>
 
-			{(isEditing || group?.description) && (
+			{(group?.description || (isEditing && canChangeGroupInfo)) && (
 				<View className='mt-3'>
 					<Text
 						className='text-xs font-semibold uppercase tracking-wider mb-1'
@@ -230,7 +238,7 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 					>
 						{t('description')}
 					</Text>
-					{isEditing ? (
+					{isEditing && canChangeGroupInfo ? (
 						<TextInput
 							value={editDescription}
 							onChangeText={setEditDescription}
@@ -258,7 +266,7 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 				</View>
 			)}
 
-			{isEditing && canChangeGroupInfo && group?.avatarUrl && (
+			{isEditing && canChangeGroupAvatar && group?.avatarUrl && (
 				<TouchableOpacity
 					onPress={handleRemoveAvatar}
 					activeOpacity={0.7}
@@ -281,11 +289,11 @@ const GroupInfoCard: FC<GroupInfoCardProps> = ({
 				</TouchableOpacity>
 			)}
 
-			{isEditing && hasChanges && (
+			{isEditing && canEditGroupInfo && hasChanges && (
 				<TouchableOpacity
 					onPress={() => void handleSave()}
 					activeOpacity={0.7}
-					disabled={isSaving || !editName.trim()}
+					disabled={isSaving || (canChangeGroupName && !editName.trim())}
 					className='flex-row items-center justify-center py-3 rounded-xl mt-3'
 					style={{
 						backgroundColor: colors.accent,

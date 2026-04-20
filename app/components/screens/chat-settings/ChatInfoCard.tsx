@@ -24,6 +24,7 @@ interface ChatInfoCardProps {
 	isLoading: boolean
 	membersCount: number
 	canChangeChatInfo?: boolean
+	canChangeChatName?: boolean
 	canChangeChatAvatar?: boolean
 	onSaveInfo?: (
 		chatName: string,
@@ -39,6 +40,7 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 	isLoading,
 	membersCount,
 	canChangeChatInfo = false,
+	canChangeChatName = false,
 	canChangeChatAvatar = false,
 	onSaveInfo,
 	onChangeAvatar,
@@ -51,6 +53,7 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 	const [editName, setEditName] = useState('')
 	const [editDescription, setEditDescription] = useState('')
 	const [isPickingAvatar, setIsPickingAvatar] = useState(false)
+	const canEditChatInfo = canChangeChatInfo || canChangeChatName
 
 	useEffect(() => {
 		if (chat) {
@@ -60,11 +63,12 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 	}, [chat])
 
 	const hasChanges =
-		editName !== (chat?.chatName || '') ||
-		editDescription !== (chat?.description || '')
+		(canChangeChatName && editName !== (chat?.chatName || '')) ||
+		(canChangeChatInfo && editDescription !== (chat?.description || ''))
 
 	const handleSave = async () => {
-		if (!editName.trim() || isSaving) return
+		if ((canChangeChatName && !editName.trim()) || isSaving || !hasChanges)
+			return
 		const isSaved = await onSaveInfo?.(
 			editName.trim(),
 			editDescription.trim()
@@ -160,7 +164,7 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 				</TouchableOpacity>
 
 				<View className='flex-1'>
-					{isEditing ? (
+					{isEditing && canChangeChatName ? (
 						<View
 							className='rounded-2xl px-3 py-2'
 							style={{
@@ -238,8 +242,8 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 					)}
 				</View>
 
-				{canChangeChatInfo && (
-					<TouchableOpacity
+					{canEditChatInfo && (
+						<TouchableOpacity
 						onPress={() =>
 							isEditing ? void handleSave() : setIsEditing(true)
 						}
@@ -260,7 +264,7 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 				)}
 			</View>
 
-			{(isEditing || chat?.description) && (
+			{(chat?.description || (isEditing && canChangeChatInfo)) && (
 				<View className='mt-3'>
 					<Text
 						className='text-xs font-semibold uppercase tracking-wider mb-1'
@@ -268,7 +272,7 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 					>
 						{t('description')}
 					</Text>
-					{isEditing ? (
+					{isEditing && canChangeChatInfo ? (
 						<TextInput
 							value={editDescription}
 							onChangeText={setEditDescription}
@@ -298,7 +302,7 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 				</View>
 			)}
 
-			{isEditing && canChangeChatAvatar && chat?.avatarUrl && (
+			{canChangeChatAvatar && chat?.avatarUrl && (
 				<TouchableOpacity
 					onPress={handleRemoveAvatar}
 					activeOpacity={0.7}
@@ -321,15 +325,18 @@ const ChatInfoCard: FC<ChatInfoCardProps> = ({
 				</TouchableOpacity>
 			)}
 
-			{isEditing && hasChanges && (
+			{isEditing && canEditChatInfo && hasChanges && (
 				<TouchableOpacity
 					onPress={() => void handleSave()}
 					activeOpacity={0.7}
-					disabled={isSaving || !editName.trim()}
+					disabled={isSaving || (canChangeChatName && !editName.trim())}
 					className='flex-row items-center justify-center py-3 rounded-xl mt-3'
 					style={{
 						backgroundColor: colors.accent,
-						opacity: isSaving || !editName.trim() ? 0.5 : 1
+						opacity:
+							isSaving || (canChangeChatName && !editName.trim())
+								? 0.5
+								: 1
 					}}
 				>
 					{isSaving ? (

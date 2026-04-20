@@ -13,6 +13,11 @@ export const CHAT_MEMBERSHIP_REVOKED_BACKEND_MESSAGE =
 	'Chat not found or user is not a member'
 export const GROUP_MEMBERSHIP_REVOKED_BACKEND_MESSAGE =
 	'Group not found or user is not a member'
+export const UNAUTHORIZED_BACKEND_MESSAGES = [
+	'Unauthorized',
+	'User is not authorized',
+	'Пользователь не авторизован'
+]
 
 type UseBlockedUsersOptions = Omit<
 	QueryHookOptions<GetBlockedUsersQuery, GetBlockedUsersQueryVariables>,
@@ -72,6 +77,11 @@ export const isGroupMembershipRevokedError = (error: unknown) =>
 	getGraphQLErrorMessage(error).includes(
 		GROUP_MEMBERSHIP_REVOKED_BACKEND_MESSAGE
 	)
+
+export const isUnauthorizedError = (error: unknown) => {
+	const message = getGraphQLErrorMessage(error)
+	return UNAUTHORIZED_BACKEND_MESSAGES.some(item => message.includes(item))
+}
 
 export const useBlockedUsers = (options?: UseBlockedUsersOptions) => {
 	const query = useGetBlockedUsersQuery({

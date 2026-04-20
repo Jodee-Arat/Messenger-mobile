@@ -333,6 +333,33 @@ const translations: TranslationMap = {
 		en: 'Enter the 6-digit code from your authenticator app'
 	},
 	backToLogin: { ru: 'Вернуться ко входу', en: 'Back to login' },
+	authRequiredTitle: {
+		ru: 'Требуется авторизация',
+		en: 'Authentication required'
+	},
+	authRequiredDescription: {
+		ru: 'Эта страница доступна только после входа в аккаунт.',
+		en: 'This screen is only available after signing in.'
+	},
+	goToLogin: { ru: 'Перейти ко входу', en: 'Go to login' },
+	accessDeniedTitle: { ru: 'Нет доступа', en: 'Access denied' },
+	groupAccessDeniedDescription: {
+		ru: 'Вы больше не состоите в этой группе или группа больше недоступна.',
+		en: 'You are no longer a member of this group or the group is no longer available.'
+	},
+	chatAccessDeniedDescription: {
+		ru: 'Вы больше не состоите в этом чате или чат больше недоступен.',
+		en: 'You are no longer a member of this chat or the chat is no longer available.'
+	},
+	settingsAccessDeniedDescription: {
+		ru: 'У вас больше нет доступа к настройкам этого раздела.',
+		en: 'You no longer have access to these settings.'
+	},
+	goHome: { ru: 'На главную', en: 'Go home' },
+	screenLoadErrorTitle: {
+		ru: 'Не удалось открыть экран',
+		en: 'Failed to open screen'
+	},
 
 	/* ─── Favorites ─── */
 	editProfileBtn: { ru: 'Редактировать профиль', en: 'Edit profile' },

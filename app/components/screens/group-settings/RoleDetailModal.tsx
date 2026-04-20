@@ -61,9 +61,10 @@ const RoleDetailModal: React.FC<RoleDetailModalProps> = ({
 	} = useBottomSheetModalLayout(0.8)
 	const slideAnim = useRef(new Animated.Value(windowHeight)).current
 	const [showModal, setShowModal] = React.useState(false)
+	const roleId = role?.id ?? null
 
 	React.useEffect(() => {
-		if (role) {
+		if (roleId && !showModal) {
 			setShowModal(true)
 			slideAnim.setValue(windowHeight)
 			Animated.spring(slideAnim, {
@@ -72,8 +73,14 @@ const RoleDetailModal: React.FC<RoleDetailModalProps> = ({
 				tension: 65,
 				friction: 11
 			}).start()
+			return
 		}
-	}, [role, slideAnim, windowHeight])
+
+		if (!roleId && showModal) {
+			setShowModal(false)
+			slideAnim.setValue(windowHeight)
+		}
+	}, [roleId, showModal, slideAnim, windowHeight])
 
 	const closeSheet = () => {
 		Animated.timing(slideAnim, {
@@ -110,7 +117,8 @@ const RoleDetailModal: React.FC<RoleDetailModalProps> = ({
 						borderColor: colors.border,
 						paddingBottom: sheetPaddingBottom,
 						paddingTop: 8,
-						maxHeight: sheetMaxHeight
+						maxHeight: sheetMaxHeight,
+						overflow: 'hidden'
 					}}
 				>
 					{/* Handle */}
@@ -126,7 +134,11 @@ const RoleDetailModal: React.FC<RoleDetailModalProps> = ({
 					</View>
 
 					{role && (
-						<ScrollView showsVerticalScrollIndicator={false}>
+						<View style={{ flex: 1, minHeight: 0 }}>
+							<ScrollView
+								showsVerticalScrollIndicator={false}
+								contentContainerStyle={{ paddingBottom: 16 }}
+							>
 							{/* Role header */}
 							<View className='px-5 flex-row items-center mb-4'>
 								<View
@@ -302,7 +314,8 @@ const RoleDetailModal: React.FC<RoleDetailModalProps> = ({
 									))
 								)}
 							</View>
-						</ScrollView>
+							</ScrollView>
+						</View>
 					)}
 				</Animated.View>
 			</View>

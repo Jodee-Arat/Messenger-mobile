@@ -13,12 +13,14 @@ interface PinnedMessageProps {
 	pinnedMessage: MessageType | null
 	setPinnedMessage: (message: MessageType | null) => void
 	chatId: string
+	canPinMessages?: boolean
 }
 
 const PinnedMessage: FC<PinnedMessageProps> = ({
 	pinnedMessage,
 	setPinnedMessage,
-	chatId
+	chatId,
+	canPinMessages = true
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
@@ -79,20 +81,22 @@ const PinnedMessage: FC<PinnedMessageProps> = ({
 				)}
 			</View>
 
-			<TouchableOpacity
-				onPress={() => unpinMessage({ variables: { chatId } })}
-				disabled={isUnpinning}
-				className='ml-2 p-1'
-			>
-				{isUnpinning ? (
-					<ActivityIndicator
-						size='small'
-						color={colors.accent}
-					/>
-				) : (
-					<X size={18} color={colors.textSecondary} />
-				)}
-			</TouchableOpacity>
+			{canPinMessages && (
+				<TouchableOpacity
+					onPress={() => unpinMessage({ variables: { chatId } })}
+					disabled={isUnpinning}
+					className='ml-2 p-1'
+				>
+					{isUnpinning ? (
+						<ActivityIndicator
+							size='small'
+							color={colors.accent}
+						/>
+					) : (
+						<X size={18} color={colors.textSecondary} />
+					)}
+				</TouchableOpacity>
+			)}
 		</View>
 	)
 }

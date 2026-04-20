@@ -32,6 +32,7 @@ interface ChatToolbarProp {
 	) => void
 	userId?: string
 	canEditMessages?: boolean
+	canDeleteMessages?: boolean
 	canPinMessages?: boolean
 	groupId?: string | null
 }
@@ -49,6 +50,7 @@ const ChatToolbar: FC<ChatToolbarProp> = ({
 	startEdit,
 	userId,
 	canEditMessages = true,
+	canDeleteMessages = true,
 	canPinMessages = true,
 	groupId
 }) => {
@@ -212,14 +214,16 @@ const ChatToolbar: FC<ChatToolbarProp> = ({
 							)}
 						</>
 					)}
-					<TouchableOpacity
-						onPress={handleRemoveMessages}
-						activeOpacity={0.6}
-						className='w-10 h-10 rounded-full items-center justify-center'
-						style={{ backgroundColor: colors.destructiveMuted }}
-					>
-						<Trash2 size={20} color={colors.destructive} />
-					</TouchableOpacity>
+					{canDeleteMessages && (
+						<TouchableOpacity
+							onPress={handleRemoveMessages}
+							activeOpacity={0.6}
+							className='w-10 h-10 rounded-full items-center justify-center'
+							style={{ backgroundColor: colors.destructiveMuted }}
+						>
+							<Trash2 size={20} color={colors.destructive} />
+						</TouchableOpacity>
+					)}
 				</View>
 			</View>
 		</View>

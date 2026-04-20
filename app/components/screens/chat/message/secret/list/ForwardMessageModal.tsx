@@ -234,7 +234,8 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 							borderWidth: 1,
 							borderColor: colors.borderLight,
 							maxHeight: cardMaxHeight,
-							marginBottom: cardMarginBottom
+							marginBottom: cardMarginBottom,
+							overflow: 'hidden'
 						}}
 					>
 						<Text
@@ -264,90 +265,108 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 						/>
 
 						{/* Chats list */}
-						{isLoadingFindAllChatsByUser ? (
-							<ActivityIndicator size='small' className='my-3' />
-						) : (
-							<ScrollView className='max-h-[50vh]'>
-								{chats.map(chat => (
-									<Controller
-										key={chat.id}
-										control={form.control}
-										name='targetChatsId'
-										render={({ field }) => (
-											<TouchableOpacity
-												className='flex-row items-center mb-3'
-												activeOpacity={0.7}
-												onPress={() => {
-													const checked =
-														!field.value.includes(
-															chat.id
+						<View style={{ flex: 1, minHeight: 0 }}>
+							{isLoadingFindAllChatsByUser ? (
+								<ActivityIndicator
+									size='small'
+									className='my-3'
+								/>
+							) : (
+								<ScrollView
+									showsVerticalScrollIndicator={false}
+									keyboardShouldPersistTaps='handled'
+								>
+									{chats.map(chat => (
+										<Controller
+											key={chat.id}
+											control={form.control}
+											name='targetChatsId'
+											render={({ field }) => (
+												<TouchableOpacity
+													className='flex-row items-center mb-3'
+													activeOpacity={0.7}
+													onPress={() => {
+														const checked =
+															!field.value.includes(
+																chat.id
+															)
+														field.onChange(
+															checked
+																? [
+																		...field.value,
+																		chat.id
+																	]
+																: field.value.filter(
+																		(
+																			id: string
+																		) =>
+																			id !==
+																			chat.id
+																	)
 														)
-													field.onChange(
-														checked
-															? [
+													}}
+												>
+													<Checkbox
+														checked={field.value.includes(
+															chat.id
+														)}
+														onCheckedChange={(
+															checked: boolean
+														) => {
+															if (checked) {
+																field.onChange([
 																	...field.value,
 																	chat.id
-																]
-															: field.value.filter(
-																	(
-																		id: string
-																	) =>
-																		id !==
-																		chat.id
+																])
+															} else {
+																field.onChange(
+																	field.value.filter(
+																		(
+																			id: string
+																		) =>
+																			id !==
+																			chat.id
+																	)
 																)
-													)
-												}}
-											>
-												<Checkbox
-													checked={field.value.includes(
-														chat.id
-													)}
-													onCheckedChange={(
-														checked: boolean
-													) => {
-														if (checked) {
-															field.onChange([
-																...field.value,
-																chat.id
-															])
-														} else {
-															field.onChange(
-																field.value.filter(
-																	(
-																		id: string
-																	) =>
-																		id !==
-																		chat.id
-																)
-															)
-														}
-													}}
-												/>
+															}
+														}}
+													/>
 
-												<Image
-													source={{
-														uri:
-															chat.avatarUrl ||
-															'https://placehold.co/50'
-													}}
-													className='w-10 h-10 rounded-full ml-3'
-												/>
-												<View className='ml-3 flex-1'>
-													<Text className='text-base font-medium' style={{ color: colors.text }}>
-														{chat.chatName}
-													</Text>
-													<Text className='text-xs' style={{ color: colors.textSecondary }}>
-														{chat.lastMessage?.text
-															? `${chat.lastMessage.user.username}: ${chat.lastMessage.text}`
-															: t('noMessages')}
-													</Text>
-												</View>
-											</TouchableOpacity>
-										)}
-									/>
-								))}
-							</ScrollView>
-						)}
+													<Image
+														source={{
+															uri:
+																chat.avatarUrl ||
+																'https://placehold.co/50'
+														}}
+														className='w-10 h-10 rounded-full ml-3'
+													/>
+													<View className='ml-3 flex-1'>
+														<Text
+															className='text-base font-medium'
+															style={{ color: colors.text }}
+														>
+															{chat.chatName}
+														</Text>
+														<Text
+															className='text-xs'
+															style={{
+																color: colors.textSecondary
+															}}
+														>
+															{chat.lastMessage?.text
+																? `${chat.lastMessage.user.username}: ${chat.lastMessage.text}`
+																: t(
+																		'noMessages'
+																	)}
+														</Text>
+													</View>
+												</TouchableOpacity>
+											)}
+										/>
+									))}
+								</ScrollView>
+							)}
+						</View>
 
 						{/* Submit button */}
 						<Button

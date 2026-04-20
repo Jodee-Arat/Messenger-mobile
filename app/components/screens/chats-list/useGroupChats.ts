@@ -306,8 +306,20 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 				}
 
 				setAllChatsRaw(prev => {
-					if (prev.some(chat => chat.id === addedChat.id)) return prev
-					return sortChatsWithPinned([addedChat, ...prev])
+					const existingIndex = prev.findIndex(
+						chat => chat.id === addedChat.id
+					)
+
+					if (existingIndex === -1) {
+						return sortChatsWithPinned([addedChat, ...prev])
+					}
+
+					const next = [...prev]
+					next[existingIndex] = {
+						...next[existingIndex],
+						...addedChat
+					}
+					return sortChatsWithPinned(next)
 				})
 			} catch (error) {
 				Toast.show({

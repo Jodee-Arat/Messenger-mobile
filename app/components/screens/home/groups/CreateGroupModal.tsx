@@ -1,9 +1,11 @@
 import { zodResolver } from '@hookform/resolvers/zod'
+import type { ImagePickerAsset } from 'expo-image-picker'
 import { X } from 'lucide-react-native'
-import { FC, useEffect, useRef, useMemo } from 'react'
+import { FC, useEffect, useRef, useMemo, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import {
 	ActivityIndicator,
+	Image,
 	ScrollView,
 	Text,
 	TextInput,
@@ -23,7 +25,12 @@ import { useBottomSheetModalLayout } from '@/hooks/useModalLayout'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useUser } from '@/hooks/useUser'
 
+import { pickAvatarImage } from '@/utils/avatar-image-picker'
+import { createImageUploadFile } from '@/utils/create-image-upload-file'
+
 import {
+	FindAllGroupsByUserDocument,
+	useChangeGroupAvatarMutation,
 	useCreateGroupMutation,
 	useGetFriendsQuery
 } from '@/graphql/generated/output'
@@ -45,8 +52,17 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 	const { containerPaddingBottom, sheetMaxHeight, sheetPaddingBottom } =
 		useBottomSheetModalLayout(0.8)
 	const { userId } = useUser()
+	const [selectedAvatar, setSelectedAvatar] = useState<ImagePickerAsset | null>(
+		null
+	)
+	const [isPickingAvatar, setIsPickingAvatar] = useState(false)
 
 	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+
+	const resetState = () => {
+		form.reset({ groupName: '', userIds: [] })
+		setSelectedAvatar(null)
+	}
 
 	const closeSheet = (cb?: () => void) => {
 		Animated.timing(slideAnim, {
@@ -95,10 +111,6 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 	})
 
 	const [createGroup, { loading: isCreating }] = useCreateGroupMutation({
-		onCompleted() {
-			Toast.show({ type: 'success', text1: t('groupCreated') })
-			closeSheet(() => form.reset())
-		},
 		onError(err) {
 			Toast.show({
 				type: 'error',
@@ -107,6 +119,8 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 			})
 		}
 	})
+	const [changeGroupAvatar, { loading: isUploadingAvatar }] =
+		useChangeGroupAvatarMutation()
 
 	useEffect(() => {
 		if (isOpen) {
@@ -121,6 +135,59 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 	}, [isOpen])
 
 	const selectedUserIds = form.watch('userIds')
+	const isBusy = isCreating || isPickingAvatar || isUploadingAvatar
+
+	const handlePickAvatar = async () => {
+		try {
+			setIsPickingAvatar(true)
+			const result = await pickAvatarImage()
+			if (result.canceled || !result.assets?.[0]) return
+			setSelectedAvatar(result.assets[0])
+		} finally {
+			setIsPickingAvatar(false)
+		}
+	}
+
+	const handleSubmit = async (data: createGroupSchemaType) => {
+		const result = await createGroup({
+			variables: {
+				data: {
+					groupName: data.groupName,
+					userIds: data.userIds
+				}
+			}
+		})
+
+		const createdGroupId = result.data?.createGroup?.id
+		if (selectedAvatar && createdGroupId) {
+			try {
+				const avatarFile = createImageUploadFile(
+					selectedAvatar,
+					'group-avatar.jpg'
+				)
+				await changeGroupAvatar({
+					variables: {
+						groupId: createdGroupId,
+						avatar: avatarFile
+					},
+					refetchQueries: [FindAllGroupsByUserDocument],
+					awaitRefetchQueries: true
+				})
+			} catch (error) {
+				Toast.show({
+					type: 'error',
+					text1: t('errorUpdatingAvatar'),
+					text2:
+						error instanceof Error
+							? error.message
+							: undefined
+				})
+			}
+		}
+
+		Toast.show({ type: 'success', text1: t('groupCreated') })
+		closeSheet(() => resetState())
+	}
 
 	return (
 		<AppModal
@@ -151,7 +218,8 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 						borderTopWidth: 1,
 						borderColor: colors.border,
 						maxHeight: sheetMaxHeight,
-						paddingBottom: sheetPaddingBottom
+						paddingBottom: sheetPaddingBottom,
+						overflow: 'hidden'
 					}}
 				>
 					<View
@@ -177,7 +245,123 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 						</TouchableOpacity>
 					</View>
 
-					<View className='px-5 pt-4 pb-6'>
+					<ScrollView
+						style={{ flex: 1 }}
+						contentContainerStyle={{
+							paddingHorizontal: 20,
+							paddingTop: 16,
+							paddingBottom: 24
+						}}
+						showsVerticalScrollIndicator={false}
+						keyboardShouldPersistTaps='handled'
+					>
+						<View
+							className='rounded-2xl px-4 py-4 mb-4'
+							style={{
+								backgroundColor: colors.cardHover,
+								borderWidth: 1,
+								borderColor: colors.borderLight
+							}}
+						>
+							<View className='flex-row items-center'>
+								<View
+									style={{
+										width: 72,
+										height: 72,
+										borderRadius: 36,
+										overflow: 'hidden',
+										backgroundColor:
+											colors.backgroundTertiary,
+										alignItems: 'center',
+										justifyContent: 'center',
+										marginRight: 16
+									}}
+								>
+									{selectedAvatar?.uri ? (
+										<Image
+											source={{
+												uri: selectedAvatar.uri
+											}}
+											resizeMode='cover'
+											style={{
+												width: '100%',
+												height: '100%'
+											}}
+										/>
+									) : (
+										<Text
+											style={{
+												fontSize: 28,
+												fontWeight: '700',
+												color: colors.textSecondary
+											}}
+										>
+											{form
+												.watch('groupName')
+												?.[0]
+												?.toUpperCase() ?? 'G'}
+										</Text>
+									)}
+								</View>
+
+								<View style={{ flex: 1 }}>
+									<TouchableOpacity
+										activeOpacity={0.7}
+										onPress={() =>
+											void handlePickAvatar()
+										}
+										disabled={isBusy}
+										className='rounded-xl px-4 py-3'
+										style={{
+											backgroundColor: colors.accent,
+											opacity: isBusy ? 0.5 : 1
+										}}
+									>
+										{isPickingAvatar ? (
+											<ActivityIndicator
+												size='small'
+												color='#fff'
+											/>
+										) : (
+											<Text
+												className='text-sm font-semibold text-center'
+												style={{ color: '#fff' }}
+											>
+												{selectedAvatar
+													? t('changeAvatar')
+													: t('uploadAvatar')}
+											</Text>
+										)}
+									</TouchableOpacity>
+
+									{selectedAvatar ? (
+										<TouchableOpacity
+											activeOpacity={0.7}
+											onPress={() =>
+												setSelectedAvatar(null)
+											}
+											disabled={isBusy}
+											className='rounded-xl px-4 py-3 mt-2'
+											style={{
+												backgroundColor:
+													colors.destructiveMuted,
+												opacity: isBusy ? 0.5 : 1
+											}}
+										>
+											<Text
+												className='text-sm font-semibold text-center'
+												style={{
+													color: colors.destructive
+												}}
+											>
+												{t('removeAvatar')}
+											</Text>
+										</TouchableOpacity>
+									) : null}
+								</View>
+							</View>
+						</View>
+
 						<Controller
 							control={form.control}
 							name='groupName'
@@ -226,11 +410,7 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 								{t('noFriendsForGroup')}
 							</Text>
 						) : (
-							<ScrollView
-								style={{ maxHeight: 220 }}
-								showsVerticalScrollIndicator={false}
-								keyboardShouldPersistTaps='handled'
-							>
+							<View>
 								{friends.map(u => (
 									<Controller
 										key={u.id}
@@ -306,35 +486,26 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 										}}
 									/>
 								))}
-							</ScrollView>
+							</View>
 						)}
 
 						<TouchableOpacity
-							disabled={!form.formState.isValid || isCreating}
-							onPress={form.handleSubmit(data =>
-								createGroup({
-									variables: {
-										data: {
-											groupName: data.groupName,
-											userIds: data.userIds
-										}
-									}
-								})
-							)}
+							disabled={!form.formState.isValid || isBusy}
+							onPress={form.handleSubmit(handleSubmit)}
 							activeOpacity={0.8}
 							className='rounded-xl py-3.5 items-center mt-4'
 							style={{
 								backgroundColor:
-									!form.formState.isValid || isCreating
+									!form.formState.isValid || isBusy
 										? 'hsl(260, 30%, 30%)'
 										: colors.accent,
 								opacity:
-									!form.formState.isValid || isCreating
+									!form.formState.isValid || isBusy
 										? 0.5
 										: 1
 							}}
 						>
-							{isCreating ? (
+							{isCreating || isUploadingAvatar ? (
 								<ActivityIndicator size='small' color='#fff' />
 							) : (
 								<Text
@@ -345,7 +516,7 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 								</Text>
 							)}
 						</TouchableOpacity>
-					</View>
+					</ScrollView>
 				</Animated.View>
 			</View>
 		</AppModal>

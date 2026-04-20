@@ -208,7 +208,8 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 							borderWidth: 1,
 							borderColor: colors.borderLight,
 							maxHeight: cardMaxHeight,
-							marginBottom: cardMarginBottom
+							marginBottom: cardMarginBottom,
+							overflow: 'hidden'
 						}}
 					>
 						<Text
@@ -245,120 +246,128 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 							{t('writeMessage')}
 						</Text>
 
-						{isLoadingFindAllChatsByUser ? (
-							<ActivityIndicator size='small' className='my-3' />
-						) : (
-							<ScrollView className='max-h-[50vh]'>
-								{chats.length === 0 && (
-									<View className='py-4 items-center'>
-										<Text
-											style={{
-												color: colors.textSecondary
-											}}
-										>
-											{t('noChats')}
-										</Text>
-									</View>
-								)}
-								{chats.map(chat => {
-									const preview = getChatPreview(chat, userId)
+						<View style={{ flex: 1, minHeight: 0 }}>
+							{isLoadingFindAllChatsByUser ? (
+								<ActivityIndicator
+									size='small'
+									className='my-3'
+								/>
+							) : (
+								<ScrollView
+									showsVerticalScrollIndicator={false}
+									keyboardShouldPersistTaps='handled'
+								>
+									{chats.length === 0 && (
+										<View className='py-4 items-center'>
+											<Text
+												style={{
+													color: colors.textSecondary
+												}}
+											>
+												{t('noChats')}
+											</Text>
+										</View>
+									)}
+									{chats.map(chat => {
+										const preview = getChatPreview(chat, userId)
 
-									return (
-										<Controller
-											key={chat.id}
-											control={form.control}
-											name='targetChatsId'
-											render={({ field }) => (
-												<TouchableOpacity
-													className='flex-row items-center mb-3'
-													activeOpacity={0.7}
-													onPress={() => {
-														const checked =
-															!field.value.includes(
-																chat.id
+										return (
+											<Controller
+												key={chat.id}
+												control={form.control}
+												name='targetChatsId'
+												render={({ field }) => (
+													<TouchableOpacity
+														className='flex-row items-center mb-3'
+														activeOpacity={0.7}
+														onPress={() => {
+															const checked =
+																!field.value.includes(
+																	chat.id
+																)
+															field.onChange(
+																checked
+																	? [
+																			...field.value,
+																			chat.id
+																		]
+																	: field.value.filter(
+																			(
+																				id: string
+																			) =>
+																				id !==
+																				chat.id
+																		)
 															)
-														field.onChange(
-															checked
-																? [
+														}}
+													>
+														<Checkbox
+															checked={field.value.includes(
+																chat.id
+															)}
+															onCheckedChange={(
+																checked: boolean
+															) => {
+																if (checked) {
+																	field.onChange([
 																		...field.value,
 																		chat.id
-																	]
-																: field.value.filter(
-																		(
-																			id: string
-																		) =>
-																			id !==
-																			chat.id
+																	])
+																} else {
+																	field.onChange(
+																		field.value.filter(
+																			(
+																				id: string
+																			) =>
+																				id !==
+																				chat.id
+																		)
 																	)
-														)
-													}}
-												>
-													<Checkbox
-														checked={field.value.includes(
-															chat.id
-														)}
-														onCheckedChange={(
-															checked: boolean
-														) => {
-															if (checked) {
-																field.onChange([
-																	...field.value,
-																	chat.id
-																])
-															} else {
-																field.onChange(
-																	field.value.filter(
-																		(
-																			id: string
-																		) =>
-																			id !==
-																			chat.id
-																	)
-																)
-															}
-														}}
-													/>
+																}
+															}}
+														/>
 
-													<Image
-														source={{
-															uri:
-																preview.avatarUrl ||
-																'https://placehold.co/50'
-														}}
-														className='w-10 h-10 rounded-full ml-3'
-													/>
-													<View className='ml-3 flex-1'>
-														<Text
-															className='text-base font-medium'
-															numberOfLines={1}
-															style={{
-																color: colors.text
+														<Image
+															source={{
+																uri:
+																	preview.avatarUrl ||
+																	'https://placehold.co/50'
 															}}
-														>
-															{preview.title}
-														</Text>
-														<Text
-															className='text-xs'
-															numberOfLines={1}
-															style={{
-																color: colors.textSecondary
-															}}
-														>
-															{chat.lastMessage
-																?.text
-																? `${chat.lastMessage.user.username}: ${chat.lastMessage.text}`
-																: t(
-																		'noMessages'
-																	)}
-														</Text>
-													</View>
-												</TouchableOpacity>
-											)}
-										/>
-									)
-								})}
-							</ScrollView>
-						)}
+															className='w-10 h-10 rounded-full ml-3'
+														/>
+														<View className='ml-3 flex-1'>
+															<Text
+																className='text-base font-medium'
+																numberOfLines={1}
+																style={{
+																	color: colors.text
+																}}
+															>
+																{preview.title}
+															</Text>
+															<Text
+																className='text-xs'
+																numberOfLines={1}
+																style={{
+																	color: colors.textSecondary
+																}}
+															>
+																{chat.lastMessage
+																	?.text
+																	? `${chat.lastMessage.user.username}: ${chat.lastMessage.text}`
+																	: t(
+																			'noMessages'
+																		)}
+															</Text>
+														</View>
+													</TouchableOpacity>
+												)}
+											/>
+										)
+									})}
+								</ScrollView>
+							)}
+						</View>
 
 						<Button
 							onPress={form.handleSubmit(onSubmit)}

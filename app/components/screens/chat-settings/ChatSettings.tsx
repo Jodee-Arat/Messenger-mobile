@@ -11,13 +11,19 @@ import {
 	View
 } from 'react-native'
 
+import ProtectedScreenState from '@/components/ui/ProtectedScreenState'
 import SettingsSkeleton from '@/components/ui/SettingsSkeleton'
 
-import { isChatMembershipRevokedError } from '@/hooks/useBlockedUsers'
+import {
+	getGraphQLErrorMessage,
+	isChatMembershipRevokedError,
+	isUnauthorizedError
+} from '@/hooks/useBlockedUsers'
+import { useAuth } from '@/hooks/useAuth'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 import { useUser } from '@/hooks/useUser'
-import { resetToHome } from '@/navigation/navigate'
+import { resetToAuth, resetToHome } from '@/navigation/navigate'
 
 import { chatEvents } from '@/utils/chatEvents'
 
@@ -48,6 +54,7 @@ const ChatSettings = () => {
 	const navigation = useTypedNavigation()
 	const { chatId } = route.params as ChatSettingsRouteParams
 	const { userId } = useUser()
+	const { isAuthenticated } = useAuth()
 	const handledAccessLossRef = useRef(false)
 
 	const { colors } = useTheme()
@@ -122,11 +129,6 @@ const ChatSettings = () => {
 		}
 	}, [refreshChatSettings])
 
-	useEffect(() => {
-		if (!isChatMembershipRevokedError(chatError)) return
-		handleChatAccessLoss('chat')
-	}, [chatError, handleChatAccessLoss])
-
 	useFocusEffect(
 		useCallback(() => {
 			void refreshChatSettings()
@@ -154,6 +156,19 @@ const ChatSettings = () => {
 		}
 	})
 
+	const isCheckingAccess = isLoadingMemberRole || isLoadingChat
+	const isAuthRequired =
+		!isAuthenticated ||
+		(!isCheckingAccess && isUnauthorizedError(chatError))
+	const isAccessDenied =
+		!isCheckingAccess && isChatMembershipRevokedError(chatError)
+	const loadError = !isCheckingAccess && !isAccessDenied ? chatError : null
+
+	useEffect(() => {
+		if (!isAuthRequired) return
+		resetToAuth()
+	}, [isAuthRequired])
+
 	// ── Permission checks ────────────────────────────────────
 	const isCreator = !!currentRole?.isCreator
 	const isDM = chat && !chat.isGroup
@@ -178,6 +193,10 @@ const ChatSettings = () => {
 		currentRole?.permissions?.includes(ChatPermissionEnum.ChangeChatInfo) ||
 		currentRole?.isCreator
 
+	const canChangeChatName =
+		currentRole?.permissions?.includes(ChatPermissionEnum.ChangeChatName) ||
+		currentRole?.isCreator
+
 	const canChangeChatAvatar =
 		currentRole?.permissions?.includes(
 			ChatPermissionEnum.ChangeChatAvatar
@@ -191,6 +210,12 @@ const ChatSettings = () => {
 	const canRemoveMembers =
 		currentRole?.permissions?.includes(ChatPermissionEnum.RemoveMembers) ||
 		currentRole?.isCreator
+
+	const canAccessRoles =
+		!!canManageRoles ||
+		!!canCreateRoles ||
+		!!canDeleteRoles ||
+		!!canChangeRoleInfo
 
 	const isSavingChatInfo =
 		isChangingInfo || isChangingAvatar || isRemovingAvatar
@@ -239,10 +264,69 @@ const ChatSettings = () => {
 		])
 	}
 
+	if (isAuthRequired) {
+		return (
+			<ProtectedScreenState
+				variant='auth'
+				title={t('authRequiredTitle')}
+				description={t('authRequiredDescription')}
+				primaryActionLabel={t('goToLogin')}
+				onPrimaryAction={resetToAuth}
+			/>
+		)
+	}
+
+	if (isCheckingAccess) {
+		return <SettingsSkeleton />
+	}
+
+	if (isAccessDenied) {
+		return (
+			<ProtectedScreenState
+				title={t('accessDeniedTitle')}
+				description={t('settingsAccessDeniedDescription')}
+				primaryActionLabel={t('goHome')}
+				onPrimaryAction={resetToHome}
+				secondaryActionLabel={navigation.canGoBack() ? t('back') : undefined}
+				onSecondaryAction={navigation.canGoBack() ? () => navigation.goBack() : undefined}
+			/>
+		)
+	}
+
+	if (!isLoadingMemberRole && !isLoadingChat && loadError && !chat) {
+		return (
+			<ProtectedScreenState
+				variant='error'
+				title={t('screenLoadErrorTitle')}
+				description={
+					getGraphQLErrorMessage(loadError) ||
+					t('somethingWentWrong')
+				}
+				primaryActionLabel={t('retry')}
+				onPrimaryAction={() => void handleRefresh()}
+				secondaryActionLabel={t('goHome')}
+				onSecondaryAction={resetToHome}
+			/>
+		)
+	}
+
+	if (!isLoadingMemberRole && !isLoadingChat && !chat) {
+		return (
+			<ProtectedScreenState
+				title={t('accessDeniedTitle')}
+				description={t('settingsAccessDeniedDescription')}
+				primaryActionLabel={t('goHome')}
+				onPrimaryAction={resetToHome}
+				secondaryActionLabel={navigation.canGoBack() ? t('back') : undefined}
+				onSecondaryAction={navigation.canGoBack() ? () => navigation.goBack() : undefined}
+			/>
+		)
+	}
+
 	return (
 		<View className='flex-1' style={{ backgroundColor: colors.background }}>
 			<ChatSettingsHeader chatName={chatName} />
-			{isLoadingMemberRole || isLoadingChat ? (
+			{isCheckingAccess ? (
 				<SettingsSkeleton />
 			) : (
 				<>
@@ -265,6 +349,7 @@ const ChatSettings = () => {
 							isLoading={isLoadingChat}
 							membersCount={members.length}
 							canChangeChatInfo={!!canChangeChatInfo}
+							canChangeChatName={!!canChangeChatName}
 							canChangeChatAvatar={!!canChangeChatAvatar}
 							onSaveInfo={handleChangeChatInfo}
 							onChangeAvatar={handleChangeAvatar}
@@ -342,13 +427,12 @@ const ChatSettings = () => {
 							</View>
 						)}
 
-						{!isDM && (
+						{!isDM && canAccessRoles && (
 							<ChatRolesSection
 								roles={roles}
 								permissions={PERMISSIONS}
 								onRolePress={setSelectedRole}
 								onCreatePress={() => setIsCreateRoleOpen(true)}
-								canManageRoles={!!canManageRoles}
 								canCreateRoles={!!canCreateRoles}
 							/>
 						)}
@@ -425,7 +509,7 @@ const ChatSettings = () => {
 						)}
 					</ScrollView>
 
-					{!isDM && (
+					{!isDM && canCreateRoles && (
 						<ChatCreateRoleModal
 							isOpen={isCreateRoleOpen}
 							onClose={() => setIsCreateRoleOpen(false)}
@@ -433,7 +517,7 @@ const ChatSettings = () => {
 						/>
 					)}
 
-					{!isDM && (
+					{!isDM && canAccessRoles && (
 						<ChatRoleDetailModal
 							role={selectedRole}
 							permissions={PERMISSIONS}

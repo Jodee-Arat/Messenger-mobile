@@ -67,7 +67,8 @@ const AddFriendModal: FC<AddFriendModalProps> = ({
 					style={{
 						backgroundColor: colors.card,
 						maxHeight: cardMaxHeight,
-						marginBottom: cardMarginBottom
+						marginBottom: cardMarginBottom,
+						overflow: 'hidden'
 					}}
 					onPress={() => {}}
 				>
@@ -101,7 +102,8 @@ const AddFriendModal: FC<AddFriendModalProps> = ({
 							borderWidth: 1,
 							borderColor: colors.border,
 							minHeight: 120,
-							maxHeight: 320
+							maxHeight: 320,
+							flexShrink: 1
 						}}
 					>
 						{isLoading && users.length === 0 ? (

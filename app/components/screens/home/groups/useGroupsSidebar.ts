@@ -92,12 +92,24 @@ export function useGroupsSidebar(
 	}
 
 	useEffect(() => {
-		if (newGroupData?.groupAdded)
-			setAllGroups(prev => {
-				if (prev.some(g => g.id === newGroupData.groupAdded.id))
-					return prev
+		if (!newGroupData?.groupAdded) return
+
+		setAllGroups(prev => {
+			const existingIndex = prev.findIndex(
+				group => group.id === newGroupData.groupAdded.id
+			)
+
+			if (existingIndex === -1) {
 				return [newGroupData.groupAdded, ...prev]
-			})
+			}
+
+			const next = [...prev]
+			next[existingIndex] = {
+				...next[existingIndex],
+				...newGroupData.groupAdded
+			}
+			return next
+		})
 	}, [newGroupData])
 
 	useEffect(() => {

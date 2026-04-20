@@ -4,11 +4,18 @@ import { RefreshControl, Text, View } from 'react-native'
 import DraggableFlatList from 'react-native-draggable-flatlist'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { isGroupMembershipRevokedError } from '@/hooks/useBlockedUsers'
+import ProtectedScreenState from '@/components/ui/ProtectedScreenState'
+
+import {
+	getGraphQLErrorMessage,
+	isGroupMembershipRevokedError,
+	isUnauthorizedError
+} from '@/hooks/useBlockedUsers'
+import { useAuth } from '@/hooks/useAuth'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useUser } from '@/hooks/useUser'
 
-import { resetToHome } from '@/navigation/navigate'
+import { resetToAuth, resetToHome } from '@/navigation/navigate'
 
 import ChatDropdownTrigger from './ChatDropdownTrigger'
 import ChatsFloatingActions from './ChatsFloatingActions'
@@ -38,6 +45,7 @@ const ChatsList: FC = () => {
 	const route = useRoute()
 	const { groupId, groupName } = route.params as RouteParams
 	const { userId } = useUser()
+	const { isAuthenticated } = useAuth()
 	const handledAccessLossRef = useRef(false)
 
 	const { colors } = useTheme()
@@ -54,6 +62,7 @@ const ChatsList: FC = () => {
 
 	const {
 		data: groupData,
+		loading: isLoadingGroupAccess,
 		error: groupError,
 		refetch: refetchGroup
 	} = useFindGroupByGroupIdQuery({
@@ -75,11 +84,15 @@ const ChatsList: FC = () => {
 		handleReorderPinnedChats
 	} = useGroupChats(groupId, debouncedSearch)
 
-	const { data: currentRoleData, loading: isLoadingGetMemberRole } =
-		useGetMemberRoleQuery({
-			variables: { groupId },
-			fetchPolicy: 'network-only'
-		})
+	const {
+		data: currentRoleData,
+		error: currentRoleError,
+		loading: isLoadingGetMemberRole,
+		refetch: refetchCurrentRole
+	} = useGetMemberRoleQuery({
+		variables: { groupId },
+		fetchPolicy: 'network-only'
+	})
 
 	const currentRole = currentRoleData?.getMemberRole
 	const groupPermissions = currentRole?.permissions ?? []
@@ -94,11 +107,6 @@ const ChatsList: FC = () => {
 		handledAccessLossRef.current = true
 		resetToHome()
 	}, [])
-
-	useEffect(() => {
-		if (!isGroupMembershipRevokedError(groupError)) return
-		handleGroupAccessLoss()
-	}, [groupError, handleGroupAccessLoss])
 
 	useFocusEffect(
 		useCallback(() => {
@@ -115,8 +123,89 @@ const ChatsList: FC = () => {
 		}
 	})
 
-	if (isInitialLoading || isLoadingGetMemberRole) {
+	const isCheckingAccess =
+		isInitialLoading || isLoadingGroupAccess || isLoadingGetMemberRole
+	const isAuthRequired =
+		!isAuthenticated ||
+		(!isLoadingGroupAccess && isUnauthorizedError(groupError)) ||
+		(!isLoadingGetMemberRole && isUnauthorizedError(currentRoleError))
+	const isAccessDenied =
+		!isCheckingAccess && isGroupMembershipRevokedError(groupError)
+	const loadError =
+		!isCheckingAccess
+			? (!isAccessDenied && groupError) || currentRoleError || null
+			: null
+
+	useEffect(() => {
+		if (!isAuthRequired) return
+		resetToAuth()
+	}, [isAuthRequired])
+
+	const handleRetry = useCallback(() => {
+		void Promise.allSettled([
+			handleRefreshChats(),
+			refetchGroup(),
+			refetchCurrentRole()
+		])
+	}, [handleRefreshChats, refetchCurrentRole, refetchGroup])
+
+	if (isAuthRequired) {
+		return (
+			<ProtectedScreenState
+				variant='auth'
+				title={t('authRequiredTitle')}
+				description={t('authRequiredDescription')}
+				primaryActionLabel={t('goToLogin')}
+				onPrimaryAction={resetToAuth}
+			/>
+		)
+	}
+
+	if (isCheckingAccess) {
 		return <ChatsListSkeleton />
+	}
+
+	if (isAccessDenied) {
+		return (
+			<ProtectedScreenState
+				title={t('accessDeniedTitle')}
+				description={t('groupAccessDeniedDescription')}
+				primaryActionLabel={t('goHome')}
+				onPrimaryAction={resetToHome}
+			/>
+		)
+	}
+
+	if (!isInitialLoading && !isLoadingGetMemberRole && loadError) {
+		return (
+			<ProtectedScreenState
+				variant='error'
+				title={t('screenLoadErrorTitle')}
+				description={
+					getGraphQLErrorMessage(loadError) ||
+					t('somethingWentWrong')
+				}
+				primaryActionLabel={t('retry')}
+				onPrimaryAction={handleRetry}
+				secondaryActionLabel={t('goHome')}
+				onSecondaryAction={resetToHome}
+			/>
+		)
+	}
+
+	if (
+		!isInitialLoading &&
+		!isLoadingGetMemberRole &&
+		!groupData?.findGroupByGroupId
+	) {
+		return (
+			<ProtectedScreenState
+				title={t('accessDeniedTitle')}
+				description={t('groupAccessDeniedDescription')}
+				primaryActionLabel={t('goHome')}
+				onPrimaryAction={resetToHome}
+			/>
+		)
 	}
 
 	return (

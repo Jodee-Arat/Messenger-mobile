@@ -123,7 +123,8 @@ const ChatCreateRoleModal: React.FC<ChatCreateRoleModalProps> = ({
 						borderColor: colors.border,
 						paddingBottom: sheetPaddingBottom,
 						paddingTop: 8,
-						maxHeight: sheetMaxHeight
+						maxHeight: sheetMaxHeight,
+						overflow: 'hidden'
 					}}
 				>
 					{/* Handle */}
@@ -138,189 +139,196 @@ const ChatCreateRoleModal: React.FC<ChatCreateRoleModalProps> = ({
 						/>
 					</View>
 
-					<ScrollView
-						showsVerticalScrollIndicator={false}
-						keyboardShouldPersistTaps='handled'
+					<Text
+						className='text-lg font-bold px-5 mb-4'
+						style={{ color: colors.text }}
 					>
-						{/* Title */}
-						<Text
-							className='text-lg font-bold px-5 mb-4'
-							style={{ color: colors.text }}
+						{t('createRole')}
+					</Text>
+
+					<View style={{ flex: 1, minHeight: 0 }}>
+						<ScrollView
+							showsVerticalScrollIndicator={false}
+							keyboardShouldPersistTaps='handled'
+							contentContainerStyle={{ paddingBottom: 16 }}
 						>
-							{t('createRole')}
-						</Text>
-
-						{/* Role name */}
-						<View className='px-5 mb-4'>
-							<Text
-								className='text-xs font-semibold uppercase tracking-wider mb-2'
-								style={{ color: colors.textSecondary }}
-							>
-								{t('roleName')}
-							</Text>
-							<TextInput
-								style={{
-									backgroundColor: colors.background,
-									borderRadius: 12,
-									paddingHorizontal: 16,
-									paddingVertical: 12,
-									color: colors.text,
-									fontSize: 15,
-									borderWidth: 1,
-									borderColor: colors.border
-								}}
-								placeholder={t('exampleRole')}
-								placeholderTextColor={colors.textMuted}
-								value={roleName}
-								onChangeText={setRoleName}
-							/>
-						</View>
-
-						{/* Color picker */}
-						<View className='px-5 mb-5'>
-							<Text
-								className='text-xs font-semibold uppercase tracking-wider mb-3'
-								style={{ color: colors.textSecondary }}
-							>
-								{t('roleColor')}
-							</Text>
-							<View
-								className='flex-row flex-wrap'
-								style={{ gap: 10 }}
-							>
-								{CHAT_ROLE_COLORS.map(color => (
-									<TouchableOpacity
-										key={color}
-										activeOpacity={0.7}
-										onPress={() => setSelectedColor(color)}
-										style={{
-											width: 36,
-											height: 36,
-											borderRadius: 18,
-											backgroundColor: color,
-											borderWidth:
-												selectedColor === color ? 3 : 0,
-											borderColor: colors.text,
-											alignItems: 'center',
-											justifyContent: 'center'
-										}}
-									>
-										{selectedColor === color && (
-											<View
-												style={{
-													width: 10,
-													height: 10,
-													borderRadius: 5,
-													backgroundColor:
-														color === '#ffffff'
-															? '#000'
-															: '#fff'
-												}}
-											/>
-										)}
-									</TouchableOpacity>
-								))}
-							</View>
-						</View>
-
-						{/* Permissions */}
-						<View className='px-5 mb-4'>
-							<Text
-								className='text-xs font-semibold uppercase tracking-wider mb-3'
-								style={{ color: colors.textSecondary }}
-							>
-								{t('permissions')}
-							</Text>
-
-							{PERMISSIONS.map(perm => (
-								<View
-									key={perm.key}
-									className='flex-row items-center justify-between py-3 mb-1'
-									style={{
-										borderBottomWidth: 1,
-										borderBottomColor: colors.border
-									}}
+							{/* Role name */}
+							<View className='px-5 mb-4'>
+								<Text
+									className='text-xs font-semibold uppercase tracking-wider mb-2'
+									style={{ color: colors.textSecondary }}
 								>
-									<View className='flex-row items-center flex-1 mr-3'>
-										<View
-											className='w-9 h-9 rounded-lg items-center justify-center mr-3'
+									{t('roleName')}
+								</Text>
+								<TextInput
+									style={{
+										backgroundColor: colors.background,
+										borderRadius: 12,
+										paddingHorizontal: 16,
+										paddingVertical: 12,
+										color: colors.text,
+										fontSize: 15,
+										borderWidth: 1,
+										borderColor: colors.border
+									}}
+									placeholder={t('exampleRole')}
+									placeholderTextColor={colors.textMuted}
+									value={roleName}
+									onChangeText={setRoleName}
+								/>
+							</View>
+
+							{/* Color picker */}
+							<View className='px-5 mb-5'>
+								<Text
+									className='text-xs font-semibold uppercase tracking-wider mb-3'
+									style={{ color: colors.textSecondary }}
+								>
+									{t('roleColor')}
+								</Text>
+								<View
+									className='flex-row flex-wrap'
+									style={{ gap: 10 }}
+								>
+									{CHAT_ROLE_COLORS.map(color => (
+										<TouchableOpacity
+											key={color}
+											activeOpacity={0.7}
+											onPress={() => setSelectedColor(color)}
 											style={{
-												backgroundColor:
-													colors.backgroundTertiary
+												width: 36,
+												height: 36,
+												borderRadius: 18,
+												backgroundColor: color,
+												borderWidth:
+													selectedColor === color ? 3 : 0,
+												borderColor: colors.text,
+												alignItems: 'center',
+												justifyContent: 'center'
 											}}
 										>
-											{perm.icon}
-										</View>
-										<View className='flex-1'>
-											<Text
-												className='text-sm font-medium'
-												style={{
-													color: colors.text
-												}}
-											>
-												{perm.label}
-											</Text>
-											<Text
-												className='text-xs mt-0.5'
-												style={{
-													color: colors.textMuted
-												}}
-												numberOfLines={2}
-											>
-												{perm.description}
-											</Text>
-										</View>
-									</View>
-									<Switch
-										value={perms.has(perm.key)}
-										onValueChange={() =>
-											togglePerm(perm.key)
-										}
-										trackColor={{
-											false: colors.borderLight,
-											true: colors.accentMuted
-										}}
-										thumbColor={
-											perms.has(perm.key)
-												? colors.accent
-												: colors.textSecondary
-										}
-									/>
+											{selectedColor === color && (
+												<View
+													style={{
+														width: 10,
+														height: 10,
+														borderRadius: 5,
+														backgroundColor:
+															color === '#ffffff'
+																? '#000'
+																: '#fff'
+													}}
+												/>
+											)}
+										</TouchableOpacity>
+									))}
 								</View>
-							))}
-						</View>
+							</View>
 
-						{/* Create button */}
-						<View className='px-5 mt-2 mb-4'>
-							<TouchableOpacity
-								activeOpacity={0.8}
-								disabled={!roleName.trim()}
-								onPress={handleCreate}
-								style={{
-									backgroundColor: roleName.trim()
-										? colors.accent
-										: colors.borderLight,
-									borderRadius: 12,
-									paddingVertical: 14,
-									alignItems: 'center',
-									justifyContent: 'center',
-									flexDirection: 'row'
-								}}
-							>
-								<Shield
-									size={18}
-									color='#fff'
-									style={{ marginRight: 8 }}
-								/>
+							{/* Permissions */}
+							<View className='px-5'>
 								<Text
-									className='text-sm font-bold'
-									style={{ color: '#fff' }}
+									className='text-xs font-semibold uppercase tracking-wider mb-3'
+									style={{ color: colors.textSecondary }}
 								>
-									{t('createRole')}
+									{t('permissions')}
 								</Text>
-							</TouchableOpacity>
-						</View>
-					</ScrollView>
+
+								{PERMISSIONS.map(perm => (
+									<View
+										key={perm.key}
+										className='flex-row items-center justify-between py-3 mb-1'
+										style={{
+											borderBottomWidth: 1,
+											borderBottomColor: colors.border
+										}}
+									>
+										<View className='flex-row items-center flex-1 mr-3'>
+											<View
+												className='w-9 h-9 rounded-lg items-center justify-center mr-3'
+												style={{
+													backgroundColor:
+														colors.backgroundTertiary
+												}}
+											>
+												{perm.icon}
+											</View>
+											<View className='flex-1'>
+												<Text
+													className='text-sm font-medium'
+													style={{
+														color: colors.text
+													}}
+												>
+													{perm.label}
+												</Text>
+												<Text
+													className='text-xs mt-0.5'
+													style={{
+														color: colors.textMuted
+													}}
+													numberOfLines={2}
+												>
+													{perm.description}
+												</Text>
+											</View>
+										</View>
+										<Switch
+											value={perms.has(perm.key)}
+											onValueChange={() =>
+												togglePerm(perm.key)
+											}
+											trackColor={{
+												false: colors.borderLight,
+												true: colors.accentMuted
+											}}
+											thumbColor={
+												perms.has(perm.key)
+													? colors.accent
+													: colors.textSecondary
+											}
+										/>
+									</View>
+								))}
+							</View>
+						</ScrollView>
+					</View>
+
+					<View
+						className='px-5 pt-3'
+						style={{
+							borderTopWidth: 1,
+							borderTopColor: colors.border
+						}}
+					>
+						<TouchableOpacity
+							activeOpacity={0.8}
+							disabled={!roleName.trim()}
+							onPress={handleCreate}
+							style={{
+								backgroundColor: roleName.trim()
+									? colors.accent
+									: colors.borderLight,
+								borderRadius: 12,
+								paddingVertical: 14,
+								alignItems: 'center',
+								justifyContent: 'center',
+								flexDirection: 'row'
+							}}
+						>
+							<Shield
+								size={18}
+								color='#fff'
+								style={{ marginRight: 8 }}
+							/>
+							<Text
+								className='text-sm font-bold'
+								style={{ color: '#fff' }}
+							>
+								{t('createRole')}
+							</Text>
+						</TouchableOpacity>
+					</View>
 				</Animated.View>
 			</View>
 		</AppModal>

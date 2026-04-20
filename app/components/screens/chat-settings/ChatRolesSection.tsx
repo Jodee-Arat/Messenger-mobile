@@ -14,7 +14,6 @@ interface ChatRolesSectionProps {
 	permissions: ChatPermission[]
 	onRolePress: (role: ChatRoleData) => void
 	onCreatePress: () => void
-	canManageRoles?: boolean
 	canCreateRoles?: boolean
 }
 
@@ -23,7 +22,6 @@ const ChatRolesSection: FC<ChatRolesSectionProps> = ({
 	permissions,
 	onRolePress,
 	onCreatePress,
-	canManageRoles = false,
 	canCreateRoles = false
 }) => {
 	const { colors } = useTheme()
@@ -91,7 +89,7 @@ const ChatRolesSection: FC<ChatRolesSectionProps> = ({
 			))}
 
 			{/* Create role button */}
-			{(canManageRoles || canCreateRoles) && (
+			{canCreateRoles && (
 				<TouchableOpacity
 					activeOpacity={0.7}
 					onPress={onCreatePress}
