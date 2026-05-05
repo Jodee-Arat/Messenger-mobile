@@ -9,11 +9,13 @@ type RouteParams = {
 	chatName: string
 	isSecret: boolean
 	groupId?: string
+	isSaved?: boolean
 }
 
 const Chat = () => {
 	const route = useRoute()
-	const { chatId, chatName, isSecret, groupId } = route.params as RouteParams
+	const { chatId, chatName, isSecret, groupId, isSaved } =
+		route.params as RouteParams
 
 	if (isSecret) {
 		return (
@@ -22,6 +24,7 @@ const Chat = () => {
 				chatId={chatId}
 				chatName={chatName}
 				isSecret={isSecret}
+				isSaved={isSaved}
 			/>
 		)
 	}

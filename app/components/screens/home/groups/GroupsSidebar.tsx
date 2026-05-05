@@ -15,8 +15,6 @@ import AppModal from '@/components/ui/AppModal'
 
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
-import { resetToAuth } from '@/navigation/navigate'
-
 import CreateGroupModal from './CreateGroupModal'
 import GroupActionSheet from './GroupActionSheet'
 import GroupsList from './GroupsList'
@@ -178,10 +176,9 @@ const GroupsSidebar: FC<GroupsSidebarProps> = ({ visible, onClose }) => {
 						}}
 					>
 						<TouchableOpacity
-							onPress={() => {
+							onPress={async () => {
 								onClose()
-								exit()
-								resetToAuth()
+								await exit()
 							}}
 							activeOpacity={0.6}
 							className='flex-row items-center py-2'

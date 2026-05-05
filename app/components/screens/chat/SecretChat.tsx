@@ -77,15 +77,18 @@ type SecretChatProps = {
 	chatName: string
 	groupId?: string
 	isSecret?: boolean
+	isSaved?: boolean
 }
 
 const SecretChat: FC<SecretChatProps> = ({
 	chatId,
 	chatName,
 	groupId,
-	isSecret
+	isSecret,
+	isSaved = false
 }) => {
 	const isDM = !groupId
+	const isDirectDialog = isDM && !isSaved
 	const { isLoadingProfile, user } = useCurrentUser()
 	const { isAuthenticated } = useAuth()
 	const { colors } = useTheme()
@@ -103,7 +106,7 @@ const SecretChat: FC<SecretChatProps> = ({
 	const handledAccessLossRef = useRef(false)
 	const hasFocusedOnceRef = useRef(false)
 
-	const lockColor = isDM ? '#4CAF50' : colors.accent
+	const lockColor = isDirectDialog ? '#4CAF50' : colors.accent
 
 	const [leaveChatMutation] = useLeaveChatMutation()
 	const [verifyChatTotpMutation, { loading: totpLoading }] =
@@ -117,7 +120,7 @@ const SecretChat: FC<SecretChatProps> = ({
 	} =
 		useGetMemberChatRoleQuery({
 			variables: { chatId },
-			skip: isDM,
+			skip: isDM || isSaved,
 			fetchPolicy: 'network-only'
 		})
 
@@ -128,7 +131,7 @@ const SecretChat: FC<SecretChatProps> = ({
 
 	useChatAssignedRoleSubscription({
 		variables: { chatId },
-		skip: isDM,
+		skip: isDM || isSaved,
 		onData: () => {
 			refreshMemberRole()
 		}
@@ -136,7 +139,7 @@ const SecretChat: FC<SecretChatProps> = ({
 
 	useChatRemovedRoleSubscription({
 		variables: { chatId },
-		skip: isDM,
+		skip: isDM || isSaved,
 		onData: () => {
 			refreshMemberRole()
 		}
@@ -144,7 +147,7 @@ const SecretChat: FC<SecretChatProps> = ({
 
 	useChatUpsertedRoleSubscription({
 		variables: { chatId },
-		skip: isDM,
+		skip: isDM || isSaved,
 		onData: () => {
 			refreshMemberRole()
 		}
@@ -152,7 +155,7 @@ const SecretChat: FC<SecretChatProps> = ({
 
 	useChatDeletedRoleSubscription({
 		variables: { chatId },
-		skip: isDM,
+		skip: isDM || isSaved,
 		onData: () => {
 			refreshMemberRole()
 		}
@@ -160,7 +163,7 @@ const SecretChat: FC<SecretChatProps> = ({
 
 	const isCreator = !!roleData?.getMemberChatRole?.isCreator
 	const messagePermissions = useMemo(() => {
-		if (isDM) {
+		if (isDM || isSaved) {
 			return {
 				canSendMessages: true,
 				canEditMessages: true,
@@ -188,9 +191,10 @@ const SecretChat: FC<SecretChatProps> = ({
 			),
 			canPinMessages: perms.includes(ChatPermissionEnum.PinMessages)
 		}
-	}, [isDM, roleData])
+	}, [isDM, isSaved, roleData])
 	const canInviteMembers =
 		!isDM &&
+		!isSaved &&
 		(isCreator ||
 			(roleData?.getMemberChatRole?.permissions ?? []).includes(
 				ChatPermissionEnum.InviteMembers
@@ -216,7 +220,7 @@ const SecretChat: FC<SecretChatProps> = ({
 		preKeysPub,
 		sendKeyToNewMember,
 		isKeyReady
-	} = useSecretChat(chatId, userId, groupId)
+	} = useSecretChat(chatId, userId, groupId, { isSaved })
 
 	useFocusEffect(
 		useCallback(() => {
@@ -233,14 +237,26 @@ const SecretChat: FC<SecretChatProps> = ({
 	const handleRefresh = useCallback(async () => {
 		await reload()
 	}, [reload])
-	const resolvedChatName =
-		!isDM && chat && 'chatName' in chat && chat.chatName
+	const members = (chat as any)?.members ?? [
+		{ user: { id: user?.id, username: user?.username, avatarUrl: null } }
+	]
+	const directCounterpart = isDirectDialog
+		? members.find((member: any) => member.user?.id !== user?.id)?.user ?? null
+		: null
+	const resolvedChatName = isSaved
+		? chatName
+		: !isDM
+		? chat && 'chatName' in chat && chat.chatName
 			? chat.chatName
 			: chatName
-	const resolvedAvatarUrl =
-		!isDM && chat && 'avatarUrl' in chat && chat.avatarUrl
+		: directCounterpart?.username || chatName
+	const resolvedAvatarUrl = isSaved
+		? null
+		: !isDM
+		? chat && 'avatarUrl' in chat && chat.avatarUrl
 			? chat.avatarUrl
 			: null
+		: directCounterpart?.avatarUrl || null
 
 	const handleAccessLoss = useCallback(
 		async (scope: 'chat' | 'group') => {
@@ -270,7 +286,7 @@ const SecretChat: FC<SecretChatProps> = ({
 		loadingMessage !== '' || isLoadingProfile || (!isDM && isLoadingMemberRole)
 	const isBlockedSecretChatAccess =
 		!isCheckingAccess &&
-		isDM &&
+		isDirectDialog &&
 		(isDirectContactBlockedError(chatAccessError) ||
 			isDirectContactBlockedError(errorMessage))
 	const isAuthRequired =
@@ -283,6 +299,8 @@ const SecretChat: FC<SecretChatProps> = ({
 		!isBlockedSecretChatAccess &&
 		(isChatMembershipRevokedError(chatAccessError) ||
 			isChatMembershipRevokedError(errorMessage))
+	const shouldShowBlockedInlineState =
+		isBlockedSecretChatAccess && !chat && !isSaved
 
 	useEffect(() => {
 		if (!isBlockedSecretChatAccess) return
@@ -315,75 +333,46 @@ const SecretChat: FC<SecretChatProps> = ({
 		}
 	})
 
-	const renderBlockedState = () => (
+	const renderBlockedInlineState = () => (
 		<View
 			style={{
 				flex: 1,
-				backgroundColor: colors.background,
-				paddingTop: top + 8,
+				alignItems: 'center',
+				justifyContent: 'center',
 				paddingHorizontal: 20,
-				paddingBottom: 24
+				paddingVertical: 24
 			}}
 		>
 			<View
 				style={{
-					flexDirection: 'row',
-					alignItems: 'center',
-					marginBottom: 24
-				}}
-			>
-				<TouchableOpacity
-					onPress={() => navigation.goBack()}
-					activeOpacity={0.7}
-					style={{
-						width: 40,
-						height: 40,
-						borderRadius: 20,
-						backgroundColor: colors.backgroundSecondary,
-						alignItems: 'center',
-						justifyContent: 'center',
-						marginRight: 12
-					}}
-				>
-					<ArrowLeft size={20} color={colors.text} />
-				</TouchableOpacity>
-				<Text
-					numberOfLines={1}
-					style={{
-						flex: 1,
-						fontSize: 17,
-						fontWeight: '700',
-						color: colors.text
-					}}
-				>
-					{chatName}
-				</Text>
-			</View>
-
-			<View
-				style={{
-					flex: 1,
-					alignItems: 'center',
-					justifyContent: 'center'
+					width: '100%',
+					maxWidth: 420,
+					borderRadius: 20,
+					paddingHorizontal: 20,
+					paddingVertical: 22,
+					backgroundColor: colors.card,
+					borderWidth: 1,
+					borderColor: colors.borderLight,
+					alignItems: 'center'
 				}}
 			>
 				<View
 					style={{
-						width: 72,
-						height: 72,
-						borderRadius: 36,
-						backgroundColor: colors.backgroundSecondary,
+						width: 56,
+						height: 56,
+						borderRadius: 28,
+						backgroundColor: colors.destructiveMuted,
 						alignItems: 'center',
 						justifyContent: 'center'
 					}}
 				>
-					<ShieldCheck size={30} color={colors.destructive} />
+					<ShieldCheck size={24} color={colors.destructive} />
 				</View>
 
 				<Text
 					style={{
-						marginTop: 20,
-						fontSize: 20,
+						marginTop: 16,
+						fontSize: 18,
 						fontWeight: '700',
 						color: colors.text,
 						textAlign: 'center'
@@ -393,7 +382,7 @@ const SecretChat: FC<SecretChatProps> = ({
 				</Text>
 				<Text
 					style={{
-						marginTop: 10,
+						marginTop: 8,
 						fontSize: 14,
 						lineHeight: 20,
 						color: colors.textMuted,
@@ -407,7 +396,7 @@ const SecretChat: FC<SecretChatProps> = ({
 					onPress={() => navigation.navigate('BlockedUsers')}
 					activeOpacity={0.7}
 					style={{
-						marginTop: 20,
+						marginTop: 18,
 						paddingHorizontal: 18,
 						paddingVertical: 12,
 						borderRadius: 12,
@@ -422,28 +411,6 @@ const SecretChat: FC<SecretChatProps> = ({
 						}}
 					>
 						{t('manageBlockedUsers')}
-					</Text>
-				</TouchableOpacity>
-
-				<TouchableOpacity
-					onPress={() => navigation.goBack()}
-					activeOpacity={0.7}
-					style={{
-						marginTop: 12,
-						paddingHorizontal: 18,
-						paddingVertical: 12,
-						borderRadius: 12,
-						backgroundColor: colors.backgroundSecondary
-					}}
-				>
-					<Text
-						style={{
-							color: colors.text,
-							fontWeight: '700',
-							fontSize: 14
-						}}
-					>
-						{t('back')}
 					</Text>
 				</TouchableOpacity>
 			</View>
@@ -505,10 +472,6 @@ const SecretChat: FC<SecretChatProps> = ({
 		return <ChatSkeleton />
 	}
 
-	if (isBlockedSecretChatAccess) {
-		return renderBlockedState()
-	}
-
 	if (isAccessDenied) {
 		return (
 			<ProtectedScreenState
@@ -522,7 +485,7 @@ const SecretChat: FC<SecretChatProps> = ({
 		)
 	}
 
-	if (errorMessage !== '') {
+	if (errorMessage !== '' && !isBlockedSecretChatAccess) {
 		return (
 			<ProtectedScreenState
 				variant='error'
@@ -536,7 +499,7 @@ const SecretChat: FC<SecretChatProps> = ({
 		)
 	}
 
-	if (chatAccessError && !chat) {
+	if (chatAccessError && !chat && !isBlockedSecretChatAccess) {
 		return (
 			<ProtectedScreenState
 				variant='error'
@@ -558,7 +521,8 @@ const SecretChat: FC<SecretChatProps> = ({
 		!isLoadingProfile &&
 		!!user &&
 		!chat &&
-		!chatAccessError
+		!chatAccessError &&
+		!isBlockedSecretChatAccess
 	) {
 		return (
 			<ProtectedScreenState
@@ -584,7 +548,7 @@ const SecretChat: FC<SecretChatProps> = ({
 		)
 	}
 
-	if (!user || !chat || (!isDM && !isKeyReady)) {
+	if (!user || ((!chat || (!isDM && !isKeyReady)) && !isBlockedSecretChatAccess)) {
 		return <ChatSkeleton />
 	}
 
@@ -713,9 +677,7 @@ const SecretChat: FC<SecretChatProps> = ({
 		return await sendMessage(messageText, user)
 	}
 
-	const members = (chat as any)?.members ?? [
-		{ user: { id: user.id, username: user.username, avatarUrl: null } }
-	]
+	const canOpenSettings = !!chat && !isBlockedSecretChatAccess && !isSaved
 
 	return (
 		<View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -745,8 +707,10 @@ const SecretChat: FC<SecretChatProps> = ({
 					</TouchableOpacity>
 
 					<TouchableOpacity
-						onPress={goToSettings}
+						onPress={canOpenSettings ? goToSettings : undefined}
+						disabled={!canOpenSettings}
 						activeOpacity={0.7}
+						style={{ opacity: canOpenSettings ? 1 : 0.85 }}
 						className='flex-row items-center flex-1 mx-3'
 					>
 						<EntityAvatar
@@ -780,19 +744,21 @@ const SecretChat: FC<SecretChatProps> = ({
 						</View>
 					</TouchableOpacity>
 
-					<TouchableOpacity
-						onPress={() => setFingerprintVisible(true)}
-						className='w-9 h-9 rounded-full items-center justify-center'
-						style={{
-							backgroundColor: colors.cardHover,
-							marginLeft: !isDM ? 6 : 0
-						}}
-						activeOpacity={0.7}
-					>
-						<Fingerprint size={18} color={colors.success} />
-					</TouchableOpacity>
+					{chat && !isSaved && (
+						<TouchableOpacity
+							onPress={() => setFingerprintVisible(true)}
+							className='w-9 h-9 rounded-full items-center justify-center'
+							style={{
+								backgroundColor: colors.cardHover,
+								marginLeft: !isDM ? 6 : 0
+							}}
+							activeOpacity={0.7}
+						>
+							<Fingerprint size={18} color={colors.success} />
+						</TouchableOpacity>
+					)}
 
-					{!isDM && !isCreator && (
+					{!isDM && !isCreator && !isSaved && (
 						<TouchableOpacity
 							onPress={handleLeaveChat}
 							className='w-9 h-9 rounded-full items-center justify-center'
@@ -815,16 +781,22 @@ const SecretChat: FC<SecretChatProps> = ({
 					enabled={Platform.OS === 'ios' || isKeyboardVisible}
 				>
 					<View className='flex-1 px-2 pb-2 justify-end'>
-						<SecretChatMessageList
-							messages={messages}
-							userId={user.id}
-							onDelete={deleteMessage}
-							onRefresh={handleRefresh}
-							chatId={chatId}
-							canDeleteMessages={
-								messagePermissions.canDeleteMessages
-							}
-						/>
+						{shouldShowBlockedInlineState ? (
+							renderBlockedInlineState()
+						) : (
+							<SecretChatMessageList
+								messages={messages}
+								userId={user.id}
+								onDelete={deleteMessage}
+								onRefresh={handleRefresh}
+								chatId={chatId}
+								canDeleteMessages={
+									messagePermissions.canDeleteMessages
+								}
+								showSenderName={!isDM && !isSaved}
+								isUnifiedThread={isSaved}
+							/>
+						)}
 
 						<SecretSendMessageForm
 							setDraftText={setDraftText}
@@ -847,9 +819,11 @@ const SecretChat: FC<SecretChatProps> = ({
 								messagePermissions.canSendMessages
 							}
 							blockedStateMessage={
-								messagePermissions.canSendMessages
-									? null
-									: t('noSendPermission')
+								isBlockedSecretChatAccess
+									? t('directChatBlockedComposer')
+									: messagePermissions.canSendMessages
+										? null
+										: t('noSendPermission')
 							}
 							onSend={handleSend}
 						/>

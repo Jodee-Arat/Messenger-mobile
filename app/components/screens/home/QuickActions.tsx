@@ -1,5 +1,5 @@
 import type { FC, ReactElement } from 'react'
-import { Text, TouchableOpacity, View } from 'react-native'
+import { TouchableOpacity, View } from 'react-native'
 
 import { useTheme } from '@/hooks/useTheme'
 
@@ -15,26 +15,29 @@ const QuickActions: FC<QuickActionsProps> = ({ actions }) => {
 	const { colors } = useTheme()
 
 	return (
-		<View className='flex-row px-4 pt-3 pb-2' style={{ gap: 10 }}>
+		<View className='flex-row px-4 pt-4 pb-3' style={{ gap: 10 }}>
 			{actions.map((action, i) => (
 				<TouchableOpacity
 					key={i}
 					onPress={action.onPress}
 					activeOpacity={0.7}
-					className='flex-1 flex-row items-center rounded-xl px-4 py-3'
+					accessibilityRole='button'
+					accessibilityLabel={action.label}
+					className='flex-1 rounded-2xl'
 					style={{
+						minWidth: 0,
+						height: 54,
 						backgroundColor: colors.cardHover,
 						borderWidth: 1,
 						borderColor: colors.border
 					}}
 				>
-					{action.icon}
-					<Text
-						className='ml-2.5 text-sm font-medium'
-						style={{ color: colors.text }}
+					<View
+						className='flex-1 items-center justify-center'
+						style={{ minWidth: 0 }}
 					>
-						{action.label}
-					</Text>
+						{action.icon}
+					</View>
 				</TouchableOpacity>
 			))}
 		</View>

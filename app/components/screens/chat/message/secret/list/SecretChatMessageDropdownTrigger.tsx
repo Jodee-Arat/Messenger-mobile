@@ -3,11 +3,11 @@ import { CheckCircle, Clipboard, Trash2, X } from 'lucide-react-native'
 import React, { FC, useCallback, useEffect, useRef, useState } from 'react'
 import {
 	Animated,
-	Dimensions,
 	Pressable,
 	StyleSheet,
 	Text,
 	TouchableOpacity,
+	useWindowDimensions,
 	View
 } from 'react-native'
 import Toast from 'react-native-toast-message'
@@ -35,9 +35,9 @@ interface SecretChatMessageDropdownProp {
 	isSelected: boolean
 	isFirstInGroup: boolean
 	isLastInGroup: boolean
+	showSenderName?: boolean
+	isUnifiedThread?: boolean
 }
-
-const SCREEN_HEIGHT = Dimensions.get('window').height
 
 const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 	chatId,
@@ -53,13 +53,16 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 	canDeleteMessages = true,
 	isSelected,
 	isFirstInGroup,
-	isLastInGroup
+	isLastInGroup,
+	showSenderName = true,
+	isUnifiedThread = false
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
 	const [modalVisible, setModalVisible] = useState(false)
 	const [isDeleting, setIsDeleting] = useState(false)
-	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+	const { height: windowHeight } = useWindowDimensions()
+	const slideAnim = useRef(new Animated.Value(windowHeight)).current
 	const backdropOpacity = useRef(new Animated.Value(0)).current
 
 	useEffect(() => {
@@ -70,6 +73,7 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 	}, [backdropOpacity, slideAnim])
 
 	const openSheet = () => {
+		slideAnim.setValue(windowHeight)
 		setModalVisible(true)
 		Animated.parallel([
 			Animated.spring(slideAnim, {
@@ -89,7 +93,7 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 	const closeSheet = (cb?: () => void) => {
 		Animated.parallel([
 			Animated.timing(slideAnim, {
-				toValue: SCREEN_HEIGHT,
+				toValue: windowHeight,
 				duration: 200,
 				useNativeDriver: true
 			}),
@@ -208,6 +212,8 @@ const SecretChatMessageDropdownTrigger: FC<SecretChatMessageDropdownProp> = ({
 						isSelected={isSelected}
 						isFirstInGroup={isFirstInGroup}
 						isLastInGroup={isLastInGroup}
+						showSenderName={showSenderName}
+						isUnifiedThread={isUnifiedThread}
 						createdAt={messageInfo.createdAt}
 					/>
 				</View>

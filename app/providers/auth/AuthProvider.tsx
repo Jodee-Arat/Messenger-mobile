@@ -15,6 +15,7 @@ import {
 } from '@/services/auth/auth.helper'
 import { handleLogout } from '@/services/auth/auth.service'
 
+import { authStore } from '@/store/auth/auth.store'
 import { userStore } from '@/store/user/user.store'
 
 import { ME_QUERY, client, rebuildWebsocketLink } from '@/libs/apollo-client'
@@ -41,6 +42,7 @@ try {
 
 const AuthProvider: FC<PropsWithChildren<unknown>> = ({ children }) => {
 	const { setUserId } = userStore()
+	const { setIsAuthChecked } = authStore()
 	const appState = useRef<AppStateStatus | null>(null)
 
 	// Проверка токена и (опционально) валидация у сервера
@@ -50,6 +52,8 @@ const AuthProvider: FC<PropsWithChildren<unknown>> = ({ children }) => {
 			const token = await getAccessToken()
 
 			if (!token) {
+				await handleLogout()
+				setUserId('')
 				return false
 			}
 
@@ -109,6 +113,9 @@ const AuthProvider: FC<PropsWithChildren<unknown>> = ({ children }) => {
 
 				await checkAuth()
 			} finally {
+				if (mounted) {
+					setIsAuthChecked(true)
+				}
 				// прячем сплэш только после завершения проверки
 				if (_prevented) {
 					try {

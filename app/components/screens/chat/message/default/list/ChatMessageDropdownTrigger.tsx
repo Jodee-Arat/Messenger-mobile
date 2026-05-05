@@ -12,11 +12,11 @@ import {
 import React, { FC, useCallback, useEffect, useRef, useState } from 'react'
 import {
 	Animated,
-	Dimensions,
 	Pressable,
 	StyleSheet,
 	Text,
 	TouchableOpacity,
+	useWindowDimensions,
 	View
 } from 'react-native'
 import Toast from 'react-native-toast-message'
@@ -58,9 +58,8 @@ interface ChatMessageDropdownProp {
 	canPinMessages?: boolean
 	isFirstInGroup: boolean
 	isLastInGroup: boolean
+	showSenderName?: boolean
 }
-
-const SCREEN_HEIGHT = Dimensions.get('window').height
 
 const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
 	chatId,
@@ -81,12 +80,14 @@ const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
 	canDeleteMessages = true,
 	canPinMessages = true,
 	isFirstInGroup,
-	isLastInGroup
+	isLastInGroup,
+	showSenderName = true
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
 	const [modalVisible, setModalVisible] = useState(false)
-	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+	const { height: windowHeight } = useWindowDimensions()
+	const slideAnim = useRef(new Animated.Value(windowHeight)).current
 	const backdropOpacity = useRef(new Animated.Value(0)).current
 
 	useEffect(() => {
@@ -100,6 +101,7 @@ const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
 	const canEditThisMessage = canEditMessages && messageInfo.user.id === userId
 
 	const openSheet = () => {
+		slideAnim.setValue(windowHeight)
 		setModalVisible(true)
 		Animated.parallel([
 			Animated.spring(slideAnim, {
@@ -119,7 +121,7 @@ const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
 	const closeSheet = (cb?: () => void) => {
 		Animated.parallel([
 			Animated.timing(slideAnim, {
-				toValue: SCREEN_HEIGHT,
+				toValue: windowHeight,
 				duration: 200,
 				useNativeDriver: true
 			}),
@@ -313,6 +315,7 @@ const ChatMessageDropdownTrigger: FC<ChatMessageDropdownProp> = ({
 					userId={userId}
 					isFirstInGroup={isFirstInGroup}
 					isLastInGroup={isLastInGroup}
+					showSenderName={showSenderName}
 				/>
 			</Pressable>
 

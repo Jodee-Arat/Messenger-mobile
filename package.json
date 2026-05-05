@@ -36,6 +36,7 @@
     "clsx": "^2.1.1",
     "crypto-gost": "^1.0.14",
     "expo": "~54.0.33",
+    "expo-camera": "~17.0.9",
     "expo-clipboard": "~8.0.8",
     "expo-dev-client": "~6.0.20",
     "expo-document-picker": "^14.0.7",

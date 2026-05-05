@@ -1,11 +1,10 @@
-import { Heart, Users } from 'lucide-react-native'
+import { Clock3, Search, Users } from 'lucide-react-native'
 import { FC, useCallback } from 'react'
-import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
+import { Text, View } from 'react-native'
 
+import EmptyStateCard from '@/components/ui/EmptyStateCard'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
-import { useUser } from '@/hooks/useUser'
-
 import { useFriends } from '../../../../hooks/useFriends'
 import { TabKey } from '../../../../types/tab-key.type'
 
@@ -14,7 +13,6 @@ import FriendsListSkeleton from './FriendsListSkeleton'
 import { RequestItem } from './RequestItem'
 
 type FriendsReturn = ReturnType<typeof useFriends>
-type Friend = FriendsReturn['friends'][0]
 
 interface FriendsTabContentProps {
 	activeTab: TabKey
@@ -49,7 +47,6 @@ const FriendsTabContent: FC<FriendsTabContentProps> = ({
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
-	const { userId } = useUser()
 	const navigation = useTypedNavigation()
 
 	const handleFriendPress = useCallback(
@@ -82,23 +79,15 @@ const FriendsTabContent: FC<FriendsTabContentProps> = ({
 	if (activeTab === 'all') {
 		if (friends.length === 0) {
 			return (
-				<View className='py-16 items-center px-8'>
-					<Users size={48} color={colors.borderLight} />
-					<Text
-						className='text-base font-semibold mt-4 text-center'
-						style={{ color: colors.textMuted }}
-					>
-						{isSearching ? t('noSearchResults') : t('noFriends')}
-					</Text>
-					<Text
-						className='text-xs mt-2 text-center'
-						style={{ color: colors.textMuted }}
-					>
-						{isSearching
+				<EmptyStateCard
+					icon={isSearching ? Search : Users}
+					title={isSearching ? t('noSearchResults') : t('noFriends')}
+					description={
+						isSearching
 							? t('tryDifferentQuery')
-							: t('addFriendsHint')}
-					</Text>
-				</View>
+							: t('emptyFriendsDescription')
+					}
+				/>
 			)
 		}
 		return (
@@ -124,25 +113,17 @@ const FriendsTabContent: FC<FriendsTabContentProps> = ({
 	if (activeTab === 'pending') {
 		if (incoming.length === 0 && outgoing.length === 0) {
 			return (
-				<View className='py-16 items-center px-8'>
-					<Heart size={48} color={colors.borderLight} />
-					<Text
-						className='text-base font-semibold mt-4 text-center'
-						style={{ color: colors.textMuted }}
-					>
-						{isSearching
-							? t('noSearchResults')
-							: t('noPendingRequests')}
-					</Text>
-					{isSearching && (
-						<Text
-							className='text-xs mt-2 text-center'
-							style={{ color: colors.textMuted }}
-						>
-							{t('tryDifferentQuery')}
-						</Text>
-					)}
-				</View>
+				<EmptyStateCard
+					icon={isSearching ? Search : Clock3}
+					title={
+						isSearching ? t('noSearchResults') : t('noPendingRequests')
+					}
+					description={
+						isSearching
+							? t('tryDifferentQuery')
+							: t('emptyPendingRequestsDescription')
+					}
+				/>
 			)
 		}
 		return (
@@ -153,7 +134,7 @@ const FriendsTabContent: FC<FriendsTabContentProps> = ({
 							className='text-xs font-bold uppercase tracking-wider'
 							style={{ color: colors.textMuted }}
 						>
-							{t('incoming')} — {incoming.length}
+							{t('incoming')} - {incoming.length}
 						</Text>
 					</View>
 				)}
@@ -179,7 +160,7 @@ const FriendsTabContent: FC<FriendsTabContentProps> = ({
 							className='text-xs font-bold uppercase tracking-wider'
 							style={{ color: colors.textMuted }}
 						>
-							{t('outgoing')} — {outgoing.length}
+							{t('outgoing')} - {outgoing.length}
 						</Text>
 					</View>
 				)}
@@ -201,23 +182,7 @@ const FriendsTabContent: FC<FriendsTabContentProps> = ({
 		)
 	}
 
-	// return (
-	// 	<>
-	// 		{friends.map(f => {
-	// 			const other = getFriendUser(f)
-	// 			if (!other) return null
-	// 			return (
-	// 				<FriendItem
-	// 					key={f.id}
-	// 					id={f.id}
-	// 					username={other.username}
-	// 					avatarUrl={other.avatarUrl}
-	// 					onRemove={handleRemoveFriend}
-	// 				/>
-	// 			)
-	// 		})}
-	// 	</>
-	// )
+	return null
 }
 
 export default FriendsTabContent

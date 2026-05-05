@@ -14,17 +14,21 @@ query FindChatByChatId($chatId: String!) {
 			text
 			createdAt
 			isEdited
+			isStarted
 			files {
 				fileName
 				fileFormat
 				fileSize
 				id
 			}
+			chat {
+				chatName
+			}
 			user {
 				id
 				username
+				avatarUrl
 			}
-			id
 			repliedToLinks {
 				id
 				repliedTo {
@@ -39,6 +43,7 @@ query FindChatByChatId($chatId: String!) {
 					user {
 						username
 						id
+						avatarUrl
 					}
 				}
 			}

@@ -20,6 +20,7 @@ import Loader from '@/components/ui/Loader'
 import { Button } from '@/components/ui/button/Button'
 
 import { useAuth } from '@/hooks/useAuth'
+import { useMobileSecretSessionBootstrap } from '@/hooks/useMobileSecretSessionBootstrap'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 import { useUser } from '@/hooks/useUser'
@@ -30,16 +31,12 @@ import {
 	IAuthFormData
 } from '@/types/interface/auth.interface'
 
-import { upsertMyPreKeyJSON } from '@/utils/secret-chat/secretChat'
-
 import AuthFields from './AuthFields'
 import {
 	useCreateUserWEmailMutation,
-	useLoginUserMutation,
-	useSendPreKeyMutation
+	useLoginUserMutation
 } from '@/graphql/generated/output'
 import { client, rebuildWebsocketLink } from '@/libs/apollo-client'
-import { generatePreKey } from '@/libs/e2ee/gost'
 
 const Auth = () => {
 	const [isReg, setIsReg] = useState(false)
@@ -52,6 +49,7 @@ const Auth = () => {
 
 	const navigation = useTypedNavigation()
 	const { auth, isAuthenticated } = useAuth()
+	const { ensureSecretSession } = useMobileSecretSessionBootstrap()
 	const { setUserId } = useUser()
 	const { colors } = useTheme()
 	const { t } = useTranslation()
@@ -96,6 +94,12 @@ const Auth = () => {
 					refreshToken
 				)
 			}
+			if (data.loginUser.sessionId) {
+				await AsyncStorage.setItem(
+					EnumAsyncStorage.SESSION_ID,
+					data.loginUser.sessionId
+				)
+			}
 			await AsyncStorage.setItem(
 				EnumAsyncStorage.USER_ID,
 				JSON.stringify(currentUserId)
@@ -106,20 +110,18 @@ const Auth = () => {
 
 			setUserId(currentUserId)
 			auth()
-			const { toServer, toStore } = await generatePreKey()
-			AsyncStorage.setItem(
-				EnumAsyncStorage.MY_PRE_KEYS,
-				JSON.stringify(toStore)
-			)
 
-			upsertMyPreKeyJSON({ toServer, toStore })
-			sendPreKey({
-				variables: {
-					data: {
-						...toServer
-					}
-				}
-			})
+			try {
+				await ensureSecretSession(true)
+			} catch (error) {
+				console.warn('[SecretSession] Mobile secret session bootstrap failed', error)
+				Toast.show({
+					type: 'error',
+					text1: 'Secret chats setup failed',
+					text2: 'You can still use regular chats.'
+				})
+			}
+
 			form.reset()
 			navigation.navigate('Home')
 
@@ -149,20 +151,6 @@ const Auth = () => {
 		}
 	})
 
-	const [sendPreKey, { loading: isLoadingSendPreKey }] =
-		useSendPreKeyMutation({
-			onCompleted() {
-				console.log('Create PreKey')
-			},
-			onError(error) {
-				console.log('1', error)
-				Toast.show({
-					type: 'error',
-					text2: error.message || 'Something went wrong'
-				})
-			}
-		})
-
 	const [create, { loading: isLoadingCreateUserWEmail }] =
 		useCreateUserWEmailMutation({
 			onCompleted: async () => {
@@ -171,19 +159,6 @@ const Auth = () => {
 					type: 'success',
 					text1: 'Registration successful',
 					text2: 'You can now log in!'
-				})
-				const { toServer, toStore } = await generatePreKey()
-				AsyncStorage.setItem(
-					EnumAsyncStorage.MY_PRE_KEYS,
-					JSON.stringify(toStore)
-				)
-				upsertMyPreKeyJSON({ toServer, toStore })
-				sendPreKey({
-					variables: {
-						data: {
-							...toServer
-						}
-					}
 				})
 				setIsReg(false)
 			},
@@ -367,7 +342,6 @@ const Auth = () => {
 											)}
 											loading={
 												isLoadingCreateUserWEmail ||
-												isLoadingSendPreKey ||
 												isLoadingLogin
 											}
 										>

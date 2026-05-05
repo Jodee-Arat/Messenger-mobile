@@ -1,16 +1,10 @@
 import {
 	type FC,
 	type PropsWithChildren,
-	useEffect,
 	useLayoutEffect,
 	useRef
 } from 'react'
-import {
-	Modal as NativeModal,
-	Platform,
-	type ModalProps,
-	type ViewProps
-} from 'react-native'
+import { type ModalProps, type ViewProps } from 'react-native'
 
 import { useAppModalContext } from '@/providers/AppModalProvider'
 
@@ -26,15 +20,12 @@ const AppModal: FC<AppModalProps> = ({
 	children,
 	visible,
 	onRequestClose,
-	wrapperProps,
-	...props
+	wrapperProps
 }) => {
 	const { upsertEntry, removeEntry } = useAppModalContext()
 	const idRef = useRef(`app-modal-${modalId++}`)
 
 	useLayoutEffect(() => {
-		if (Platform.OS !== 'android') return
-
 		if (!visible) {
 			removeEntry(idRef.current)
 			return
@@ -59,13 +50,7 @@ const AppModal: FC<AppModalProps> = ({
 		wrapperProps
 	])
 
-	if (Platform.OS === 'android') return null
-
-	return (
-		<NativeModal visible={visible} onRequestClose={onRequestClose} {...props}>
-			{children}
-		</NativeModal>
-	)
+	return null
 }
 
 export default AppModal

@@ -176,6 +176,11 @@ const MessageFileItem: FC<MessageFileItemProp> = ({
 	React.useEffect(() => {
 		if (isImageFile(file.fileFormat) && !imageUrl) {
 			// Check disk cache first — instant display
+			if (file.localUri) {
+				setImageUrl(file.localUri)
+				return
+			}
+
 			const cached = getCacheFile(file.id, file.fileFormat)
 
 			if (cached.exists) {
@@ -195,13 +200,24 @@ const MessageFileItem: FC<MessageFileItemProp> = ({
 				})
 			}
 		}
-	}, [file.id])
+	}, [file.id, file.localUri])
 
 	const handleDownload = async () => {
 		if (isSelected || isLoadingDownload) return
 
 		if (file.isSecretAttachment) {
 			// Check cache first
+			if (file.localUri) {
+				try {
+					const saved = await saveLocalFile(file.localUri, file.fileName)
+					if (saved)
+						Toast.show({ type: 'success', text1: t('fileSaved') })
+				} catch {
+					Toast.show({ type: 'error', text1: t('fileDownloadError') })
+				}
+				return
+			}
+
 			const cached = getCacheFile(file.id, file.fileFormat)
 			if (cached.exists) {
 				try {

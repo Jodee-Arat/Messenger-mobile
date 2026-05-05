@@ -1,9 +1,10 @@
-import { Users } from 'lucide-react-native'
+import { MessageCircle, Search } from 'lucide-react-native'
 import { FC } from 'react'
-import { Text, View } from 'react-native'
 import DraggableFlatList from 'react-native-draggable-flatlist'
 
-import { useTheme, useTranslation } from '@/hooks/useTheme'
+import EmptyStateCard from '@/components/ui/EmptyStateCard'
+
+import { useTranslation } from '@/hooks/useTheme'
 
 import ChatsListSkeleton from '../chats-list/ChatsListSkeleton'
 
@@ -15,7 +16,6 @@ interface DirectMessagesListProps {
 }
 
 const DirectMessagesList: FC<DirectMessagesListProps> = ({ searchQuery }) => {
-	const { colors } = useTheme()
 	const { t } = useTranslation()
 
 	const {
@@ -51,25 +51,17 @@ const DirectMessagesList: FC<DirectMessagesListProps> = ({ searchQuery }) => {
 				}
 			}}
 			ListEmptyComponent={
-				<View className='py-16 items-center px-8'>
-					<Users size={48} color={colors.borderLight} />
-					<Text
-						className='text-base font-semibold mt-4 text-center'
-						style={{ color: colors.textMuted }}
-					>
-						{isSearching
-							? t('noSearchResults')
-							: t('noDirectMessages')}
-					</Text>
-					<Text
-						className='text-xs mt-2 text-center'
-						style={{ color: colors.textMuted }}
-					>
-						{isSearching
+				<EmptyStateCard
+					icon={isSearching ? Search : MessageCircle}
+					title={
+						isSearching ? t('noSearchResults') : t('noDirectMessages')
+					}
+					description={
+						isSearching
 							? t('tryDifferentQuery')
-							: t('addFriendsHint')}
-					</Text>
-				</View>
+							: t('emptyDirectMessagesDescription')
+					}
+				/>
 			}
 			renderItem={({ item, drag, isActive }) => (
 				<DMChatDropdownTrigger

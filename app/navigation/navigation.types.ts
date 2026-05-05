@@ -18,6 +18,7 @@ export type TypeRootStackParamList = {
 		chatName: string
 		isSecret: boolean
 		groupId?: string
+		isSaved?: boolean
 	}
 	ChatSettings: { chatId: string }
 	GroupSettings: { groupId: string; groupName: string }

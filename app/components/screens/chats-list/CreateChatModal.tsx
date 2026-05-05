@@ -12,7 +12,6 @@ import {
 	TouchableOpacity,
 	View,
 	Animated,
-	Dimensions,
 	Pressable
 } from 'react-native'
 import Toast from 'react-native-toast-message'
@@ -25,6 +24,7 @@ import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useBottomSheetModalLayout } from '@/hooks/useModalLayout'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { initGroupSessionAction } from '@/hooks/useSecretChat.actions'
+import { getStoredSecretSessionId } from '@/services/secret/secret-session.service'
 import { pickAvatarImage } from '@/utils/avatar-image-picker'
 import { createImageUploadFile } from '@/utils/create-image-upload-file'
 
@@ -45,8 +45,8 @@ import {
 	useCreateChatMutation,
 	useFindChatByChatIdLazyQuery,
 	useFindGroupByGroupIdQuery,
-	useGetPreKeysLazyQuery,
-	useSendSharedSecretKeyMutation
+	useGetSecretSessionPreKeysLazyQuery,
+	useSendSessionSharedSecretKeyMutation
 } from '@/graphql/generated/output'
 import {
 	createChatSchema,
@@ -62,8 +62,6 @@ interface CreateChatModalProp {
 	setIsOpen: (open: boolean) => void
 }
 
-const SCREEN_HEIGHT = Dimensions.get('window').height
-
 const CreateChatModal: FC<CreateChatModalProp> = ({
 	groupId,
 	setAllChats,
@@ -72,14 +70,18 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
-	const { containerPaddingBottom, sheetMaxHeight, sheetPaddingBottom } =
-		useBottomSheetModalLayout(0.85)
+	const {
+		containerPaddingBottom,
+		windowHeight,
+		sheetMaxHeight,
+		sheetPaddingBottom
+	} = useBottomSheetModalLayout(0.85)
 	const [selectedAvatar, setSelectedAvatar] = useState<ImagePickerAsset | null>(
 		null
 	)
 	const [isPickingAvatar, setIsPickingAvatar] = useState(false)
 
-	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+	const slideAnim = useRef(new Animated.Value(windowHeight)).current
 
 	const resetState = () => {
 		form.reset({
@@ -92,7 +94,7 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 
 	const closeSheet = (cb?: () => void) => {
 		Animated.timing(slideAnim, {
-			toValue: SCREEN_HEIGHT,
+			toValue: windowHeight,
 			duration: 200,
 			useNativeDriver: true
 		}).start(() => {
@@ -125,13 +127,13 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 		m => m.user.id !== currentUser?.id
 	)
 	const selectedUserIds = form.watch('userIds')
-	const [getPreKeys] = useGetPreKeysLazyQuery({
+	const [getPreKeys] = useGetSecretSessionPreKeysLazyQuery({
 		fetchPolicy: 'network-only'
 	})
 	const [findChatById] = useFindChatByChatIdLazyQuery({
 		fetchPolicy: 'network-only'
 	})
-	const [sendSharedSecretKey] = useSendSharedSecretKeyMutation()
+	const [sendSharedSecretKey] = useSendSessionSharedSecretKeyMutation()
 	const [changeChatAvatar, { loading: isUploadingAvatar }] =
 		useChangeChatAvatarMutation()
 
@@ -140,9 +142,16 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 			if (!currentUser?.id) return
 
 			const myPreKeys = await loadMyPreKeyJSON()
+			const secretSessionId = await getStoredSecretSessionId()
 			if (!myPreKeys) {
 				console.warn(
 					'[SecretChat][CreateChat] local prekeys missing, skip bootstrap'
+				)
+				return
+			}
+			if (!secretSessionId) {
+				console.warn(
+					'[SecretChat][CreateChat] secretSessionId missing, skip bootstrap'
 				)
 				return
 			}
@@ -162,7 +171,7 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 				variables: { chatId },
 				fetchPolicy: 'network-only'
 			})
-			const preKeys = preKeysResponse.data?.getPreKeys ?? []
+			const preKeys = preKeysResponse.data?.getSecretSessionPreKeys ?? []
 			if (preKeys.length === 0) {
 				console.warn(
 					'[SecretChat][CreateChat] no preKeys found after secret chat creation'
@@ -175,6 +184,7 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 				chatId,
 				groupId: fullChat.groupId,
 				userId: currentUser.id,
+				secretSessionId,
 				mySecretPreKey: myPreKeys.toStore,
 				preKeysPub: preKeys,
 				getPreKeys,
@@ -287,7 +297,8 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 
 	useEffect(() => {
 		if (isOpen) {
-			refetch()
+			void refetch()
+			slideAnim.setValue(windowHeight)
 			Animated.spring(slideAnim, {
 				toValue: 0,
 				useNativeDriver: true,
@@ -295,10 +306,16 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 				friction: 11
 			}).start()
 		}
-	}, [isOpen])
+	}, [isOpen, refetch, slideAnim, windowHeight])
 
 	return (
-		<AppModal visible={isOpen} animationType='none' transparent>
+		<AppModal
+			visible={isOpen}
+			animationType='none'
+			transparent
+			statusBarTranslucent
+			navigationBarTranslucent
+		>
 			<View
 				className='flex-1 justify-end'
 				style={{
@@ -318,11 +335,22 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 						borderTopRightRadius: 24,
 						borderTopWidth: 1,
 						borderColor: colors.border,
-						maxHeight: sheetMaxHeight,
+						height: sheetMaxHeight,
 						paddingBottom: sheetPaddingBottom,
 						overflow: 'hidden'
 					}}
 				>
+					<View className='items-center pt-2 pb-1'>
+						<View
+							style={{
+								width: 36,
+								height: 4,
+								borderRadius: 2,
+								backgroundColor: colors.textMuted
+							}}
+						/>
+					</View>
+
 					{/* Header */}
 					<View
 						className='flex-row items-center justify-between px-5 pt-4 pb-3'
@@ -347,24 +375,25 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 						</TouchableOpacity>
 					</View>
 
-					<ScrollView
-						style={{ flex: 1 }}
-						contentContainerStyle={{
-							paddingHorizontal: 20,
-							paddingTop: 16,
-							paddingBottom: 24
-						}}
-						showsVerticalScrollIndicator={false}
-						keyboardShouldPersistTaps='handled'
-					>
-						<View
-							className='rounded-2xl px-4 py-4 mb-4'
-							style={{
-								backgroundColor: colors.cardHover,
-								borderWidth: 1,
-								borderColor: colors.borderLight
+					<View style={{ flex: 1, minHeight: 0 }}>
+						<ScrollView
+							style={{ flex: 1 }}
+							contentContainerStyle={{
+								paddingHorizontal: 20,
+								paddingTop: 16,
+								paddingBottom: 24
 							}}
+							showsVerticalScrollIndicator={false}
+							keyboardShouldPersistTaps='handled'
 						>
+							<View
+								className='rounded-2xl px-4 py-4 mb-4'
+								style={{
+									backgroundColor: colors.cardHover,
+									borderWidth: 1,
+									borderColor: colors.borderLight
+								}}
+							>
 							<View className='flex-row items-center'>
 								<View
 									style={{
@@ -464,144 +493,107 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 							</View>
 						</View>
 
-						{/* Chat name input */}
-						<Controller
-							control={form.control}
-							name='chatName'
-							render={({ field }) => (
-								<TextInput
-									className='rounded-xl px-4 py-3 mb-3'
-									style={{
-										borderWidth: 1,
-										borderColor: colors.borderLight,
-										backgroundColor: colors.cardHover,
-										color: colors.text,
-										fontSize: 15
-									}}
-									placeholder={t('chatName')}
-									placeholderTextColor={colors.textMuted}
-									editable={!isLoadingCreate}
-									value={field.value}
-									onChangeText={field.onChange}
-								/>
-							)}
-						/>
-
-						{/* Secret chat toggle */}
-						<Controller
-							control={form.control}
-							name='isSecretChat'
-							render={({ field }) => (
-								<TouchableOpacity
-									activeOpacity={0.7}
-									onPress={() => field.onChange(!field.value)}
-									className='flex-row items-center rounded-xl px-4 py-3 mb-4'
-									style={{
-										backgroundColor: field.value
-											? colors.accentMuted
-											: colors.cardHover,
-										borderWidth: 1,
-										borderColor: field.value
-											? colors.accent
-											: colors.borderLight
-									}}
-								>
-									<Lock
-										size={18}
-										color={
-											field.value
-												? colors.accent
-												: colors.textMuted
-										}
-									/>
-									<Text
-										className='ml-3 text-sm font-medium'
+							{/* Chat name input */}
+							<Controller
+								control={form.control}
+								name='chatName'
+								render={({ field }) => (
+									<TextInput
+										className='rounded-xl px-4 py-3 mb-3'
 										style={{
-											color: field.value
+											borderWidth: 1,
+											borderColor: colors.borderLight,
+											backgroundColor: colors.cardHover,
+											color: colors.text,
+											fontSize: 15
+										}}
+										placeholder={t('chatName')}
+										placeholderTextColor={colors.textMuted}
+										editable={!isLoadingCreate}
+										value={field.value}
+										onChangeText={field.onChange}
+									/>
+								)}
+							/>
+
+							{/* Secret chat toggle */}
+							<Controller
+								control={form.control}
+								name='isSecretChat'
+								render={({ field }) => (
+									<TouchableOpacity
+										activeOpacity={0.7}
+										onPress={() => field.onChange(!field.value)}
+										className='flex-row items-center rounded-xl px-4 py-3 mb-4'
+										style={{
+											backgroundColor: field.value
+												? colors.accentMuted
+												: colors.cardHover,
+											borderWidth: 1,
+											borderColor: field.value
 												? colors.accent
-												: colors.textSecondary
+												: colors.borderLight
 										}}
 									>
-										{t('secretChat')}
-									</Text>
-								</TouchableOpacity>
-							)}
-						/>
-
-						{/* Users label */}
-						<Text
-							className='text-xs font-semibold uppercase tracking-wider mb-2 ml-1'
-							style={{ color: colors.textMuted }}
-						>
-							{t('members')}{' '}
-							{selectedUserIds.length > 0 && (
-								<Text style={{ color: colors.accent }}>
-									({selectedUserIds.length})
-								</Text>
-							)}
-						</Text>
-
-						{/* Users list */}
-						{isLoadingFindGroup ? (
-							<ActivityIndicator
-								size='small'
-								color={colors.accent}
-								className='my-4'
+										<Lock
+											size={18}
+											color={
+												field.value
+													? colors.accent
+													: colors.textMuted
+											}
+										/>
+										<Text
+											className='ml-3 text-sm font-medium'
+											style={{
+												color: field.value
+													? colors.accent
+													: colors.textSecondary
+											}}
+										>
+											{t('secretChat')}
+										</Text>
+									</TouchableOpacity>
+								)}
 							/>
-						) : (
-							<View className='mb-4'>
-								{users.map(user => (
-									<Controller
-										key={user.user.id}
-										control={form.control}
-										name='userIds'
-										render={({ field }) => {
-											const isChecked =
-												field.value.includes(
-													user.user.id
-												)
-											return (
-												<TouchableOpacity
-													activeOpacity={0.7}
-													onPress={() => {
-														if (isChecked) {
-															field.onChange(
-																field.value.filter(
-																	(
-																		id: string
-																	) =>
-																		id !==
-																		user
-																			.user
-																			.id
-																)
-															)
-														} else {
-															field.onChange([
-																...field.value,
-																user.user.id
-															])
-														}
-													}}
-													className='flex-row items-center rounded-xl px-3 py-2.5 mb-1'
-													style={{
-														backgroundColor:
-															isChecked
-																? colors.accentMuted
-																: 'transparent'
-													}}
-												>
-													<Checkbox
-														checked={isChecked}
-														onCheckedChange={(
-															checked: boolean
-														) => {
-															if (checked) {
-																field.onChange([
-																	...field.value,
-																	user.user.id
-																])
-															} else {
+
+							{/* Users label */}
+							<Text
+								className='text-xs font-semibold uppercase tracking-wider mb-2 ml-1'
+								style={{ color: colors.textMuted }}
+							>
+								{t('members')}{' '}
+								{selectedUserIds.length > 0 && (
+									<Text style={{ color: colors.accent }}>
+										({selectedUserIds.length})
+									</Text>
+								)}
+							</Text>
+
+							{/* Users list */}
+							{isLoadingFindGroup ? (
+								<ActivityIndicator
+									size='small'
+									color={colors.accent}
+									className='my-4'
+								/>
+							) : (
+								<View className='mb-4'>
+									{users.map(user => (
+										<Controller
+											key={user.user.id}
+											control={form.control}
+											name='userIds'
+											render={({ field }) => {
+												const isChecked =
+													field.value.includes(
+														user.user.id
+													)
+												return (
+													<TouchableOpacity
+														activeOpacity={0.7}
+														onPress={() => {
+															if (isChecked) {
 																field.onChange(
 																	field.value.filter(
 																		(
@@ -613,67 +605,105 @@ const CreateChatModal: FC<CreateChatModalProp> = ({
 																				.id
 																	)
 																)
+															} else {
+																field.onChange([
+																	...field.value,
+																	user.user.id
+																])
 															}
 														}}
-													/>
-													<EntityAvatar
-														name={
-															user.user.username
-														}
-														avatarUrl={
-															user.user.avatarUrl
-														}
-														size='sm'
-													/>
-													<Text
-														className='ml-2 text-sm'
+														className='flex-row items-center rounded-xl px-3 py-2.5 mb-1'
 														style={{
-															color: colors.text
+															backgroundColor:
+																isChecked
+																	? colors.accentMuted
+																	: 'transparent'
 														}}
 													>
-														{user.user.username}
-													</Text>
-												</TouchableOpacity>
-											)
-										}}
-									/>
-								))}
-							</View>
-						)}
-
-						{/* Submit */}
-						<TouchableOpacity
-							disabled={
-								!form.formState.isValid ||
-								isBusy ||
-								isLoadingFindGroup
-							}
-							onPress={form.handleSubmit(onSubmit)}
-							activeOpacity={0.8}
-							className='rounded-xl py-3.5 items-center'
-							style={{
-								backgroundColor:
-									!form.formState.isValid || isBusy
-										? colors.borderLight
-										: colors.accent,
-								opacity:
-									!form.formState.isValid || isBusy
-										? 0.5
-										: 1
-							}}
-						>
-							{isLoadingCreate || isUploadingAvatar ? (
-								<ActivityIndicator size='small' color='#fff' />
-							) : (
-								<Text
-									className='text-base font-semibold'
-									style={{ color: '#fff' }}
-								>
-									{t('createChat')}
-								</Text>
+														<Checkbox
+															checked={isChecked}
+															onCheckedChange={(
+																checked: boolean
+															) => {
+																if (checked) {
+																	field.onChange([
+																		...field.value,
+																		user.user.id
+																	])
+																} else {
+																	field.onChange(
+																		field.value.filter(
+																			(
+																				id: string
+																			) =>
+																				id !==
+																				user
+																					.user
+																					.id
+																		)
+																	)
+																}
+															}}
+														/>
+														<EntityAvatar
+															name={
+																user.user.username
+															}
+															avatarUrl={
+																user.user.avatarUrl
+															}
+															size='sm'
+														/>
+														<Text
+															className='ml-2 text-sm'
+															style={{
+																color: colors.text
+															}}
+														>
+															{user.user.username}
+														</Text>
+													</TouchableOpacity>
+												)
+											}}
+										/>
+									))}
+								</View>
 							)}
-						</TouchableOpacity>
-					</ScrollView>
+
+							{/* Submit */}
+							<TouchableOpacity
+								disabled={
+									!form.formState.isValid ||
+									isBusy ||
+									isLoadingFindGroup
+								}
+								onPress={form.handleSubmit(onSubmit)}
+								activeOpacity={0.8}
+								className='rounded-xl py-3.5 items-center'
+								style={{
+									backgroundColor:
+										!form.formState.isValid || isBusy
+											? colors.borderLight
+											: colors.accent,
+									opacity:
+										!form.formState.isValid || isBusy
+											? 0.5
+											: 1
+								}}
+							>
+								{isLoadingCreate || isUploadingAvatar ? (
+									<ActivityIndicator size='small' color='#fff' />
+								) : (
+									<Text
+										className='text-base font-semibold'
+										style={{ color: '#fff' }}
+									>
+										{t('createChat')}
+									</Text>
+								)}
+							</TouchableOpacity>
+						</ScrollView>
+					</View>
 				</Animated.View>
 			</View>
 		</AppModal>

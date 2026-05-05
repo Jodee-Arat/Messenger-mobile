@@ -35,25 +35,25 @@ import {
 	sendGroupKeyToNewMemberAction,
 	sendSecretMessageAction
 } from './useSecretChat.actions'
+import { getStoredSecretSessionId } from '@/services/secret/secret-session.service'
 import {
 	FindAllChatsByGroupQuery,
 	FindAllUsersQuery,
 	FindChatByChatIdQuery,
-	GetPreKeysQuery,
-	useAddSecretMessageSubscription,
-	useAddSharedSecretKeySubscription,
-	useAckSecretMessagesMutation,
-	useAckSharedSecretKeysMutation,
+	GetSecretSessionPreKeysQuery,
+	useAddSessionSecretMessageSubscription,
+	useAddSessionSharedSecretKeySubscription,
+	useAckSessionSecretMessagesMutation,
+	useAckSessionSharedSecretKeysMutation,
 	useChatUpdatedSubscription,
 	useDiscardSecretAttachmentMutation,
 	useFindChatByChatIdQuery,
-	useGetPreKeysLazyQuery,
-	useGetSecretMessageLazyQuery,
-	useGetSecretMessagesLazyQuery,
-	useGetSharedSecretKeyLazyQuery,
+	useGetSecretSessionPreKeysLazyQuery,
+	useGetSessionSecretMessagesLazyQuery,
+	useGetSessionSharedSecretKeysLazyQuery,
 	useSecretKeyRotationSubscription,
-	useSendSecretMessageMutation,
-	useSendSharedSecretKeyMutation,
+	useSendSessionSecretMessageMutation,
+	useSendSessionSharedSecretKeyMutation,
 	useUploadSecretAttachmentMutation
 } from '@/graphql/generated/output'
 import { PreKeyBundleClient } from '@/libs/e2ee/gost'
@@ -71,8 +71,21 @@ const mergeUniqueMessages = (
 		return true
 	})
 
-	return [...existing, ...uniqueIncoming]
+	return sortMessagesByCreatedAt([...existing, ...uniqueIncoming])
 }
+
+const getMessageTime = (message: MessageType) => {
+	const timestamp = new Date(message.createdAt).getTime()
+	return Number.isFinite(timestamp) ? timestamp : 0
+}
+
+const sortMessagesByCreatedAt = (messages: MessageType[]) =>
+	[...messages].sort((left, right) => {
+		const timeDiff = getMessageTime(left) - getMessageTime(right)
+		if (timeDiff !== 0) return timeDiff
+
+		return left.id.localeCompare(right.id)
+	})
 
 export interface SecretChatData {
 	id: string
@@ -132,8 +145,10 @@ const hasCreatorMetadata = (chat: GroupChatShape) =>
 export const useSecretChat = (
 	chatId: string,
 	userId: string,
-	groupId?: string
+	groupId?: string,
+	options?: { isSaved?: boolean }
 ) => {
+	const isSaved = Boolean(options?.isSaved)
 	const isDM = !groupId
 	const effectiveGroupId = groupId || DM_STORAGE_GROUP_ID
 
@@ -157,9 +172,10 @@ export const useSecretChat = (
 	const [draftText, setDraftText] = useState<string>('')
 	const [mySecretPreKey, setMySecretPreKey] =
 		useState<PreKeyBundleClient | null>(null)
-	const [preKeysPub, setPreKeysPub] = useState<GetPreKeysQuery['getPreKeys']>(
-		[]
-	)
+	const [preKeysPub, setPreKeysPub] = useState<
+		GetSecretSessionPreKeysQuery['getSecretSessionPreKeys']
+	>([])
+	const [secretSessionId, setSecretSessionId] = useState<string | null>(null)
 	const [sessionKey, setSessionKey] =
 		useState<Uint8Array<ArrayBufferLike> | null>(null)
 	const [files, setFiles] = useState<SendFileType[]>([])
@@ -180,6 +196,19 @@ export const useSecretChat = (
 	}, [messages])
 
 	useEffect(() => {
+		let isCancelled = false
+
+		void getStoredSecretSessionId().then(storedSessionId => {
+			if (isCancelled) return
+			setSecretSessionId(storedSessionId ?? null)
+		})
+
+		return () => {
+			isCancelled = true
+		}
+	}, [userId])
+
+	useEffect(() => {
 		const serverChat = chatData?.findChatByChatId
 		if (!serverChat) return
 
@@ -190,24 +219,28 @@ export const useSecretChat = (
 		}
 	}, [chatData, isDM])
 
-	const [getPreKeys] = useGetPreKeysLazyQuery({
+	const [getPreKeys] = useGetSecretSessionPreKeysLazyQuery({
 		fetchPolicy: 'network-only'
 	})
-	const [getSecretMessage] = useGetSecretMessageLazyQuery({
+	const [getSecretMessages] = useGetSessionSecretMessagesLazyQuery({
 		fetchPolicy: 'network-only'
 	})
-	const [getSecretMessages] = useGetSecretMessagesLazyQuery({
+	const [getSharedSecretKey] = useGetSessionSharedSecretKeysLazyQuery({
 		fetchPolicy: 'network-only'
 	})
-	const [getSharedSecretKey] = useGetSharedSecretKeyLazyQuery({
-		fetchPolicy: 'network-only'
+	const { data: subSecretMessage } = useAddSessionSecretMessageSubscription({
+		variables: {
+			userId,
+			secretSessionId: secretSessionId ?? ''
+		},
+		skip: !userId || !secretSessionId
 	})
-	const { data: subSecretMessage } = useAddSecretMessageSubscription({
-		variables: { userId }
-	})
-	const { data: subSharedSecretKey } = useAddSharedSecretKeySubscription({
-		variables: { userId },
-		skip: isDM
+	const { data: subSharedSecretKey } = useAddSessionSharedSecretKeySubscription({
+		variables: {
+			userId,
+			secretSessionId: secretSessionId ?? ''
+		},
+		skip: isDM || !userId || !secretSessionId
 	})
 	const { data: chatUpdatedData } = useChatUpdatedSubscription({
 		variables: { userId },
@@ -234,12 +267,12 @@ export const useSecretChat = (
 		skip: isDM
 	})
 
-	const [sendMessageToClients] = useSendSecretMessageMutation()
-	const [sendSharedSecretKey] = useSendSharedSecretKeyMutation()
+	const [sendMessageToClients] = useSendSessionSecretMessageMutation()
+	const [sendSharedSecretKey] = useSendSessionSharedSecretKeyMutation()
 	const [uploadSecretAttachment] = useUploadSecretAttachmentMutation()
 	const [discardSecretAttachment] = useDiscardSecretAttachmentMutation()
-	const [ackSecretMessages] = useAckSecretMessagesMutation()
-	const [ackSharedSecretKeys] = useAckSharedSecretKeysMutation()
+	const [ackSecretMessages] = useAckSessionSecretMessagesMutation()
+	const [ackSharedSecretKeys] = useAckSessionSharedSecretKeysMutation()
 
 	const processedRef = useRef<Set<string>>(new Set())
 	const groupKeyReceiveInFlightRef = useRef(false)
@@ -252,17 +285,17 @@ export const useSecretChat = (
 				| null,
 			currentSessionKey: Uint8Array<ArrayBufferLike> | null
 		) => {
-			if (!currentChat) return
+			if (!currentChat || !secretSessionId) return
 
 			const result = await pullSecretMessagesAction({
 				chatId,
 				groupId: effectiveGroupId,
 				userId,
+				secretSessionId,
 				chat: currentChat,
 				sessionKey: currentSessionKey,
 				mySecretPreKey,
 				preKeysPub,
-				getSecretMessage,
 				getSecretMessages,
 				getSharedSecretKey,
 				getPreKeys,
@@ -286,6 +319,7 @@ export const useSecretChat = (
 						await ackSharedSecretKeys({
 							variables: {
 								chatId,
+								secretSessionId,
 								sharedKeyIds: result.ackSharedKeyIds
 							}
 						})
@@ -308,6 +342,7 @@ export const useSecretChat = (
 					await ackSecretMessages({
 						variables: {
 							chatId,
+							secretSessionId,
 							messageIds: result.ackMessageIds
 						}
 					})
@@ -325,21 +360,27 @@ export const useSecretChat = (
 			chatId,
 			effectiveGroupId,
 			getPreKeys,
-			getSecretMessage,
 			getSecretMessages,
 			getSharedSecretKey,
 			mySecretPreKey,
 			preKeysPub,
+			secretSessionId,
 			userId
 		]
 	)
 
 	const loadChat = useCallback(async () => {
+		if (!secretSessionId) return
 		setLoadingMessage('Загрузка чата...')
 
 		if (isDM) {
 			await ensureDirectChatDirectory(chatId)
-			const res = await loadDMKeysAction({ chatId, userId, getPreKeys })
+			const res = await loadDMKeysAction({
+				chatId,
+				userId,
+				secretSessionId,
+				getPreKeys
+			})
 			if (res.errorMessage) setErrorMessage(res.errorMessage)
 			if (res.mySecretPreKey !== undefined)
 				setMySecretPreKey(res.mySecretPreKey ?? null)
@@ -352,6 +393,7 @@ export const useSecretChat = (
 				chatId,
 				groupId: effectiveGroupId,
 				userId,
+				secretSessionId,
 				getPreKeys
 			})
 			if (res.errorMessage) setErrorMessage(res.errorMessage)
@@ -365,7 +407,7 @@ export const useSecretChat = (
 		}
 
 		setLoadingMessage('')
-	}, [chatId, effectiveGroupId, getPreKeys, isDM, userId])
+	}, [chatId, effectiveGroupId, getPreKeys, isDM, secretSessionId, userId])
 
 	useEffect(() => {
 		let isCancelled = false
@@ -375,7 +417,7 @@ export const useSecretChat = (
 
 			const chatMessagesData = await loadMessages(chatId, effectiveGroupId)
 			if (isCancelled) return
-			setMessages(chatMessagesData || [])
+			setMessages(sortMessagesByCreatedAt(chatMessagesData || []))
 
 			await loadChat()
 		}
@@ -389,7 +431,7 @@ export const useSecretChat = (
 
 	const receiveAndPersistGroupKey = useCallback(
 		async (reason: 'bootstrap' | 'subscription' | 'poll') => {
-			if (!chat || !mySecretPreKey || preKeysPub.length === 0)
+			if (!chat || !mySecretPreKey || preKeysPub.length === 0 || !secretSessionId)
 				return false
 			if (groupKeyReceiveInFlightRef.current) return false
 
@@ -408,6 +450,7 @@ export const useSecretChat = (
 					chatId,
 					groupId: effectiveGroupId,
 					userId,
+					secretSessionId,
 					preferredFromUserId: initiatorUserId,
 					mySecretPreKey,
 					preKeysPub,
@@ -431,6 +474,7 @@ export const useSecretChat = (
 							await ackSharedSecretKeys({
 								variables: {
 									chatId,
+									secretSessionId,
 									sharedKeyIds: receiveResult.ackSharedKeyIds
 								}
 							})
@@ -459,6 +503,7 @@ export const useSecretChat = (
 			getSharedSecretKey,
 			mySecretPreKey,
 			preKeysPub,
+			secretSessionId,
 			syncUnreadMessages,
 			userId
 		]
@@ -466,7 +511,7 @@ export const useSecretChat = (
 
 	// Подписка на новые секретные сообщения
 	useEffect(() => {
-		const msg = subSecretMessage?.addSecretMessage
+		const msg = subSecretMessage?.addSessionSecretMessage
 		if (!msg) return
 		;(async () => {
 			const result = await processSecretSubscriptionAction({
@@ -476,10 +521,10 @@ export const useSecretChat = (
 				chatId,
 				groupId: effectiveGroupId,
 				userId,
+				secretSessionId: secretSessionId!,
 				sessionKey,
 				preKeysPub,
 				mySecretPreKey,
-				getSecretMessage,
 				getPreKeys,
 				processedRef
 			})
@@ -501,6 +546,7 @@ export const useSecretChat = (
 					await ackSharedSecretKeys({
 						variables: {
 							chatId,
+							secretSessionId: secretSessionId!,
 							sharedKeyIds: result.ackSharedKeyIds
 						}
 					})
@@ -521,6 +567,7 @@ export const useSecretChat = (
 					await ackSecretMessages({
 						variables: {
 							chatId,
+							secretSessionId: secretSessionId!,
 							messageIds: result.ackMessageIds
 						}
 					})
@@ -540,6 +587,7 @@ export const useSecretChat = (
 		effectiveGroupId,
 		mySecretPreKey,
 		preKeysPub,
+		secretSessionId,
 		sessionKey,
 		subSecretMessage
 	])
@@ -581,6 +629,7 @@ export const useSecretChat = (
 				chatId,
 				groupId: effectiveGroupId,
 				userId,
+				secretSessionId: secretSessionId!,
 				mySecretPreKey,
 				preKeysPub,
 				getPreKeys,
@@ -614,6 +663,7 @@ export const useSecretChat = (
 		mySecretPreKey,
 		preKeysPub,
 		receiveAndPersistGroupKey,
+		secretSessionId,
 		sendSharedSecretKey,
 		sessionKey,
 		userId
@@ -622,7 +672,7 @@ export const useSecretChat = (
 	// ─── Group-only: подписка на получение общего ключа ──────────────
 	useEffect(() => {
 		if (isDM) return
-		const sharedKeyData = subSharedSecretKey?.addSharedSecretKey
+		const sharedKeyData = subSharedSecretKey?.addSessionSharedSecretKey
 		if (!sharedKeyData || sessionKey || !mySecretPreKey) return
 		;(async () => {
 			await receiveAndPersistGroupKey('subscription')
@@ -694,6 +744,10 @@ export const useSecretChat = (
 		user: FindAllUsersQuery['findAllUsers'][number]
 	) => {
 		try {
+			if (!secretSessionId) {
+				setErrorMessage('Secret session is not initialized yet')
+				return false
+			}
 			if (isDM) await ensureDirectChatDirectory(chatId)
 			setIsSendingFiles(true)
 			const res = await sendSecretMessageAction({
@@ -703,6 +757,8 @@ export const useSecretChat = (
 				chatId,
 				groupId: effectiveGroupId,
 				userId,
+				secretSessionId: secretSessionId!,
+				isSaved,
 				files: filesRef.current,
 				setFiles,
 				sessionKey,
@@ -764,8 +820,14 @@ export const useSecretChat = (
 		const { newFile, errorMessage: err } = await pickFileAction()
 		if (err) setErrorMessage(err)
 		if (newFile) {
-			setFiles(prev => [...prev, newFile])
+			setFiles(prev => [
+				...prev,
+				isSaved ? { ...newFile, status: undefined } : newFile
+			])
 			// Signal-style: шифруем и загружаем сразу при выборе файла
+			if (isSaved) {
+				return
+			}
 			void encryptAndUploadFileAction({
 				chatId,
 				file: newFile,
@@ -779,8 +841,14 @@ export const useSecretChat = (
 		const { newFile, errorMessage: err } = await pickImageAction()
 		if (err) setErrorMessage(err)
 		if (newFile) {
-			setFiles(prev => [...prev, newFile])
+			setFiles(prev => [
+				...prev,
+				isSaved ? { ...newFile, status: undefined } : newFile
+			])
 			// Signal-style: шифруем и загружаем сразу при выборе файла
+			if (isSaved) {
+				return
+			}
 			void encryptAndUploadFileAction({
 				chatId,
 				file: newFile,
@@ -808,19 +876,20 @@ export const useSecretChat = (
 
 	const reload = useCallback(async () => {
 		setErrorMessage('')
+		if (!secretSessionId) return
 		if (isDM) {
 			await ensureDirectChatDirectory(chatId)
 		}
 		const storedMessages = await loadMessages(chatId, effectiveGroupId)
-		setMessages(storedMessages || [])
+		setMessages(sortMessagesByCreatedAt(storedMessages || []))
 		await loadChat()
-	}, [chatId, effectiveGroupId, isDM, loadChat])
+	}, [chatId, effectiveGroupId, isDM, loadChat, secretSessionId])
 
 	/**
 	 * Отправить существующий групповой ключ новому участнику после приглашения.
 	 */
 	const sendKeyToNewMember = async (targetUserId: string) => {
-		if (!sessionKey || !mySecretPreKey) {
+		if (!sessionKey || !mySecretPreKey || !secretSessionId) {
 			console.warn(
 				'[SecretChat] sendKeyToNewMember: нет sessionKey или mySecretPreKey'
 			)
@@ -830,6 +899,7 @@ export const useSecretChat = (
 			chatId,
 			groupId: effectiveGroupId,
 			userId,
+			secretSessionId: secretSessionId!,
 			targetUserId,
 			sessionKey,
 			mySecretPreKey,

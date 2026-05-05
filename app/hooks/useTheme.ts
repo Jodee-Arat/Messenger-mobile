@@ -1,4 +1,4 @@
-﻿import { settingsStore } from '../store/settings/settings.store'
+import { settingsStore } from '../store/settings/settings.store'
 
 export interface ThemeColors {
 	background: string
@@ -180,6 +180,10 @@ const translations: TranslationMap = {
 		ru: 'Пока нет личных сообщений',
 		en: 'No direct messages yet'
 	},
+	emptyDirectMessagesDescription: {
+		ru: 'Когда кто-то напишет вам или вы начнёте диалог, он появится здесь.',
+		en: 'When someone messages you or you start a conversation, it will appear here.'
+	},
 	addFriendsHint: {
 		ru: 'Добавьте друзей или начните чат в одной из групп',
 		en: 'Add friends or start a chat in a group'
@@ -212,6 +216,10 @@ const translations: TranslationMap = {
 
 	/* ─── Chats ─── */
 	noChats: { ru: 'Чатов пока нет', en: 'No chats yet' },
+	emptyChatsDescription: {
+		ru: 'Создайте первый чат в группе, чтобы обсуждения появились здесь.',
+		en: 'Create the first chat in the group so conversations appear here.'
+	},
 	chatDeleted: { ru: 'Чат удалён', en: 'Chat deleted' },
 	deleteChat: { ru: 'Удалить чат', en: 'Delete chat' },
 	leaveChat: { ru: 'Покинуть чат', en: 'Leave chat' },
@@ -362,6 +370,102 @@ const translations: TranslationMap = {
 	},
 
 	/* ─── Favorites ─── */
+	favoritesDescription: {
+		ru: 'Секретное пространство для заметок и передачи данных между телефоном и браузером.',
+		en: 'A secret space for notes and for passing data between your phone and browser.'
+	},
+	favoritesPairingTitle: {
+		ru: 'Привязка браузера',
+		en: 'Browser pairing'
+	},
+	favoritesPairingDescription: {
+		ru: 'Отсканируйте QR из web-версии или вставьте pairing ID вручную, чтобы передать браузеру секретный ключ Избранного.',
+		en: 'Scan the QR from web or paste the pairing ID manually to hand over the Favorites secret key to the browser.'
+	},
+	favoritesPairingLabel: {
+		ru: 'PAIRING ID',
+		en: 'PAIRING ID'
+	},
+	favoritesPairingPlaceholder: {
+		ru: 'Вставьте pairing ID, если QR недоступен',
+		en: 'Paste the pairing ID if QR is unavailable'
+	},
+	favoritesConfirmPairing: {
+		ru: 'Подтвердить привязку',
+		en: 'Confirm pairing'
+	},
+	favoritesScanQr: {
+		ru: 'Сканировать QR',
+		en: 'Scan QR'
+	},
+	favoritesScannerTitle: {
+		ru: 'Сканирование QR',
+		en: 'QR scanner'
+	},
+	favoritesScannerHint: {
+		ru: 'Наведите камеру на QR-код в web-версии Избранного.',
+		en: 'Point the camera at the QR code shown in web Favorites.'
+	},
+	favoritesCameraPermissionTitle: {
+		ru: 'Нужен доступ к камере',
+		en: 'Camera access required'
+	},
+	favoritesCameraPermissionDescription: {
+		ru: 'Разрешите доступ к камере, чтобы сканировать QR-код привязки.',
+		en: 'Allow camera access to scan the pairing QR code.'
+	},
+	favoritesSafetyCodeTitle: {
+		ru: 'Проверьте код безопасности',
+		en: 'Check safety code'
+	},
+	favoritesSafetyCodePrompt: {
+		ru: 'Сравните этот код с кодом на экране браузера. Если совпадает, подтвердите привязку.',
+		en: 'Compare this code with the code shown in the browser. If it matches, confirm pairing.'
+	},
+	favoritesQrInvalid: {
+		ru: 'Этот QR-код не похож на код привязки Избранного.',
+		en: 'This QR code does not look like a Favorites pairing code.'
+	},
+	favoritesSafetyCodeMismatch: {
+		ru: 'Код безопасности QR не совпал с данными сервера. Создайте привязку заново.',
+		en: 'The QR safety code does not match the server response. Create a new pairing.'
+	},
+	favoritesPairingSuccess: {
+		ru: 'Браузер успешно привязан к секретному Избранному.',
+		en: 'The browser has been linked to secret Favorites.'
+	},
+	favoritesPairingError: {
+		ru: 'Не удалось завершить привязку браузера.',
+		en: 'Failed to complete browser pairing.'
+	},
+	favoritesSessionMissing: {
+		ru: 'Мобильная секретная сессия ещё не готова. Повторите попытку через пару секунд.',
+		en: 'The mobile secret session is not ready yet. Try again in a moment.'
+	},
+	favoritesSessionActive: {
+		ru: 'Мобильная секретная сессия активна',
+		en: 'Mobile secret session is active'
+	},
+	favoritesSessionReady: {
+		ru: 'Браузер привязан и готов принимать секретные сообщения',
+		en: 'The browser is linked and ready to receive secret messages'
+	},
+	favoritesWebSessionNotFound: {
+		ru: 'Web-сессия не найдена. Возможно, pairing уже истёк или вкладка была закрыта.',
+		en: 'The web session was not found. The pairing may have expired or the tab was closed.'
+	},
+	favoritesLoadError: {
+		ru: 'Не удалось открыть секретное Избранное.',
+		en: 'Failed to open secret Favorites.'
+	},
+	favoritesOpenChat: {
+		ru: 'Открыть секретный чат',
+		en: 'Open secret chat'
+	},
+	favoritesReadyDescription: {
+		ru: 'Внутри хранится локальная история телефона и все сообщения, которые вы передали из web.',
+		en: 'Inside you will find the phone-local history and all messages transferred from web.'
+	},
 	editProfileBtn: { ru: 'Редактировать профиль', en: 'Edit profile' },
 	checkE2EE: { ru: 'Проверить X3DH (ГОСТ)', en: 'Check X3DH (GOST)' },
 	running: { ru: 'Запуск…', en: 'Running…' },
@@ -371,6 +475,14 @@ const translations: TranslationMap = {
 
 	/* ─── Messages ─── */
 	empty: { ru: 'Пусто', en: 'Empty' },
+	emptyMessagesTitle: {
+		ru: 'Здесь пока нет сообщений',
+		en: 'There are no messages here yet'
+	},
+	emptyMessagesDescription: {
+		ru: 'Напишите первым, чтобы начать разговор.',
+		en: 'Send the first message to start the conversation.'
+	},
 	messageDeleted: { ru: 'Сообщение удалено', en: 'Message deleted' },
 	messagesDeletedSuccess: {
 		ru: 'Сообщения удалены успешно',
@@ -616,6 +728,11 @@ const translations: TranslationMap = {
 	sessionCurrent: { ru: 'Активна', en: 'Active' },
 	sessionOther: { ru: 'Другие сессии', en: 'Other sessions' },
 	sessionNone: { ru: 'Нет активных сессий', en: 'No active sessions' },
+	sessionTerminate: { ru: 'Отключить', en: 'Terminate' },
+	sessionTerminateConfirm: {
+		ru: 'Вы уверены, что хотите отключить эту сессию? Устройство будет разлогинено.',
+		en: 'Are you sure you want to terminate this session? The device will be logged out.'
+	},
 	unblockUser: { ru: 'Разблокировать', en: 'Unblock User' },
 	unblockUserConfirm: {
 		ru: 'Вы уверены, что хотите разблокировать этого пользователя?',
@@ -665,6 +782,10 @@ const translations: TranslationMap = {
 		ru: 'Личное общение недоступно, потому что один из вас заблокировал другого.',
 		en: 'Direct contact is unavailable because one of you has blocked the other.'
 	},
+	directChatBlockedComposer: {
+		ru: 'Вы не можете писать этому пользователю, пока действует блокировка.',
+		en: "You can't message this user while the block is active."
+	},
 	blockedProfileTitle: {
 		ru: 'Пользователь заблокирован',
 		en: 'User is blocked'
@@ -685,9 +806,17 @@ const translations: TranslationMap = {
 	acceptFriendRequest: { ru: 'Принять заявку', en: 'Accept request' },
 	outgoingRequest: { ru: 'Исходящая заявка', en: 'Outgoing request' },
 	noFriends: { ru: 'Пока нет друзей', en: 'No friends yet' },
+	emptyFriendsDescription: {
+		ru: 'Добавьте друзей, чтобы быстрее начинать личные и групповые чаты.',
+		en: 'Add friends to start direct and group chats faster.'
+	},
 	noPendingRequests: {
 		ru: 'Нет ожидающих заявок',
 		en: 'No pending requests'
+	},
+	emptyPendingRequestsDescription: {
+		ru: 'Когда появятся новые заявки, они отобразятся здесь.',
+		en: 'New friend requests will appear here.'
 	},
 	enterUsername: { ru: 'Введите никнейм', en: 'Enter username' },
 	chatNamePlaceholder: {

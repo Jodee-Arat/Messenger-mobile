@@ -10,8 +10,8 @@ import {
 	TouchableOpacity,
 	View,
 	Animated,
-	Dimensions,
-	Pressable
+	Pressable,
+	useWindowDimensions
 } from 'react-native'
 import Toast from 'react-native-toast-message'
 
@@ -60,8 +60,6 @@ function getChatPreview(chat: ChatItem, userId: string) {
 	}
 }
 
-const SCREEN_HEIGHT = Dimensions.get('window').height
-
 const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 	messageIds,
 	handleClearMessagesId,
@@ -73,12 +71,13 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 	const { userId } = useUser()
 	const { cardMarginBottom, cardMaxHeight } = useCenteredModalLayout(0.8)
 	const [isOpen, setIsOpen] = useState(false)
+	const { height: windowHeight } = useWindowDimensions()
 
-	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+	const slideAnim = useRef(new Animated.Value(windowHeight)).current
 
 	const closeSheet = (cb?: () => void) => {
 		Animated.timing(slideAnim, {
-			toValue: SCREEN_HEIGHT,
+			toValue: windowHeight,
 			duration: 200,
 			useNativeDriver: true
 		}).start(() => {
@@ -197,7 +196,8 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 
 	useEffect(() => {
 		if (isOpen) {
-			refetch()
+			void refetch()
+			slideAnim.setValue(windowHeight)
 			Animated.spring(slideAnim, {
 				toValue: 0,
 				useNativeDriver: true,
@@ -205,7 +205,7 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 				friction: 11
 			}).start()
 		}
-	}, [isOpen])
+	}, [isOpen, refetch, slideAnim, windowHeight])
 
 	return (
 		<>
@@ -233,7 +233,7 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 							backgroundColor: colors.backgroundTertiary,
 							borderWidth: 1,
 							borderColor: colors.borderLight,
-							maxHeight: cardMaxHeight,
+							height: cardMaxHeight,
 							marginBottom: cardMarginBottom,
 							overflow: 'hidden'
 						}}

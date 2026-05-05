@@ -1,7 +1,15 @@
-﻿import React, { FC, useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, FlatList, Text, View } from 'react-native'
+﻿import React, { FC, useCallback, useEffect, useRef, useState } from 'react'
+import {
+	ActivityIndicator,
+	FlatList,
+	InteractionManager,
+	Text,
+	View
+} from 'react-native'
 import Toast from 'react-native-toast-message'
+import { MessageSquare } from 'lucide-react-native'
 
+import EmptyStateCard from '@/components/ui/EmptyStateCard'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
 import { ForwardedMessageType } from '@/types/forward/forwarded-message.type'
@@ -17,6 +25,19 @@ import {
 	useFindAllMessagesByChatQuery,
 	useRemoveMessagesMutation
 } from '@/graphql/generated/output'
+
+const getMessageTime = (message: MessageType) => {
+	const timestamp = new Date(message.createdAt).getTime()
+	return Number.isFinite(timestamp) ? timestamp : 0
+}
+
+const sortMessagesByCreatedAt = (messages: MessageType[]) =>
+	[...messages].sort((left, right) => {
+		const timeDiff = getMessageTime(left) - getMessageTime(right)
+		if (timeDiff !== 0) return timeDiff
+
+		return left.id.localeCompare(right.id)
+	})
 
 interface ChatMessageListProp {
 	pinnedMessage: MessageType | null
@@ -36,6 +57,7 @@ interface ChatMessageListProp {
 	canDeleteMessages?: boolean
 	canPinMessages?: boolean
 	groupId?: string | null
+	showSenderName?: boolean
 	onRefresh?: () => Promise<void> | void
 }
 
@@ -51,6 +73,7 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 	canDeleteMessages = true,
 	canPinMessages = true,
 	groupId,
+	showSenderName = true,
 	onRefresh
 }) => {
 	const { colors } = useTheme()
@@ -58,6 +81,11 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 	const [messageIds, setMessageIds] = useState<string[]>([])
 	const [messagesInfo, setMessagesInfo] = useState<MessageType[]>([])
 	const [isRefreshingMessages, setIsRefreshingMessages] = useState(false)
+	const listRef = useRef<FlatList<MessageType>>(null)
+	const didInitialScrollRef = useRef(false)
+	const initialScrollTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>(
+		[]
+	)
 
 	const {
 		data: allMessagesData,
@@ -149,7 +177,9 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 
 	useEffect(() => {
 		if (!allMessagesData || !allMessagesData.findAllMessagesByChat) return
-		setMessagesInfo(allMessagesData.findAllMessagesByChat)
+		setMessagesInfo(
+			sortMessagesByCreatedAt(allMessagesData.findAllMessagesByChat)
+		)
 	}, [allMessagesData])
 
 	useEffect(() => {
@@ -164,7 +194,7 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 			}
 			// Дедупликация при переподключении WebSocket
 			if (prev.some(m => m.id === newMessage.id)) return prev
-			return [...prev, newMessage]
+			return sortMessagesByCreatedAt([...prev, newMessage])
 		})
 	}, [newMessageData])
 
@@ -196,6 +226,48 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 		)
 	}, [removedMessagesData])
 
+	useEffect(() => {
+		didInitialScrollRef.current = false
+		initialScrollTimeoutsRef.current.forEach(clearTimeout)
+		initialScrollTimeoutsRef.current = []
+		setMessageIds([])
+		setMessagesInfo([])
+	}, [chatId])
+
+	useEffect(
+		() => () => {
+			initialScrollTimeoutsRef.current.forEach(clearTimeout)
+		},
+		[]
+	)
+
+	const runInitialScrollToEnd = useCallback(() => {
+		const scroll = () => {
+			listRef.current?.scrollToEnd({ animated: false })
+		}
+
+		requestAnimationFrame(scroll)
+		InteractionManager.runAfterInteractions(scroll)
+
+		initialScrollTimeoutsRef.current.forEach(clearTimeout)
+		initialScrollTimeoutsRef.current = [
+			setTimeout(scroll, 50),
+			setTimeout(scroll, 150),
+			setTimeout(scroll, 350)
+		]
+	}, [])
+
+	const scrollToEndOnOpen = useCallback(() => {
+		if (didInitialScrollRef.current || messagesInfo.length === 0) return
+
+		didInitialScrollRef.current = true
+		runInitialScrollToEnd()
+	}, [messagesInfo.length, runInitialScrollToEnd])
+
+	useEffect(() => {
+		scrollToEndOnOpen()
+	}, [messagesInfo.length, scrollToEndOnOpen])
+
 	if (isLoadingFindAllMessages) {
 		return (
 			<View className='flex-1 justify-center items-center'>
@@ -221,17 +293,22 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 			/>
 
 			<FlatList
+				ref={listRef}
 				data={messagesInfo}
 				keyExtractor={item => item.id}
 				inverted={false}
 				contentContainerStyle={{ paddingTop: 8, paddingBottom: 8 }}
+				onLayout={scrollToEndOnOpen}
+				onContentSizeChange={scrollToEndOnOpen}
 				refreshing={isRefreshingMessages}
 				onRefresh={handleRefreshMessages}
 				ListEmptyComponent={() => (
-					<View className='py-4 items-center'>
-						<Text style={{ color: colors.textSecondary }}>
-							{t('empty')}
-						</Text>
+					<View className='px-4 py-6'>
+						<EmptyStateCard
+							icon={MessageSquare}
+							title={t('emptyMessagesTitle')}
+							description={t('emptyMessagesDescription')}
+						/>
 					</View>
 				)}
 				renderItem={({ item, index }) => {
@@ -305,6 +382,7 @@ const ChatMessageList: FC<ChatMessageListProp> = ({
 								canPinMessages={canPinMessages}
 								isFirstInGroup={isFirstInGroup}
 								isLastInGroup={isLastInGroup}
+								showSenderName={showSenderName}
 							/>
 						</View>
 					)

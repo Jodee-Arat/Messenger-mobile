@@ -1,7 +1,6 @@
-import { Plus } from 'lucide-react-native'
+import { Plus, Users } from 'lucide-react-native'
 import { FC } from 'react'
 import {
-	ActivityIndicator,
 	Pressable,
 	RefreshControl,
 	ScrollView,
@@ -11,6 +10,7 @@ import {
 } from 'react-native'
 
 import EntityAvatar from '@/components/ui/EntityAvatar'
+import EmptyStateCard from '@/components/ui/EmptyStateCard'
 
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
@@ -20,8 +20,7 @@ import GroupsListSkeleton from './GroupsListSkeleton'
 import {
 	FindAllGroupsByUserQuery,
 	GroupPermissionEnum,
-	useGetMemberRoleLazyQuery,
-	useGetMemberRoleQuery
+	useGetMemberRoleLazyQuery
 } from '@/graphql/generated/output'
 
 type GroupItem = FindAllGroupsByUserQuery['findAllGroupsByUser'][0]
@@ -96,12 +95,13 @@ const GroupsList: FC<GroupsListProps> = ({
 					}
 				>
 					{groups.length === 0 && (
-						<Text
-							className='text-center text-sm mt-6'
-							style={{ color: colors.textMuted }}
-						>
-							{t('noGroups')}
-						</Text>
+						<View className='px-5 pt-4'>
+							<EmptyStateCard
+								icon={Users}
+								title={t('noGroups')}
+								description={t('createGroupHint')}
+							/>
+						</View>
 					)}
 					{groups.map(group => (
 						<Pressable

@@ -18,6 +18,7 @@ interface ChatMessageItemProp {
 	isSelected: boolean
 	isFirstInGroup: boolean
 	isLastInGroup: boolean
+	showSenderName?: boolean
 }
 
 const ChatMessageItem: FC<ChatMessageItemProp> = ({
@@ -27,7 +28,8 @@ const ChatMessageItem: FC<ChatMessageItemProp> = ({
 	isSelected,
 	chatId,
 	isFirstInGroup,
-	isLastInGroup
+	isLastInGroup,
+	showSenderName = true
 }) => {
 	const { colors } = useTheme()
 	const { text, user, files, isEdited } = messageInfo
@@ -152,6 +154,7 @@ const ChatMessageItem: FC<ChatMessageItemProp> = ({
 					isEdited={isEdited}
 					isFirstInGroup={isFirstInGroup}
 					isLastInGroup={isLastInGroup}
+					showSenderName={showSenderName}
 					createdAt={messageInfo.createdAt}
 				/>
 

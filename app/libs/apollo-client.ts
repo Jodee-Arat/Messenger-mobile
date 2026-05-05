@@ -130,8 +130,12 @@ function createWsLink(): ApolloLink {
 			lazy: true,
 			connectionParams: async () => {
 				const token = await getAccessToken()
+				const sessionId = await AsyncStorage.getItem(
+					EnumAsyncStorage.SESSION_ID
+				)
 				return {
-					authToken: token ? `Bearer ${token}` : null
+					authToken: token ? `Bearer ${token}` : null,
+					sessionId: sessionId || null
 				}
 			}
 		}
@@ -187,12 +191,20 @@ const authLink = new ApolloLink((operation: Operation, forward) => {
 					await handleLogout()
 					return
 				}
+				const sessionId = await AsyncStorage.getItem(
+					EnumAsyncStorage.SESSION_ID
+				)
 
 				operation.setContext(
 					({ headers = {} }: { headers?: Record<string, any> }) => ({
 						headers: {
 							...headers,
-							authorization: `Bearer ${token}`
+							authorization: `Bearer ${token}`,
+							...(sessionId
+								? {
+										'x-session-id': sessionId
+									}
+								: {})
 						}
 					})
 				)
@@ -243,57 +255,90 @@ const splitLink = split(
    errorLink: на 401 — пробуем рефреш и повтор запроса, иначе logout
    --------------------------- */
 
-const errorLink = onError(({ networkError, operation, forward }) => {
-	const status =
-		(networkError as any)?.statusCode ??
-		(networkError as any)?.status ??
-		(networkError as any)?.statusCode
+const errorLink = onError(
+	({ graphQLErrors, networkError, operation, forward }) => {
+		const status =
+			(networkError as any)?.statusCode ??
+			(networkError as any)?.status ??
+			(networkError as any)?.statusCode
+		const opName = operation.operationName ?? ''
+		const isPublicOperation = PUBLIC_OPERATIONS.has(opName)
+		const isUnauthorizedGraphQLError =
+			!isPublicOperation &&
+			graphQLErrors?.some(error => {
+				const code = (
+					error.extensions as Record<string, unknown> | undefined
+				)?.code
+				return (
+					code === 'UNAUTHENTICATED' ||
+					error.message === 'Unauthorized' ||
+					error.message === 'Session not found'
+				)
+			})
 
-	if (status === 401) {
-		// пробуем обновить токен и повторить операцию
-		return new Observable(observer => {
-			;(async () => {
-				try {
-					const newToken = await getAccessToken()
-					if (!newToken) {
-						// рефреш не сработал
-						await handleLogout()
-						observer.error(new Error('Unauthorized'))
-						return
-					}
-
-					// пересоздаём WS, чтобы подписки использовали новый токен
-					rebuildWebsocketLink()
-
-					// повторяем исходный запрос с новым токеном
-					operation.setContext(
-						({
-							headers = {}
-						}: {
-							headers?: Record<string, any>
-						}) => ({
-							headers: {
-								...headers,
-								authorization: `Bearer ${newToken}`
-							}
-						})
-					)
-
-					const sub = forward(operation).subscribe({
-						next: res => observer.next(res),
-						error: err => observer.error(err),
-						complete: () => observer.complete()
-					})
-
-					return () => sub.unsubscribe()
-				} catch (e) {
+		if (isUnauthorizedGraphQLError) {
+			return new Observable(observer => {
+				;(async () => {
 					await handleLogout()
-					observer.error(e)
-				}
-			})()
-		})
+					observer.error(new Error('Unauthorized'))
+				})()
+			})
+		}
+
+		if (status === 401) {
+			// пробуем обновить токен и повторить операцию
+			return new Observable(observer => {
+				;(async () => {
+					try {
+						const newToken = await getAccessToken()
+						if (!newToken) {
+							// рефреш не сработал
+							await handleLogout()
+							observer.error(new Error('Unauthorized'))
+							return
+						}
+
+						// пересоздаём WS, чтобы подписки использовали новый токен
+						rebuildWebsocketLink()
+
+						// повторяем исходный запрос с новым токеном
+						const sessionId = await AsyncStorage.getItem(
+							EnumAsyncStorage.SESSION_ID
+						)
+						operation.setContext(
+							({
+								headers = {}
+							}: {
+								headers?: Record<string, any>
+							}) => ({
+								headers: {
+									...headers,
+									authorization: `Bearer ${newToken}`,
+									...(sessionId
+										? {
+												'x-session-id': sessionId
+											}
+										: {})
+								}
+							})
+						)
+
+						const sub = forward(operation).subscribe({
+							next: res => observer.next(res),
+							error: err => observer.error(err),
+							complete: () => observer.complete()
+						})
+
+						return () => sub.unsubscribe()
+					} catch (e) {
+						await handleLogout()
+						observer.error(e)
+					}
+				})()
+			})
+		}
 	}
-})
+)
 
 /* ---------------------------
    Создаём Apollo Client
@@ -325,6 +370,24 @@ export const client = new ApolloClient({
 							return incoming
 						}
 					},
+					getSecretSessionPreKeys: {
+						keyArgs: ['chatId'],
+						merge(_existing = [], incoming: any[]) {
+							return incoming
+						}
+					},
+					getSessionSecretMessages: {
+						keyArgs: ['chatId', 'secretSessionId'],
+						merge(_existing = [], incoming: any[]) {
+							return incoming
+						}
+					},
+					getSessionSharedSecretKeys: {
+						keyArgs: ['chatId', 'secretSessionId'],
+						merge(_existing = [], incoming: any[]) {
+							return incoming
+						}
+					},
 					getFriends: {
 						merge(_existing = [], incoming: any[]) {
 							return incoming
@@ -336,21 +399,6 @@ export const client = new ApolloClient({
 						}
 					},
 					getOutgoingFriendRequests: {
-						merge(_existing = [], incoming: any[]) {
-							return incoming
-						}
-					},
-					getPreKeys: {
-						merge(_existing = [], incoming: any[]) {
-							return incoming
-						}
-					},
-					getSecretMessages: {
-						merge(_existing = [], incoming: any[]) {
-							return incoming
-						}
-					},
-					getSharedSecretKey: {
 						merge(_existing = [], incoming: any[]) {
 							return incoming
 						}
@@ -374,6 +422,15 @@ export const client = new ApolloClient({
 						}
 					}
 				}
+			},
+			SecretSessionPreKeyModel: {
+				keyFields: ['secretSessionId']
+			},
+			QueueSecretMessageModel: {
+				keyFields: ['id']
+			},
+			QueueSharedSecretKeyModel: {
+				keyFields: ['id']
 			}
 		}
 	})

@@ -8,12 +8,14 @@ export interface IAuthFormData {
 }
 
 export enum EnumSecureStore {
-	REFRESH_TOKEN = 'refreshToken'
+	REFRESH_TOKEN = 'refreshToken',
+	SECRET_SESSION_ID = 'secretSessionId'
 }
 
 export enum EnumAsyncStorage {
 	ACCESS_TOKEN = 'accessToken',
 	USER_ID = 'userId',
+	SESSION_ID = 'sessionId',
 	MY_PRE_KEYS = 'myPreKeys'
 }
 

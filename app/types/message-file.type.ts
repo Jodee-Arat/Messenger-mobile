@@ -7,4 +7,5 @@ export type MessageFileType = {
   fileKeyHex?: string;
   ivHex?: string;
   ciphertextSize?: string;
+  localUri?: string;
 };

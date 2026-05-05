@@ -132,7 +132,7 @@ const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
 						borderColor: colors.border,
 						paddingBottom: sheetPaddingBottom,
 						paddingTop: 8,
-						maxHeight: sheetMaxHeight,
+						height: sheetMaxHeight,
 						overflow: 'hidden'
 					}}
 				>

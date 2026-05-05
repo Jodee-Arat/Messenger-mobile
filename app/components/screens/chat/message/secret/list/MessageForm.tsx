@@ -23,6 +23,8 @@ interface MessageFormProp {
 	isSelected: boolean
 	isFirstInGroup: boolean
 	isLastInGroup: boolean
+	showSenderName?: boolean
+	isUnifiedThread?: boolean
 	createdAt: string
 }
 
@@ -36,11 +38,14 @@ const MessageForm: FC<MessageFormProp> = ({
 	isEdited,
 	isFirstInGroup,
 	isLastInGroup,
+	showSenderName = true,
+	isUnifiedThread = false,
 	createdAt
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
 	const isOwnMessage = user.id === userId
+	const useOwnBubbleStyle = isOwnMessage || isUnifiedThread
 
 	const timeString = (() => {
 		try {
@@ -51,18 +56,19 @@ const MessageForm: FC<MessageFormProp> = ({
 		}
 	})()
 
-	const bubbleBg = isOwnMessage ? colors.accent : colors.backgroundSecondary
-	const textColor = isOwnMessage ? '#fff' : colors.text
-	const timeColor = isOwnMessage ? 'rgba(255,255,255,0.65)' : colors.textMuted
+	const bubbleBg = useOwnBubbleStyle ? colors.accent : colors.backgroundSecondary
+	const textColor = useOwnBubbleStyle ? '#fff' : colors.text
+	const timeColor = useOwnBubbleStyle ? 'rgba(255,255,255,0.65)' : colors.textMuted
 
 	return (
 		<View
 			style={{
-				flexDirection: isOwnMessage ? 'row-reverse' : 'row',
-				alignItems: 'flex-end'
+				flexDirection: useOwnBubbleStyle ? 'row-reverse' : 'row',
+				alignItems: 'flex-end',
+				width: isUnifiedThread ? '100%' : undefined
 			}}
 		>
-			{!isOwnMessage && (
+			{!isOwnMessage && !isUnifiedThread && (
 				<View
 					style={{
 						width: 36,
@@ -87,14 +93,22 @@ const MessageForm: FC<MessageFormProp> = ({
 				style={{
 					backgroundColor: bubbleBg,
 					borderRadius: 16,
-					borderBottomRightRadius: isOwnMessage ? 4 : 16,
-					borderBottomLeftRadius: isOwnMessage ? 16 : 4,
+					borderBottomRightRadius: isUnifiedThread
+						? 16
+						: useOwnBubbleStyle
+							? 4
+							: 16,
+					borderBottomLeftRadius: isUnifiedThread
+						? 16
+						: useOwnBubbleStyle
+							? 16
+							: 4,
 					paddingHorizontal: 12,
 					paddingVertical: 8,
-					maxWidth: '100%'
+					maxWidth: isUnifiedThread ? '80%' : '100%'
 				}}
 			>
-				{isFirstInGroup && !isOwnMessage && (
+				{showSenderName && isFirstInGroup && !isOwnMessage && (
 					<Text
 						style={{
 							fontSize: 12,
@@ -129,7 +143,9 @@ const MessageForm: FC<MessageFormProp> = ({
 				<View
 					style={{
 						flexDirection: 'row',
+						flexWrap: 'wrap',
 						justifyContent: 'flex-end',
+						alignItems: 'center',
 						marginTop: 4
 					}}
 				>

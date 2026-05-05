@@ -18,6 +18,7 @@ import {
 	loadMyKeys,
 	loadMyPreKeyJSON
 } from '@/utils/secret-chat/secretChat'
+import { loadSavedSecretLinkedWebSessionId } from '@/services/secret/saved-secret-link.service'
 
 import { MessageFileType } from '../types/message-file.type'
 import { MessageType } from '../types/message.type'
@@ -25,22 +26,19 @@ import { SendFileType } from '../types/send-file.type'
 
 import {
 	FindAllUsersQuery,
-	GetPreKeysQuery,
-	GetSecretMessageQuery,
-	GetSecretMessagesQuery,
-	GetSharedSecretKeyQuery,
+	GetSecretSessionPreKeysQuery,
+	GetSessionSecretMessagesQuery,
+	GetSessionSharedSecretKeysQuery,
 	useDiscardSecretAttachmentMutation,
-	useGetPreKeysLazyQuery,
-	useGetSecretMessageLazyQuery,
-	useGetSecretMessagesLazyQuery,
-	useGetSharedSecretKeyLazyQuery,
-	useSendSecretMessageMutation,
-	useSendSharedSecretKeyMutation,
+	useGetSecretSessionPreKeysLazyQuery,
+	useGetSessionSecretMessagesLazyQuery,
+	useGetSessionSharedSecretKeysLazyQuery,
+	useSendSessionSecretMessageMutation,
+	useSendSessionSharedSecretKeyMutation,
 	useUploadSecretAttachmentMutation
 } from '@/graphql/generated/output'
 import {
 	PreKeyBundleClient,
-	buildInitEnvelope,
 	buildSessionMsgEnvelope,
 	checkMyPreKeys,
 	decryptKuz,
@@ -48,7 +46,6 @@ import {
 	encryptKuz,
 	establishSessionX3DH,
 	exportPublicRaw,
-	finalizeFromEnvelope,
 	finalizeSessionX3DH,
 	fromHex,
 	generateEphemeralKeyPair,
@@ -64,8 +61,26 @@ export type PickedFile = SendFileType
 
 export const DM_STORAGE_GROUP_ID = 'direct'
 
-const SECRET_MESSAGE_PAYLOAD_KIND = 'secret-message-v2'
+type SecretSessionPreKeyRecord =
+	GetSecretSessionPreKeysQuery['getSecretSessionPreKeys'][number]
+type SessionSecretMessageRecord =
+	GetSessionSecretMessagesQuery['getSessionSecretMessages'][number]
+type SessionSharedSecretKeyRecord =
+	GetSessionSharedSecretKeysQuery['getSessionSharedSecretKeys'][number]
+type SecretSessionPreKeysQueryFn =
+	ReturnType<typeof useGetSecretSessionPreKeysLazyQuery>[0]
+type SessionSecretMessagesQueryFn =
+	ReturnType<typeof useGetSessionSecretMessagesLazyQuery>[0]
+type SessionSharedSecretKeysQueryFn =
+	ReturnType<typeof useGetSessionSharedSecretKeysLazyQuery>[0]
+type SendSessionSecretMessageMutationFn =
+	ReturnType<typeof useSendSessionSecretMessageMutation>[0]
+type SendSessionSharedSecretKeyMutationFn =
+	ReturnType<typeof useSendSessionSharedSecretKeyMutation>[0]
 
+const SECRET_MESSAGE_PAYLOAD_KIND = 'secret-message-v2'
+const SAVED_LOCAL_ATTACHMENT_PREFIX = 'local-mobile:'
+let lastLocalSecretMessageTimestamp = 0
 type SecretAttachmentPayload = {
 	attachmentId: string
 	fileName: string
@@ -74,6 +89,7 @@ type SecretAttachmentPayload = {
 	fileKeyHex: string
 	ivHex: string
 	ciphertextSize: string
+	localUri?: string
 }
 
 type SecretMessagePayloadV2 = {
@@ -86,6 +102,27 @@ type SecretMessagePayloadV2 = {
 const getFileFormatFromName = (fileName: string) =>
 	fileName.split('.').pop() || 'file'
 
+const getMySessionBundle = (
+	bundles: SecretSessionPreKeyRecord[],
+	secretSessionId: string
+) => bundles.find(bundle => bundle.secretSessionId === secretSessionId)
+
+const getBundlesForUser = (
+	bundles: SecretSessionPreKeyRecord[],
+	targetUserId: string
+) => bundles.filter(bundle => bundle.userId === targetUserId)
+
+const getTargetBundles = (
+	bundles: SecretSessionPreKeyRecord[],
+	targetUserIds: string[],
+	excludedSessionId?: string
+) =>
+	bundles.filter(
+		bundle =>
+			targetUserIds.includes(bundle.userId) &&
+			bundle.secretSessionId !== excludedSessionId
+	)
+
 const toMessageFile = (
 	attachment: SecretAttachmentPayload
 ): MessageFileType => ({
@@ -96,7 +133,8 @@ const toMessageFile = (
 	isSecretAttachment: true,
 	fileKeyHex: attachment.fileKeyHex,
 	ivHex: attachment.ivHex,
-	ciphertextSize: attachment.ciphertextSize
+	ciphertextSize: attachment.ciphertextSize,
+	localUri: attachment.localUri
 })
 
 const parseSecretMessageContent = (
@@ -123,7 +161,9 @@ const parseSecretMessageContent = (
 				typeof attachment?.fileSize === 'string' &&
 				typeof attachment?.fileKeyHex === 'string' &&
 				typeof attachment?.ivHex === 'string' &&
-				typeof attachment?.ciphertextSize === 'string'
+				typeof attachment?.ciphertextSize === 'string' &&
+				(attachment?.localUri === undefined ||
+					typeof attachment.localUri === 'string')
 		) as SecretAttachmentPayload[]
 
 		return {
@@ -153,6 +193,17 @@ const buildSecretMessagePlaintext = (
 	return JSON.stringify(payload)
 }
 
+const getNextLocalSecretMessageCreatedAt = () => {
+	const now = Date.now()
+	const nextTimestamp =
+		now <= lastLocalSecretMessageTimestamp
+			? lastLocalSecretMessageTimestamp + 1
+			: now
+
+	lastLocalSecretMessageTimestamp = nextTimestamp
+	return new Date(nextTimestamp).toISOString()
+}
+
 const createLocalSecretMessage = (params: {
 	plaintext: string
 	senderId: string
@@ -178,7 +229,7 @@ const createLocalSecretMessage = (params: {
 		isStarted: false,
 		user: { id: senderId, username: senderUsername },
 		chat: { chatName },
-		createdAt: createdAt ?? new Date().toISOString(),
+		createdAt: createdAt ?? getNextLocalSecretMessageCreatedAt(),
 		files: parsedContent.files
 	}
 
@@ -415,6 +466,55 @@ const stageSecretAttachmentsAction = async (params: {
 	return stagedAttachments
 }
 
+const createLocalSavedSecretAttachmentsAction = async (params: {
+	chatId: string
+	groupId: string
+	files: SendFileType[]
+}): Promise<SecretAttachmentPayload[]> => {
+	const { chatId, groupId, files } = params
+	const localAttachments: SecretAttachmentPayload[] = []
+
+	for (const file of files) {
+		if (!file.uri) {
+			continue
+		}
+
+		const fileFormat = getFileFormatFromName(file.name)
+		const attachmentId = `${SAVED_LOCAL_ATTACHMENT_PREFIX}${file.id}`
+		const attachmentDirectory = new Directory(
+			Paths.document,
+			groupId,
+			chatId,
+			'local-attachments'
+		)
+		if (!attachmentDirectory.exists) {
+			attachmentDirectory.create({ intermediates: true, idempotent: true })
+		}
+
+		const destination = new File(
+			attachmentDirectory,
+			`${file.id}.${fileFormat}`
+		)
+		if (!destination.exists) {
+			const source = new File(file.uri)
+			source.copy(destination)
+		}
+
+		localAttachments.push({
+			attachmentId,
+			fileName: file.name,
+			fileFormat,
+			fileSize: file.size,
+			fileKeyHex: '',
+			ivHex: '',
+			ciphertextSize: file.size,
+			localUri: destination.uri
+		})
+	}
+
+	return localAttachments
+}
+
 /**
  * Убедиться, что директория для хранения DM-секретного чата существует
  */
@@ -435,14 +535,15 @@ export async function ensureDirectChatDirectory(chatId: string) {
 export const loadDMKeysAction = async (params: {
 	chatId: string
 	userId: string
-	getPreKeys: ReturnType<typeof useGetPreKeysLazyQuery>[0]
+	secretSessionId: string
+	getPreKeys: SecretSessionPreKeysQueryFn
 }): Promise<{
 	mySecretPreKey?: PreKeyBundleClient | null
-	preKeysPub?: GetPreKeysQuery['getPreKeys']
+	preKeysPub?: SecretSessionPreKeyRecord[]
 	sessionKey?: Uint8Array<ArrayBufferLike> | null
 	errorMessage?: string
 }> => {
-	const { chatId, userId, getPreKeys } = params
+	const { chatId, secretSessionId, getPreKeys } = params
 	const groupId = DM_STORAGE_GROUP_ID
 
 	try {
@@ -464,7 +565,7 @@ export const loadDMKeysAction = async (params: {
 				)
 				return { errorMessage: 'Ошибка при получении PreKeys' }
 			}
-			const preKeys = preKeysResponse.data?.getPreKeys
+			const preKeys = preKeysResponse.data?.getSecretSessionPreKeys
 			if (!preKeys || preKeys.length === 0) {
 				return { errorMessage: 'PreKeys не найдены' }
 			}
@@ -472,13 +573,10 @@ export const loadDMKeysAction = async (params: {
 			if (!myPreKeys) {
 				return { errorMessage: 'Мои PreKeys не найдены' }
 			}
-			let isMyPreKeys = false
-			for (const pk of preKeys) {
-				if (pk.userId === userId) {
-					isMyPreKeys = await checkMyPreKeys(myPreKeys.toServer, pk)
-					break
-				}
-			}
+			const mySessionBundle = getMySessionBundle(preKeys, secretSessionId)
+			const isMyPreKeys = mySessionBundle
+				? await checkMyPreKeys(myPreKeys.toServer, mySessionBundle)
+				: false
 			if (!isMyPreKeys) {
 				return { errorMessage: 'Мои PreKeys не совпадают с серверными' }
 			}
@@ -493,13 +591,13 @@ export const loadDMKeysAction = async (params: {
 				return { errorMessage: 'Мои ключи сессии не найдены' }
 			}
 			const myPreKeys = await loadMyPreKeyJSON()
-			let preKeysPub: GetPreKeysQuery['getPreKeys'] | undefined
+			let preKeysPub: SecretSessionPreKeyRecord[] | undefined
 			try {
 				const preKeysResponse = await getPreKeys({
 					variables: { chatId }
 				})
-				if (preKeysResponse.data?.getPreKeys) {
-					preKeysPub = preKeysResponse.data.getPreKeys
+				if (preKeysResponse.data?.getSecretSessionPreKeys) {
+					preKeysPub = preKeysResponse.data.getSecretSessionPreKeys
 				}
 			} catch {}
 			return {
@@ -521,15 +619,16 @@ export const loadChatAction = async (params: {
 	chatId: string
 	groupId: string
 	userId: string
-	getPreKeys: ReturnType<typeof useGetPreKeysLazyQuery>[0]
+	secretSessionId: string
+	getPreKeys: SecretSessionPreKeysQueryFn
 }): Promise<{
 	chat: any | null
 	mySecretPreKey?: PreKeyBundleClient | null
-	preKeysPub?: GetPreKeysQuery['getPreKeys']
+	preKeysPub?: SecretSessionPreKeyRecord[]
 	sessionKey?: Uint8Array<ArrayBufferLike> | null
 	errorMessage?: string
 }> => {
-	const { chatId, groupId, userId, getPreKeys } = params
+	const { chatId, groupId, secretSessionId, getPreKeys } = params
 	try {
 		const haveMyKeys = await fileExist(chatId, groupId, FILE.MY_KEYS)
 		if (!haveMyKeys) {
@@ -544,7 +643,7 @@ export const loadChatAction = async (params: {
 					errorMessage: 'Ошибка при получении PreKeys'
 				}
 			}
-			const preKeys = preKeysResponse.data?.getPreKeys
+			const preKeys = preKeysResponse.data?.getSecretSessionPreKeys
 			if (!preKeys || preKeys.length === 0) {
 				console.error('PreKeys не найдены')
 				return { chat: null, errorMessage: 'PreKeys не найдены' }
@@ -556,13 +655,10 @@ export const loadChatAction = async (params: {
 				return { chat: null, errorMessage: 'Мои PreKeys не найдены' }
 			}
 
-			let isMyPreKeys = false
-			for (const pk of preKeys) {
-				if (pk.userId === userId) {
-					isMyPreKeys = await checkMyPreKeys(myPreKeys.toServer, pk)
-					break
-				}
-			}
+			const mySessionBundle = getMySessionBundle(preKeys, secretSessionId)
+			const isMyPreKeys = mySessionBundle
+				? await checkMyPreKeys(myPreKeys.toServer, mySessionBundle)
+				: false
 			if (!isMyPreKeys) {
 				console.error('Мои PreKeys не совпадают с серверными')
 				return {
@@ -590,13 +686,13 @@ export const loadChatAction = async (params: {
 				}
 			}
 			const myPreKeys = await loadMyPreKeyJSON()
-			let preKeysPub: GetPreKeysQuery['getPreKeys'] | undefined
+			let preKeysPub: SecretSessionPreKeyRecord[] | undefined
 			try {
 				const preKeysResponse = await getPreKeys({
 					variables: { chatId }
 				})
-				if (preKeysResponse.data?.getPreKeys) {
-					preKeysPub = preKeysResponse.data.getPreKeys
+				if (preKeysResponse.data?.getSecretSessionPreKeys) {
+					preKeysPub = preKeysResponse.data.getSecretSessionPreKeys
 				}
 			} catch {}
 
@@ -615,12 +711,14 @@ export const loadChatAction = async (params: {
 	}
 }
 
-const findOpkIndexForUser = (
-	bundles: GetPreKeysQuery['getPreKeys'],
-	userId: string,
+const findOpkIndexForSession = (
+	bundles: SecretSessionPreKeyRecord[],
+	secretSessionId: string,
 	usedOpk: string
 ) => {
-	const myBundle = bundles.find(pk => pk.userId === userId)
+	const myBundle = bundles.find(
+		bundle => bundle.secretSessionId === secretSessionId
+	)
 	if (!myBundle) return -1
 
 	return myBundle.opkPubs.findIndex(
@@ -630,32 +728,48 @@ const findOpkIndexForUser = (
 
 const resolveMyUsedOpkPrivateKey = async (params: {
 	chatId: string
-	userId: string
+	secretSessionId: string
 	usedOpk?: string | null
 	mySecretPreKey: PreKeyBundleClient
-	preKeysPub: GetPreKeysQuery['getPreKeys']
-	getPreKeys?: ReturnType<typeof useGetPreKeysLazyQuery>[0]
+	preKeysPub: SecretSessionPreKeyRecord[]
+	getPreKeys?: SecretSessionPreKeysQueryFn
 }) => {
-	const { chatId, userId, usedOpk, mySecretPreKey, preKeysPub, getPreKeys } =
-		params
+	const {
+		chatId,
+		secretSessionId,
+		usedOpk,
+		mySecretPreKey,
+		preKeysPub,
+		getPreKeys
+	} = params
 
 	if (!usedOpk) return undefined
 
-	let opkIndex = findOpkIndexForUser(preKeysPub, userId, usedOpk)
+	let opkIndex = findOpkIndexForSession(
+		preKeysPub,
+		secretSessionId,
+		usedOpk
+	)
 
 	if (opkIndex < 0 && getPreKeys) {
 		try {
 			const preKeysResponse = await getPreKeys({
 				variables: { chatId }
 			})
-			const fresh = preKeysResponse.data?.getPreKeys || []
-			const freshBundle = fresh.find(pk => pk.userId === userId)
+			const fresh = preKeysResponse.data?.getSecretSessionPreKeys || []
+			const freshBundle = fresh.find(
+				bundle => bundle.secretSessionId === secretSessionId
+			)
 
 			if (
 				freshBundle &&
 				freshBundle.opkPubs.length === mySecretPreKey.opkPriv.length
 			) {
-				opkIndex = findOpkIndexForUser(fresh, userId, usedOpk)
+				opkIndex = findOpkIndexForSession(
+					fresh,
+					secretSessionId,
+					usedOpk
+				)
 			}
 		} catch (e) {
 			console.warn(
@@ -667,7 +781,7 @@ const resolveMyUsedOpkPrivateKey = async (params: {
 
 	if (opkIndex < 0) {
 		console.warn(
-			`[SecretChat] usedOpk ${usedOpk.slice(0, 16)}... not found for user ${userId}`
+			`[SecretChat] usedOpk ${usedOpk.slice(0, 16)}... not found for session ${secretSessionId}`
 		)
 		return undefined
 	}
@@ -675,7 +789,7 @@ const resolveMyUsedOpkPrivateKey = async (params: {
 	const opkPrivHex = mySecretPreKey.opkPriv?.[opkIndex]
 	if (!opkPrivHex) {
 		console.warn(
-			`[SecretChat] missing local opkPriv for index ${opkIndex} and user ${userId}`
+			`[SecretChat] missing local opkPriv for index ${opkIndex} and session ${secretSessionId}`
 		)
 		return undefined
 	}
@@ -688,21 +802,21 @@ const resolveMyUsedOpkPrivateKey = async (params: {
 	}
 }
 
-const recoverDirectSessionFromSharedPacketsAction = async (params: {
+const recoverSessionKeyFromSharedPacketsAction = async (params: {
 	chatId: string
-	userId: string
+	secretSessionId: string
 	mySecretPreKey: PreKeyBundleClient
-	preKeysPub: GetPreKeysQuery['getPreKeys']
-	getSharedSecretKey: ReturnType<typeof useGetSharedSecretKeyLazyQuery>[0]
-	getPreKeys?: ReturnType<typeof useGetPreKeysLazyQuery>[0]
+	preKeysPub: SecretSessionPreKeyRecord[]
+	getSharedSecretKey: SessionSharedSecretKeysQueryFn
+	getPreKeys?: SecretSessionPreKeysQueryFn
 }): Promise<{
 	sessionKey?: Uint8Array<ArrayBufferLike>
-	packets: GetSharedSecretKeyQuery['getSharedSecretKey']
+	packets: SessionSharedSecretKeyRecord[]
 	usedPacketIds: string[]
 }> => {
 	const {
 		chatId,
-		userId,
+		secretSessionId,
 		mySecretPreKey,
 		preKeysPub,
 		getSharedSecretKey,
@@ -710,13 +824,12 @@ const recoverDirectSessionFromSharedPacketsAction = async (params: {
 	} = params
 
 	const response = await getSharedSecretKey({
-		variables: { chatId },
+		variables: { chatId, secretSessionId },
 		fetchPolicy: 'network-only'
 	})
 	const packets =
-		response.data?.getSharedSecretKey
-			?.filter(packet => packet.toUserId === userId)
-			.slice()
+		response.data?.getSessionSharedSecretKeys
+			?.slice()
 			.sort(
 				(a, b) =>
 					new Date(b.createdAt).getTime() -
@@ -740,14 +853,14 @@ const recoverDirectSessionFromSharedPacketsAction = async (params: {
 		try {
 			const opkPriv = await resolveMyUsedOpkPrivateKey({
 				chatId,
-				userId,
+				secretSessionId,
 				usedOpk: packet.usedOpk ?? null,
 				mySecretPreKey,
 				preKeysPub,
 				getPreKeys
 			})
 
-			const { sessionKey } = await finalizeSessionX3DH({
+			const { sessionKey: pairSessionKey } = await finalizeSessionX3DH({
 				bobIKPriv: ikPriv,
 				bobSPKPriv: spkPriv,
 				opkPriv,
@@ -759,14 +872,20 @@ const recoverDirectSessionFromSharedPacketsAction = async (params: {
 				}
 			})
 
+			const decryptedSessionKey = await decryptKuz(
+				pairSessionKey,
+				fromHex(packet.iv),
+				fromHex(packet.encryptedKey)
+			)
+
 			return {
-				sessionKey,
+				sessionKey: decryptedSessionKey,
 				packets,
 				usedPacketIds: [packet.id]
 			}
 		} catch (error) {
 			console.warn(
-				`[SecretQueue][Shared][Recover][Mobile] chat=${chatId} user=${userId} packet=${packet.id} failed:`,
+				`[SecretQueue][Shared][Recover][Mobile] chat=${chatId} session=${secretSessionId} packet=${packet.id} failed:`,
 				error
 			)
 		}
@@ -779,17 +898,17 @@ const recoverDirectSessionFromSharedPacketsAction = async (params: {
  * Обработка сообщения из подписки
  */
 export const processSecretSubscriptionAction = async (params: {
-	msg: any
+	msg: SessionSecretMessageRecord
 	chat: any
 	chatId: string
 	groupId: string
 	userId: string
+	secretSessionId: string
 	sessionKey: Uint8Array<ArrayBufferLike> | null
-	preKeysPub: GetPreKeysQuery['getPreKeys']
+	preKeysPub: SecretSessionPreKeyRecord[]
 	mySecretPreKey: PreKeyBundleClient | null
-	getPreKeys?: ReturnType<typeof useGetPreKeysLazyQuery>[0]
-	getSharedSecretKey: ReturnType<typeof useGetSharedSecretKeyLazyQuery>[0]
-	getSecretMessage: ReturnType<typeof useGetSecretMessageLazyQuery>[0]
+	getPreKeys?: SecretSessionPreKeysQueryFn
+	getSharedSecretKey: SessionSharedSecretKeysQueryFn
 	processedRef?: MutableRefObject<Set<string>>
 }): Promise<{
 	sessionKey?: Uint8Array<ArrayBufferLike> | null
@@ -803,12 +922,11 @@ export const processSecretSubscriptionAction = async (params: {
 		chat,
 		chatId,
 		groupId,
-		userId,
+		secretSessionId,
 		sessionKey,
 		preKeysPub,
 		mySecretPreKey,
 		getPreKeys,
-		getSecretMessage,
 		processedRef,
 		getSharedSecretKey
 	} = params
@@ -823,129 +941,29 @@ export const processSecretSubscriptionAction = async (params: {
 	} catch {}
 
 	let currentSession = sessionKey
-	let recoveredSharedPackets: GetSharedSecretKeyQuery['getSharedSecretKey'] =
-		[]
 	let ackSharedKeyIds: string[] = []
 	if (!currentSession) {
 		const fromDisk = await loadMyKeys(chatId, groupId)
 		if (fromDisk?.sessionKeyHex) {
 			currentSession = fromDisk.sessionKeyHex
-		} else if (mySecretPreKey) {
+		} else {
 			try {
-				const recovered = await recoverDirectSessionFromSharedPacketsAction(
+				const recovered = await recoverSessionKeyFromSharedPacketsAction(
 					{
 						chatId,
-						userId,
+						secretSessionId,
 						mySecretPreKey,
 						preKeysPub,
 						getSharedSecretKey,
 						getPreKeys
 					}
 				)
-				recoveredSharedPackets = recovered.packets
 				ackSharedKeyIds = recovered.usedPacketIds
 				if (recovered.sessionKey) {
 					currentSession = recovered.sessionKey
 				}
-				if (msg?.ukm) {
-					const ikPrivHex = mySecretPreKey.ikPriv || ''
-					const spkPrivHex = mySecretPreKey.spkPriv || ''
-					if (!ikPrivHex || !spkPrivHex) {
-						console.warn(
-							'[SecretChat][Sub] mySecretPreKey is missing private keys'
-						)
-						return {}
-					}
-					const ikPriv = await importPrivateRaw(fromHex(ikPrivHex))
-					const spkPriv = await importPrivateRaw(fromHex(spkPrivHex))
-					let senderIkPub =
-						recoveredSharedPackets.find(
-							packet =>
-								packet.fromUserId === msg.fromUserId &&
-								packet.ukm === msg.ukm
-						)?.ikPub ||
-						preKeysPub.find(pk => pk.userId === msg.fromUserId)
-							?.ikPub ||
-						undefined
-					if (!senderIkPub && getPreKeys) {
-						try {
-							const preKeysResponse = await getPreKeys({
-								variables: { chatId }
-							})
-							const fresh = preKeysResponse.data?.getPreKeys || []
-							senderIkPub = fresh.find(
-								pk => pk.userId === msg.fromUserId
-							)?.ikPub
-						} catch (e) {
-							console.warn(
-								'[SecretChat][Sub] getPreKeys refresh failed:',
-								e
-							)
-						}
-					}
-					if (!senderIkPub) {
-						console.warn(
-							'[SecretChat][Sub] senderIkPub missing; abort finalize'
-						)
-						return {}
-					}
-					const envelope = {
-						// reuse the original shared-key packet metadata for init-envelope decrypt
-						ikAPub: senderIkPub,
-						ekAPub: recoveredSharedPackets.find(
-							packet =>
-								packet.fromUserId === msg.fromUserId &&
-								packet.ukm === msg.ukm
-						)?.ekPub!,
-						usedOpk: recoveredSharedPackets.find(
-							packet =>
-								packet.fromUserId === msg.fromUserId &&
-								packet.ukm === msg.ukm
-						)?.usedOpk ?? null,
-						ukm: msg.ukm,
-						iv: msg.iv,
-						ct: msg.encryptedMessage,
-						sig: msg.sig
-					}
-					const opkPriv = await resolveMyUsedOpkPrivateKey({
-						chatId,
-						userId,
-						usedOpk: envelope.usedOpk,
-						mySecretPreKey,
-						preKeysPub,
-						getPreKeys
-					})
-					const finalize = await finalizeFromEnvelope({
-						bobIKPriv: ikPriv,
-						bobSPKPriv: spkPriv,
-						opkPriv,
-						envelope
-					})
-					currentSession = finalize.sessionKey
-					try {
-						processedRef?.current?.add(`${msg.iv}.${msg.sig}`)
-					} catch {}
-					const sender = chat.members.find(
-						(m: any) => m.user.id === msg.fromUserId
-					)?.user
-					const firstMessage = createLocalSecretMessage({
-						plaintext: finalize.decrypted,
-						senderId: msg.fromUserId,
-						senderUsername: sender?.username || 'user',
-						chatName: chat.chatName,
-						messageId: msg.id
-					})
-
-					return {
-						sessionKey: currentSession,
-						newMessage: firstMessage,
-						needPersistKey: true,
-						ackMessageIds: msg.id ? [msg.id] : [],
-						ackSharedKeyIds
-					}
-				}
 			} catch (e) {
-				console.warn('[SecretChat][Sub] finalize failed:', e)
+				console.warn('[SecretChat][Sub] session recovery failed:', e)
 			}
 		}
 	}
@@ -953,13 +971,16 @@ export const processSecretSubscriptionAction = async (params: {
 	if (!currentSession) return {}
 
 	let senderIkPub =
-		(msg as any)?.ikPub ||
+		preKeysPub.find(pk => pk.secretSessionId === msg.fromSessionId)?.ikPub ||
+		(msg as { ikPub?: string | null }).ikPub ||
 		preKeysPub.find(pk => pk.userId === msg.fromUserId)?.ikPub
 	if (!senderIkPub && getPreKeys) {
 		try {
 			const preKeysResponse = await getPreKeys({ variables: { chatId } })
-			const fresh = preKeysResponse.data?.getPreKeys || []
-			senderIkPub = fresh.find(pk => pk.userId === msg.fromUserId)?.ikPub
+			const fresh = preKeysResponse.data?.getSecretSessionPreKeys || []
+			senderIkPub =
+				fresh.find(pk => pk.secretSessionId === msg.fromSessionId)?.ikPub ||
+				fresh.find(pk => pk.userId === msg.fromUserId)?.ikPub
 		} catch (e) {
 			console.warn('[SecretChat][Sub] getPreKeys refresh failed:', e)
 		}
@@ -984,7 +1005,8 @@ export const processSecretSubscriptionAction = async (params: {
 		senderId: msg.fromUserId,
 		senderUsername: sender?.username || 'user',
 		chatName: chat.chatName,
-		messageId: msg.id
+		messageId: msg.id,
+		createdAt: msg.createdAt
 	})
 	return {
 		sessionKey: currentSession,
@@ -1001,14 +1023,14 @@ export const pullSecretMessagesAction = async (params: {
 	chatId: string
 	groupId: string
 	userId: string
+	secretSessionId: string
 	chat: any
 	sessionKey: Uint8Array<ArrayBufferLike> | null
 	mySecretPreKey: PreKeyBundleClient | null
-	preKeysPub: GetPreKeysQuery['getPreKeys']
-	getSecretMessage: ReturnType<typeof useGetSecretMessageLazyQuery>[0]
-	getSecretMessages: ReturnType<typeof useGetSecretMessagesLazyQuery>[0]
-	getSharedSecretKey?: ReturnType<typeof useGetSharedSecretKeyLazyQuery>[0]
-	getPreKeys?: ReturnType<typeof useGetPreKeysLazyQuery>[0]
+	preKeysPub: SecretSessionPreKeyRecord[]
+	getSecretMessages: SessionSecretMessagesQueryFn
+	getSharedSecretKey?: SessionSharedSecretKeysQueryFn
+	getPreKeys?: SecretSessionPreKeysQueryFn
 	processedRef?: MutableRefObject<Set<string>>
 }): Promise<{
 	sessionKey?: Uint8Array<ArrayBufferLike> | null
@@ -1021,11 +1043,12 @@ export const pullSecretMessagesAction = async (params: {
 		chatId,
 		groupId,
 		userId,
+		secretSessionId,
 		chat,
 		sessionKey,
 		mySecretPreKey,
 		preKeysPub,
-		getSecretMessage,
+		getPreKeys,
 		getSecretMessages,
 		getSharedSecretKey,
 		processedRef
@@ -1036,433 +1059,133 @@ export const pullSecretMessagesAction = async (params: {
 
 	let currentSession = sessionKey
 	let needPersistKey = false
-	let recoveredSharedPackets: GetSharedSecretKeyQuery['getSharedSecretKey'] =
-		[]
 	let ackSharedKeyIds: string[] = []
-
-	const decryptUnreadMessagesWithSession = async (
-		unreadMessages: Array<
-			| NonNullable<GetSecretMessagesQuery['getSecretMessages'][number]>
-			| NonNullable<GetSecretMessageQuery['getSecretMessage']>
-		>,
-		activeSession: Uint8Array<ArrayBufferLike>,
-		initialProcessedKeys?: Set<string>
-	) => {
-		const collectedMessages: MessageType[] = []
-		const ackMessageIds: string[] = []
-		const ackRecoveredSharedKeyIds: string[] = []
-		const processedKeys = initialProcessedKeys ?? new Set<string>()
-
-		for (const msg of unreadMessages) {
-			const key = `${msg.iv}.${msg.sig}`
-			if (processedKeys.has(key) || processedRef?.current?.has(key)) {
-				continue
-			}
-
-			if (msg.ukm) {
-				const packet = recoveredSharedPackets.find(
-					sharedPacket =>
-						sharedPacket.fromUserId === msg.fromUserId &&
-						sharedPacket.ukm === msg.ukm
-				)
-
-				if (packet) {
-					const ikPrivHex = mySecretPreKey.ikPriv || ''
-					const spkPrivHex = mySecretPreKey.spkPriv || ''
-					if (!ikPrivHex || !spkPrivHex) {
-						continue
-					}
-
-					try {
-						const ikPriv = await importPrivateRaw(fromHex(ikPrivHex))
-						const spkPriv = await importPrivateRaw(
-							fromHex(spkPrivHex)
-						)
-						const opkPriv = await resolveMyUsedOpkPrivateKey({
-							chatId,
-							userId,
-							usedOpk: packet.usedOpk ?? null,
-							mySecretPreKey,
-							preKeysPub,
-							getPreKeys: params.getPreKeys
-						})
-
-						let senderIkPub =
-							packet.ikPub ||
-							preKeysPub.find(
-								pk => pk.userId === msg.fromUserId
-							)?.ikPub
-						if (!senderIkPub && params.getPreKeys) {
-							const preKeysResponse = await params.getPreKeys({
-								variables: { chatId }
-							})
-							const fresh =
-								preKeysResponse.data?.getPreKeys || []
-							senderIkPub = fresh.find(
-								pk => pk.userId === msg.fromUserId
-							)?.ikPub
-						}
-						if (!senderIkPub) continue
-
-						const finalize = await finalizeFromEnvelope({
-							bobIKPriv: ikPriv,
-							bobSPKPriv: spkPriv,
-							opkPriv,
-							envelope: {
-								ikAPub: senderIkPub,
-								ekAPub: packet.ekPub,
-								usedOpk: packet.usedOpk ?? null,
-								ukm: msg.ukm,
-								iv: msg.iv,
-								ct: msg.encryptedMessage,
-								sig: msg.sig
-							}
-						})
-
-						processedKeys.add(key)
-						try {
-							processedRef?.current?.add(key)
-						} catch {}
-
-						const sender = chat.members.find(
-							(m: any) => m.user.id === msg.fromUserId
-						)?.user
-						collectedMessages.push(
-							createLocalSecretMessage({
-								plaintext: finalize.decrypted,
-								senderId: msg.fromUserId,
-								senderUsername: sender?.username || 'user',
-								chatName: chat.chatName,
-								messageId: msg.id,
-								createdAt:
-									'createdAt' in msg &&
-									typeof msg.createdAt === 'string'
-										? msg.createdAt
-										: undefined
-							})
-						)
-						if (msg.id) {
-							ackMessageIds.push(msg.id)
-						}
-						ackRecoveredSharedKeyIds.push(packet.id)
-						continue
-					} catch {
-						// Optional recovery path: if finalize-from-packet fails here,
-						// fall through to the regular session decrypt path below.
-					}
-				}
-			}
-
-			let senderIkPub =
-				(msg as { ikPub?: string | null }).ikPub ||
-				preKeysPub.find(pk => pk.userId === msg.fromUserId)?.ikPub
-			if (!senderIkPub && params.getPreKeys) {
-				try {
-					const preKeysResponse = await params.getPreKeys({
-						variables: { chatId }
-					})
-					const fresh = preKeysResponse.data?.getPreKeys || []
-					senderIkPub = fresh.find(
-						pk => pk.userId === msg.fromUserId
-					)?.ikPub
-				} catch (e) {
-					console.warn(
-						'[SecretChat][Pull] getPreKeys refresh failed:',
-						e
-					)
-				}
-			}
-			if (!senderIkPub) {
-				console.warn(
-					'[SecretChat][Pull] senderIkPub missing; skip msg'
-				)
-				continue
-			}
-
-			const { decrypted, sigOk } = await decryptSessionMsgEnvelope({
-				sessionKey: activeSession,
-				envelope: {
-					iv: msg.iv,
-					ct: msg.encryptedMessage,
-					sig: msg.sig
-				},
-				senderIkPub
-			})
-			if (!sigOk) continue
-
-			processedKeys.add(key)
-			try {
-				processedRef?.current?.add(key)
-			} catch {}
-
-			const sender = chat.members.find(
-				(m: any) => m.user.id === msg.fromUserId
-			)?.user
-			collectedMessages.push(
-				createLocalSecretMessage({
-					plaintext: decrypted,
-					senderId: msg.fromUserId,
-					senderUsername: sender?.username || 'user',
-					chatName: chat.chatName,
-					messageId: msg.id,
-					createdAt:
-						'createdAt' in msg && typeof msg.createdAt === 'string'
-							? msg.createdAt
-							: undefined
-				})
-			)
-			if (msg.id) {
-				ackMessageIds.push(msg.id)
-			}
-		}
-
-		return {
-			collectedMessages,
-			processedKeys,
-			ackMessageIds,
-			ackSharedKeyIds: ackRecoveredSharedKeyIds
-		}
-	}
-
-	const fetchUnreadMessages = async () => {
-		try {
-			const res = await getSecretMessages({
-				variables: { chatId },
-				fetchPolicy: 'network-only'
-			})
-			const unread = res.data?.getSecretMessages ?? []
-			return unread
-		} catch (error) {
-			console.warn(
-				'[SecretChat][Pull] getSecretMessages failed, falling back to single-message queue reads:',
-				error
-			)
-			return null
-		}
-	}
-
-	const fetchUnreadMessagesFallback = async () => {
-		try {
-			const res = await getSecretMessage({
-				variables: { chatId },
-				fetchPolicy: 'network-only'
-			})
-			const unread = res.data?.getSecretMessage
-				? [res.data.getSecretMessage]
-				: []
-			return unread
-		} catch {
-			return []
-		}
-	}
-
-	const recoverDirectSessionKey = async () => {
-		if (chat.isGroup || !mySecretPreKey || !getSharedSecretKey) return null
-
-		try {
-			const recovered = await recoverDirectSessionFromSharedPacketsAction({
-				chatId,
-				userId,
-				mySecretPreKey,
-				preKeysPub,
-				getSharedSecretKey,
-				getPreKeys: params.getPreKeys
-			})
-			recoveredSharedPackets = recovered.packets
-			ackSharedKeyIds = recovered.usedPacketIds
-			if (recovered.sessionKey) {
-				return recovered.sessionKey
-			}
-		} catch (error) {
-			console.warn(
-				'[SecretChat][Pull] getSharedSecretKey failed during direct session recovery:',
-				error
-			)
-		}
-
-		return null
-	}
 
 	if (!currentSession) {
 		const fromDisk = await loadMyKeys(chatId, groupId)
 
 		if (fromDisk?.sessionKeyHex) {
 			currentSession = fromDisk.sessionKeyHex
-		} else {
-			const recoveredDirectSessionKey = await recoverDirectSessionKey()
-			if (recoveredDirectSessionKey) {
-				currentSession = recoveredDirectSessionKey
+		} else if (getSharedSecretKey) {
+			try {
+				const recovered = await recoverSessionKeyFromSharedPacketsAction({
+					chatId,
+					secretSessionId,
+					mySecretPreKey,
+					preKeysPub,
+					getSharedSecretKey,
+					getPreKeys
+				})
+				ackSharedKeyIds = recovered.usedPacketIds
+				if (recovered.sessionKey) {
+					currentSession = recovered.sessionKey
+				}
+			} catch (error) {
+				console.warn(
+					'[SecretChat][Pull] getSessionSharedSecretKeys failed during session recovery:',
+					error
+				)
+			}
+
+			if (currentSession) {
 				needPersistKey = true
 			}
 		}
+	}
 
-		if (!currentSession && mySecretPreKey) {
-			try {
-				const batchUnreadMessages = await fetchUnreadMessages()
-				let msg:
-					| GetSecretMessageQuery['getSecretMessage']
-					| GetSecretMessagesQuery['getSecretMessages'][number]
-					| undefined
+	if (!currentSession) {
+		return {
+			sessionKey: currentSession ?? undefined,
+			newMessages: [],
+			needPersistKey,
+			ackSharedKeyIds
+		}
+	}
 
-				if (batchUnreadMessages?.length) {
-					msg =
-						batchUnreadMessages.find(candidate => !!candidate.ukm) ??
-						batchUnreadMessages[0]
-				} else {
-					const resMsg = await getSecretMessage({
-						variables: { chatId }
-					})
-					msg = resMsg.data?.getSecretMessage
-				}
+	const unreadMessagesResponse = await getSecretMessages({
+		variables: { chatId, secretSessionId },
+		fetchPolicy: 'network-only'
+	})
+	const unreadMessages =
+		unreadMessagesResponse.data?.getSessionSecretMessages ?? []
 
-				if (msg && msg.ukm) {
-					const ikPrivHex = mySecretPreKey.ikPriv || ''
-					const spkPrivHex = mySecretPreKey.spkPriv || ''
-					if (!ikPrivHex || !spkPrivHex) {
-						console.warn(
-							'[SecretChat][Pull] mySecretPreKey is missing private keys'
-						)
-						return { newMessages: [] }
-					}
-					const ikPriv = await importPrivateRaw(fromHex(ikPrivHex))
-					const spkPriv = await importPrivateRaw(fromHex(spkPrivHex))
-					let senderIkPub =
-						preKeysPub.find(pk => pk.userId === msg.fromUserId)
-							?.ikPub || undefined
-					if (!senderIkPub && params.getPreKeys) {
-						try {
-							const preKeysResponse = await params.getPreKeys({
-								variables: { chatId }
-							})
-							const fresh = preKeysResponse.data?.getPreKeys || []
-							senderIkPub = fresh.find(
-								pk => pk.userId === msg.fromUserId
-							)?.ikPub
-						} catch (e) {
-							console.warn(
-								'[SecretChat][Pull] getPreKeys refresh failed:',
-								e
-							)
-						}
-					}
-					if (!senderIkPub) {
-						console.warn(
-							'[SecretChat][Pull] senderIkPub missing; abort finalize'
-						)
-						return { newMessages: [] }
-					}
-					const ek = msg.ekPub as string | undefined
-					const used = (msg.usedOpk as string | undefined) ?? null
-					if (!ek) {
-						console.warn(
-							'[SecretChat][Pull] ekPub missing in GSM payload, cannot finalize session'
-						)
-						return { newMessages: [] }
-					}
-					const envelope = {
-						ikAPub: senderIkPub,
-						ekAPub: ek,
-						usedOpk: used,
-						ukm: msg.ukm,
-						iv: msg.iv,
-						ct: msg.encryptedMessage,
-						sig: msg.sig
-					}
-					const opkPriv = await resolveMyUsedOpkPrivateKey({
-						chatId,
-						userId,
-						usedOpk: used,
-						mySecretPreKey,
-						preKeysPub,
-						getPreKeys: params.getPreKeys
-					})
-					const finalize = await finalizeFromEnvelope({
-						bobIKPriv: ikPriv,
-						bobSPKPriv: spkPriv,
-						opkPriv,
-						envelope
-					})
-					currentSession = finalize.sessionKey
-					needPersistKey = true
-					const sender = chat.members.find(
-						(m: any) => m.user.id === msg.fromUserId
-					)?.user
-					const firstMessage = createLocalSecretMessage({
-						plaintext: finalize.decrypted,
-						senderId: msg.fromUserId,
-						senderUsername: sender?.username || 'user',
-						chatName: chat.chatName,
-						messageId: msg.id,
-						createdAt:
-							'createdAt' in msg && typeof msg.createdAt === 'string'
-								? msg.createdAt
-								: undefined
-					})
-					const collectedTail: MessageType[] = [firstMessage]
-					try {
-						processedRef?.current?.add(`${msg.iv}.${msg.sig}`)
-					} catch {}
-					const processedKeys = new Set<string>([
-						`${msg.iv}.${msg.sig}`
-					])
-					const unreadTail =
-						batchUnreadMessages ??
-						(await fetchUnreadMessagesFallback())
-					const {
-						collectedMessages,
-						ackMessageIds,
-						ackSharedKeyIds: decryptedSharedKeyIds
-					} =
-						await decryptUnreadMessagesWithSession(
-							unreadTail,
-							currentSession,
-							processedKeys
-						)
-					collectedTail.push(...collectedMessages)
-					return {
-						sessionKey: currentSession,
-						newMessages: collectedTail,
-						needPersistKey,
-						ackMessageIds: [
-							...(msg.id ? [msg.id] : []),
-							...ackMessageIds.filter(id => id !== msg.id)
-						],
-						ackSharedKeyIds: Array.from(
-							new Set([
-								...ackSharedKeyIds,
-								...decryptedSharedKeyIds
-							])
-						)
-					}
-				}
-			} catch (e) {
-				console.warn('[SecretChat][Pull] GSM finalize failed:', e)
+	let senderBundles = preKeysPub
+	const missingSenderBundle = unreadMessages.some(
+		message =>
+			message.fromSessionId &&
+			!senderBundles.find(
+				bundle => bundle.secretSessionId === message.fromSessionId
+			)
+	)
+	if (missingSenderBundle && getPreKeys) {
+		try {
+			const preKeysResponse = await getPreKeys({
+				variables: { chatId }
+			})
+			if (preKeysResponse.data?.getSecretSessionPreKeys) {
+				senderBundles = preKeysResponse.data.getSecretSessionPreKeys
 			}
+		} catch (error) {
+			console.warn('[SecretChat][Pull] getPreKeys refresh failed:', error)
 		}
 	}
 
 	const collected: MessageType[] = []
-	const unreadMessages =
-		(await fetchUnreadMessages()) ?? (await fetchUnreadMessagesFallback())
-	if (currentSession) {
-		const { collectedMessages, ackMessageIds } =
-			await decryptUnreadMessagesWithSession(
-			unreadMessages,
-			currentSession
-		)
-		collected.push(...collectedMessages)
-		return {
-			sessionKey: currentSession ?? undefined,
-			newMessages: collected,
-			needPersistKey,
-			ackMessageIds,
-			ackSharedKeyIds
+	const ackMessageIds: string[] = []
+
+	for (const msg of unreadMessages) {
+		const key = `${msg.iv}.${msg.sig}`
+		if (processedRef?.current?.has(key)) {
+			continue
 		}
+
+		const senderIkPub =
+			senderBundles.find(
+				bundle => bundle.secretSessionId === msg.fromSessionId
+			)?.ikPub ||
+			senderBundles.find(bundle => bundle.userId === msg.fromUserId)?.ikPub
+
+		if (!senderIkPub) {
+			console.warn('[SecretChat][Pull] senderIkPub missing; skip msg')
+			continue
+		}
+
+		const { decrypted, sigOk } = await decryptSessionMsgEnvelope({
+			sessionKey: currentSession,
+			envelope: {
+				iv: msg.iv,
+				ct: msg.encryptedMessage,
+				sig: msg.sig
+			},
+			senderIkPub
+		})
+		if (!sigOk) continue
+
+		try {
+			processedRef?.current?.add(key)
+		} catch {}
+
+		const sender = chat.members.find(
+			(member: any) => member.user.id === msg.fromUserId
+		)?.user
+		collected.push(
+			createLocalSecretMessage({
+				plaintext: decrypted,
+				senderId: msg.fromUserId,
+				senderUsername: sender?.username || 'user',
+				chatName: chat.chatName,
+				messageId: msg.id,
+				createdAt: msg.createdAt
+			})
+		)
+		ackMessageIds.push(msg.id)
 	}
+
 	return {
-		sessionKey: currentSession ?? undefined,
+		sessionKey: currentSession,
 		newMessages: collected,
 		needPersistKey,
+		ackMessageIds,
 		ackSharedKeyIds
 	}
 }
@@ -1477,14 +1200,16 @@ export const sendSecretMessageAction = async (params: {
 	chatId: string
 	groupId: string
 	userId: string
+	secretSessionId: string
+	isSaved?: boolean
 	files: SendFileType[]
 	setFiles: Dispatch<SetStateAction<SendFileType[]>>
 	sessionKey: Uint8Array<ArrayBufferLike> | null
 	mySecretPreKey: PreKeyBundleClient | null
-	preKeysPub: GetPreKeysQuery['getPreKeys']
-	getPreKeys: ReturnType<typeof useGetPreKeysLazyQuery>[0]
-	sendMessageToClients: ReturnType<typeof useSendSecretMessageMutation>[0]
-	sendSharedSecretKey: ReturnType<typeof useSendSharedSecretKeyMutation>[0]
+	preKeysPub: SecretSessionPreKeyRecord[]
+	getPreKeys: SecretSessionPreKeysQueryFn
+	sendMessageToClients: SendSessionSecretMessageMutationFn
+	sendSharedSecretKey: SendSessionSharedSecretKeyMutationFn
 	uploadSecretAttachment: ReturnType<
 		typeof useUploadSecretAttachmentMutation
 	>[0]
@@ -1504,6 +1229,8 @@ export const sendSecretMessageAction = async (params: {
 		chatId,
 		groupId,
 		userId,
+		secretSessionId,
+		isSaved,
 		files,
 		setFiles,
 		sessionKey,
@@ -1518,9 +1245,15 @@ export const sendSecretMessageAction = async (params: {
 
 	if (!chat || (!text.trim() && files.length === 0)) return {}
 
-	const recipientUserIds = (chat.members || [])
-		.filter((member: any) => member.user.id !== userId)
-		.map((member: any) => member.user.id) as string[]
+	const recipientUserIds = Array.from(
+		new Set(
+			(isSaved
+				? [userId]
+				: (chat.members || [])
+						.filter((member: any) => member.user.id !== userId)
+						.map((member: any) => member.user.id)) as string[]
+		)
+	)
 	if (recipientUserIds.length === 0) {
 		console.error('Получатели не найдены в чате')
 		return { errorMessage: 'Получатели не найдены в чате' }
@@ -1529,6 +1262,69 @@ export const sendSecretMessageAction = async (params: {
 	const uploadedAttachmentIds: string[] = []
 
 	try {
+		let currentPreKeys = preKeysPub
+		let targetBundles = getTargetBundles(
+			currentPreKeys,
+			recipientUserIds,
+			secretSessionId
+		)
+		if (targetBundles.length === 0) {
+			try {
+				const preKeysResponse = await getPreKeys({
+					variables: { chatId }
+				})
+				currentPreKeys =
+					preKeysResponse.data?.getSecretSessionPreKeys ?? currentPreKeys
+				targetBundles = getTargetBundles(
+					currentPreKeys,
+					recipientUserIds,
+					secretSessionId
+				)
+			} catch {}
+		}
+
+		if (isSaved) {
+			const linkedWebSessionId = await loadSavedSecretLinkedWebSessionId()
+			targetBundles = linkedWebSessionId
+				? targetBundles.filter(
+						bundle => bundle.secretSessionId === linkedWebSessionId
+				  )
+				: []
+		}
+
+		if (targetBundles.length === 0) {
+			if (isSaved) {
+				const localAttachments =
+					files.length > 0
+						? await createLocalSavedSecretAttachmentsAction({
+								chatId,
+								groupId,
+								files
+						  })
+						: []
+				const localPlaintext = buildSecretMessagePlaintext(
+					text,
+					localAttachments
+				)
+				const localMessage = createLocalSecretMessage({
+					plaintext: localPlaintext,
+					senderId: user.id,
+					senderUsername: user.username,
+					chatName: chat.chatName
+				})
+
+				return {
+					newMessage: localMessage,
+					sessionKey
+				}
+			}
+
+			console.error('Session prekeys получателей не найдены')
+			return {
+				errorMessage: 'Session prekeys получателей не найдены'
+			}
+		}
+
 		const stagedAttachments =
 			files.length > 0
 				? await stageSecretAttachmentsAction({
@@ -1550,205 +1346,102 @@ export const sendSecretMessageAction = async (params: {
 			chatName: chat.chatName
 		})
 
-		if (!sessionKey) {
+		let mySecretPreKeyLocal = mySecretPreKey
+		if (!mySecretPreKeyLocal) {
+			const mk = await loadMyPreKeyJSON()
+			if (!mk) {
+				console.error('Мои PreKeys не найдены')
+				return {
+					newMessage,
+					errorMessage: 'Мои PreKeys не найдены'
+				}
+			}
+			mySecretPreKeyLocal = mk.toStore
+		}
+
+		let activeSessionKey = sessionKey
+		let needPersistKey = false
+		if (!activeSessionKey) {
 			const existingSessionKey = await loadMyKeys(chatId, groupId)
-			if (existingSessionKey) {
-				let mySecretPreKeyLocal = mySecretPreKey
-				if (!mySecretPreKeyLocal) {
-					const mk = await loadMyPreKeyJSON()
-					if (!mk) {
-						console.error('Мои PreKeys не найдены')
-						return {
-							newMessage,
-							errorMessage: 'Мои PreKeys не найдены'
-						}
-					}
-					mySecretPreKeyLocal = mk.toStore
-				}
-				const { envelope } = await buildSessionMsgEnvelope({
-					plaintext,
-					sessionKey: existingSessionKey.sessionKeyHex,
-					signerIKPriv: await importPrivateRaw(
-						fromHex(mySecretPreKeyLocal!.ikPriv)
-					)
-				})
-
-				await sendMessageToClients({
-					variables: {
-						data: {
-							chatId,
-							encryptedMessage: envelope.ct,
-							groupId,
-							iv: envelope.iv,
-							ukm: null,
-							sig: envelope.sig,
-							toUserIds: recipientUserIds,
-							secretAttachmentIds: uploadedAttachmentIds
-						}
-					}
-				})
-
-				return {
-					newMessage,
-					sessionKey: existingSessionKey.sessionKeyHex
-				}
+			if (existingSessionKey?.sessionKeyHex) {
+				activeSessionKey = existingSessionKey.sessionKeyHex
+			} else {
+				const generatedSessionKey = await generateKuznechikKey()
+				activeSessionKey = generatedSessionKey.keyBytes
+				needPersistKey = true
 			}
+		}
 
-			let mySecretPreKeyLocal = mySecretPreKey
-			if (!mySecretPreKeyLocal) {
-				const mk = await loadMyPreKeyJSON()
-				if (!mk) {
-					console.error('Мои PreKeys не найдены')
-					return {
-						newMessage,
-						errorMessage: 'Мои PreKeys не найдены'
-					}
-				}
-				mySecretPreKeyLocal = mk.toStore
-			}
-
-			const ikPrivRaw = fromHex(mySecretPreKeyLocal!.ikPriv)
-			let myIkPubHex = preKeysPub.find(pk => pk.userId === userId)?.ikPub
-
-			if (!myIkPubHex) {
-				try {
-					const preKeysResponse = await getPreKeys({
-						variables: { chatId }
-					})
-					if (preKeysResponse.data?.getPreKeys) {
-						myIkPubHex = preKeysResponse.data.getPreKeys.find(
-							pk => pk.userId === userId
-						)?.ikPub
-					}
-				} catch {}
-			}
-			if (!myIkPubHex) {
-				console.error('Мой ikPub не найден в preKeys')
-				return {
-					newMessage,
-					errorMessage: 'Мой ikPub не найден в preKeys'
-				}
-			}
-			const ikPubRaw = fromHex(myIkPubHex)
-			const IK = {
-				privateKey: await importPrivateRaw(ikPrivRaw),
-				publicKey: await importPublicRaw(ikPubRaw)
-			} as const
-
-			let recipientBundle = preKeysPub.find(
-				pk => pk.userId === recipientUserIds[0]
-			)
-			if (!recipientBundle) {
-				try {
-					const preKeysResponse = await getPreKeys({
-						variables: { chatId }
-					})
-					if (preKeysResponse.data?.getPreKeys) {
-						recipientBundle = preKeysResponse.data.getPreKeys.find(
-							pk => pk.userId === recipientUserIds[0]
-						) as any
-					}
-				} catch {}
-			}
-			if (!recipientBundle) {
-				console.error('PreKeys получателя не найдены')
-				return {
-					newMessage,
-					errorMessage: 'PreKeys получателя не найдены'
-				}
-			}
-
-			const {
-				envelope: initEnvelope,
-				sessionKey: newSessionKey,
-				verifiedSpk
-			} = await buildInitEnvelope({
-				IK,
-				bobBundle: {
-					ikPub: recipientBundle.ikPub,
-					spkPub: recipientBundle.spkPub,
-					spkSig: recipientBundle.spkSig,
-					opk:
-						recipientBundle.opkPubs[recipientBundle.indexOpkPub] ??
-						null
-				},
-				plaintext
-			})
-			if (!verifiedSpk) {
-				console.error('Не удалось проверить подпись SPK получателя')
-				return {
-					newMessage,
-					errorMessage: 'Не удалось проверить подпись SPK получателя'
-				}
-			}
-
-			try {
-				await sendSharedSecretKey({
-					variables: {
-						data: {
-							chatId,
-							groupId,
-							toUserId: recipientUserIds[0],
-							ikPub: myIkPubHex,
-							ekPub: initEnvelope.ekAPub,
-							usedOpk: initEnvelope.usedOpk ?? null,
-							ukm: initEnvelope.ukm,
-							iv: initEnvelope.iv,
-							encryptedKey: initEnvelope.ct,
-							sig: initEnvelope.sig
-						}
-					}
-				})
-			} catch (error) {
-				console.warn('[SecretChat] sendSharedSecretKey failed:', error)
-			}
-
-			await sendMessageToClients({
-				variables: {
-					data: {
-						chatId,
-						encryptedMessage: initEnvelope.ct,
-						groupId,
-						iv: initEnvelope.iv,
-						sig: initEnvelope.sig,
-						ukm: initEnvelope.ukm,
-						toUserIds: recipientUserIds,
-						secretAttachmentIds: uploadedAttachmentIds
-					}
-				}
-			})
-
+		if (!activeSessionKey) {
 			return {
 				newMessage,
-				sessionKey: newSessionKey,
-				needPersistKey: true
+				errorMessage: 'Не удалось подготовить session key'
+			}
+		}
+
+		const shouldShareSessionKey = !chat.isGroup && needPersistKey
+		if (shouldShareSessionKey) {
+			const shared = await shareSessionKeyWithBundlesAction({
+				chatId,
+				groupId,
+				userId,
+				fromSessionId: secretSessionId,
+				sessionKey: activeSessionKey,
+				mySecretPreKey: mySecretPreKeyLocal,
+				preKeysPub: currentPreKeys,
+				targetBundles,
+				getPreKeys,
+				sendSharedSecretKey
+			})
+			if (!shared.success) {
+				return {
+					newMessage,
+					errorMessage: shared.errorMessage
+				}
 			}
 		}
 
 		const { envelope } = await buildSessionMsgEnvelope({
 			plaintext,
-			sessionKey,
+			sessionKey: activeSessionKey,
 			signerIKPriv: await importPrivateRaw(
-				fromHex(mySecretPreKey!.ikPriv)
+				fromHex(mySecretPreKeyLocal.ikPriv)
 			)
 		})
 
-		await sendMessageToClients({
+		const targetSessionIds = Array.from(
+			new Set(targetBundles.map(bundle => bundle.secretSessionId))
+		)
+
+		const sentMessage = await sendMessageToClients({
 			variables: {
 				data: {
 					chatId,
 					encryptedMessage: envelope.ct,
 					groupId,
+					fromSessionId: secretSessionId,
 					iv: envelope.iv,
 					ukm: null,
 					sig: envelope.sig,
 					toUserIds: recipientUserIds,
+					toSessionIds: targetSessionIds,
 					secretAttachmentIds: uploadedAttachmentIds
 				}
 			}
 		})
+		const serverMessage = sentMessage.data?.sendSessionSecretMessage
 
-		return { newMessage }
+		return {
+			newMessage: serverMessage
+				? {
+						...newMessage,
+						id: serverMessage.id,
+						createdAt: serverMessage.createdAt
+				  }
+				: newMessage,
+			sessionKey: activeSessionKey,
+			needPersistKey
+		}
 	} catch (error) {
 		if (uploadedAttachmentIds.length > 0) {
 			await cleanupUploadedSecretAttachmentsAction({
@@ -1871,6 +1564,130 @@ export const clearFormAction = (): {
 	files: []
 })
 
+export const shareSessionKeyWithBundlesAction = async (params: {
+	chatId: string
+	groupId: string
+	userId: string
+	fromSessionId: string
+	sessionKey: Uint8Array<ArrayBufferLike>
+	mySecretPreKey: PreKeyBundleClient
+	preKeysPub: SecretSessionPreKeyRecord[]
+	targetBundles: SecretSessionPreKeyRecord[]
+	getPreKeys?: SecretSessionPreKeysQueryFn
+	sendSharedSecretKey: SendSessionSharedSecretKeyMutationFn
+}): Promise<{
+	success: boolean
+	errorMessage?: string
+}> => {
+	const {
+		chatId,
+		groupId,
+		userId,
+		fromSessionId,
+		sessionKey,
+		mySecretPreKey,
+		preKeysPub,
+		targetBundles,
+		getPreKeys,
+		sendSharedSecretKey
+	} = params
+
+	const uniqueTargetBundles = Array.from(
+		new Map(
+			targetBundles.map(bundle => [bundle.secretSessionId, bundle])
+		).values()
+	)
+	if (uniqueTargetBundles.length === 0) {
+		return { success: false, errorMessage: 'Нет target sessions для передачи ключа' }
+	}
+
+	let allBundles = preKeysPub
+	let myBundle = getMySessionBundle(allBundles, fromSessionId)
+
+	if (!myBundle && getPreKeys) {
+		try {
+			const preKeysResponse = await getPreKeys({
+				variables: { chatId }
+			})
+			allBundles = preKeysResponse.data?.getSecretSessionPreKeys ?? allBundles
+			myBundle = getMySessionBundle(allBundles, fromSessionId)
+		} catch {}
+	}
+
+	if (!myBundle) {
+		return { success: false, errorMessage: 'Мой session prekey не найден' }
+	}
+
+	const ikPrivRaw = fromHex(mySecretPreKey.ikPriv)
+	const ikPubRaw = fromHex(myBundle.ikPub)
+	const IK = {
+		privateKey: await importPrivateRaw(ikPrivRaw),
+		publicKey: await importPublicRaw(ikPubRaw)
+	} as const
+
+	for (const recipientBundle of uniqueTargetBundles) {
+		const aliceEK = await generateEphemeralKeyPair()
+		const {
+			sessionKey: pairSessionKey,
+			ukm,
+			verifiedSpk
+		} = await establishSessionX3DH({
+			IK,
+			aliceEK,
+			bobBundle: {
+				ikPub: recipientBundle.ikPub,
+				spkPub: recipientBundle.spkPub,
+				spkSig: recipientBundle.spkSig,
+				opk:
+					recipientBundle.opkPubs[recipientBundle.indexOpkPub] ?? null
+			}
+		})
+
+		if (!verifiedSpk) {
+			console.warn(
+				`[SecretChat] SPK signature did not verify for session ${recipientBundle.secretSessionId}`
+			)
+			continue
+		}
+
+		const enc = await encryptKuz(pairSessionKey, sessionKey)
+		const ikAPubRaw = await exportPublicRaw(IK.publicKey)
+		const ekAPubRaw = await exportPublicRaw(aliceEK.publicKey)
+		const aad = new Uint8Array([
+			...new TextEncoder().encode('GROUPKEYv1'),
+			...ikAPubRaw,
+			...ekAPubRaw
+		])
+		const signature = await signBytes(
+			IK.privateKey,
+			new Uint8Array([...aad, ...enc.iv, ...enc.ciphertext])
+		)
+
+		await sendSharedSecretKey({
+			variables: {
+				data: {
+					chatId,
+					groupId,
+					fromSessionId,
+					toUserId: recipientBundle.userId,
+					toSessionId: recipientBundle.secretSessionId,
+					ikPub: myBundle.ikPub,
+					ekPub: toHex(ekAPubRaw),
+					usedOpk:
+						recipientBundle.opkPubs[recipientBundle.indexOpkPub] ??
+						null,
+					ukm: toHex(ukm),
+					iv: toHex(enc.iv),
+					encryptedKey: toHex(enc.ciphertext),
+					sig: toHex(signature)
+				}
+			}
+		})
+	}
+
+	return { success: true }
+}
+
 /**
  * Получение и расшифровка общего ключа Кузнечика при заходе в чат.
  * Получатель: финализирует X3DH-сессию с инициатором, расшифровывает общий ключ группы.
@@ -1879,11 +1696,12 @@ export const receiveGroupKeyAction = async (params: {
 	chatId: string
 	groupId: string
 	userId: string
+	secretSessionId: string
 	preferredFromUserId?: string
 	mySecretPreKey: PreKeyBundleClient
-	preKeysPub: GetPreKeysQuery['getPreKeys']
-	getPreKeys?: ReturnType<typeof useGetPreKeysLazyQuery>[0]
-	getSharedSecretKey: ReturnType<typeof useGetSharedSecretKeyLazyQuery>[0]
+	preKeysPub: SecretSessionPreKeyRecord[]
+	getPreKeys?: SecretSessionPreKeysQueryFn
+	getSharedSecretKey: SessionSharedSecretKeysQueryFn
 }): Promise<{
 	groupKey?: Uint8Array
 	needPersistKey?: boolean
@@ -1894,6 +1712,7 @@ export const receiveGroupKeyAction = async (params: {
 		chatId,
 		groupId,
 		userId,
+		secretSessionId,
 		preferredFromUserId,
 		mySecretPreKey,
 		preKeysPub,
@@ -1906,13 +1725,17 @@ export const receiveGroupKeyAction = async (params: {
 	}
 
 	try {
-		const res = await getSharedSecretKey({ variables: { chatId } })
-		const sharedKeys = res.data?.getSharedSecretKey
+		const res = await getSharedSecretKey({
+			variables: { chatId, secretSessionId }
+		})
+		const sharedKeys = res.data?.getSessionSharedSecretKeys
 		if (!sharedKeys || sharedKeys.length === 0) {
 			return { errorMessage: 'Общий ключ ещё не был передан' }
 		}
 
-		const packetsForUser = sharedKeys.filter(sk => sk.toUserId === userId)
+		const packetsForUser = sharedKeys.filter(
+			sharedKey => sharedKey.toSessionId === secretSessionId
+		)
 		if (packetsForUser.length === 0) {
 			return { errorMessage: 'Общий ключ ещё не был передан вам' }
 		}
@@ -1954,7 +1777,7 @@ export const receiveGroupKeyAction = async (params: {
 			try {
 				const opkPriv = await resolveMyUsedOpkPrivateKey({
 					chatId,
-					userId,
+					secretSessionId,
 					usedOpk: packet.usedOpk ?? null,
 					mySecretPreKey,
 					preKeysPub,
@@ -1982,17 +1805,25 @@ export const receiveGroupKeyAction = async (params: {
 
 				let senderIkPub =
 					packet.ikPub ||
-					preKeysPub.find(pk => pk.userId === packet.fromUserId)
+					preKeysPub.find(
+						bundle => bundle.secretSessionId === packet.fromSessionId
+					)?.ikPub ||
+					preKeysPub.find(bundle => bundle.userId === packet.fromUserId)
 						?.ikPub
 				if (!senderIkPub && getPreKeys) {
 					try {
 						const preKeysResponse = await getPreKeys({
 							variables: { chatId }
 						})
-						const fresh = preKeysResponse.data?.getPreKeys || []
-						senderIkPub = fresh.find(
-							pk => pk.userId === packet.fromUserId
-						)?.ikPub
+						const fresh =
+							preKeysResponse.data?.getSecretSessionPreKeys || []
+						senderIkPub =
+							fresh.find(
+								bundle =>
+									bundle.secretSessionId === packet.fromSessionId
+							)?.ikPub ||
+							fresh.find(bundle => bundle.userId === packet.fromUserId)
+								?.ikPub
 					} catch {}
 				}
 				if (senderIkPub) {
@@ -2048,12 +1879,13 @@ export const sendGroupKeyToNewMemberAction = async (params: {
 	chatId: string
 	groupId: string
 	userId: string
+	secretSessionId: string
 	targetUserId: string
 	sessionKey: Uint8Array<ArrayBufferLike>
 	mySecretPreKey: PreKeyBundleClient
-	preKeysPub: GetPreKeysQuery['getPreKeys']
-	getPreKeys: ReturnType<typeof useGetPreKeysLazyQuery>[0]
-	sendSharedSecretKey: ReturnType<typeof useSendSharedSecretKeyMutation>[0]
+	preKeysPub: SecretSessionPreKeyRecord[]
+	getPreKeys: SecretSessionPreKeysQueryFn
+	sendSharedSecretKey: SendSessionSharedSecretKeyMutationFn
 }): Promise<{
 	success: boolean
 	errorMessage?: string
@@ -2062,6 +1894,7 @@ export const sendGroupKeyToNewMemberAction = async (params: {
 		chatId,
 		groupId,
 		userId,
+		secretSessionId,
 		targetUserId,
 		sessionKey,
 		mySecretPreKey,
@@ -2078,108 +1911,37 @@ export const sendGroupKeyToNewMemberAction = async (params: {
 	}
 
 	try {
-		const ikPrivRaw = fromHex(mySecretPreKey.ikPriv)
-		let myIkPubHex = preKeysPub.find(pk => pk.userId === userId)?.ikPub
-		if (!myIkPubHex) {
+		let targetBundles = getBundlesForUser(preKeysPub, targetUserId)
+		if (targetBundles.length === 0) {
 			try {
 				const preKeysResponse = await getPreKeys({
 					variables: { chatId }
 				})
-				if (preKeysResponse.data?.getPreKeys) {
-					myIkPubHex = preKeysResponse.data.getPreKeys.find(
-						pk => pk.userId === userId
-					)?.ikPub
-				}
+				targetBundles = getBundlesForUser(
+					preKeysResponse.data?.getSecretSessionPreKeys ?? [],
+					targetUserId
+				)
 			} catch {}
 		}
-		if (!myIkPubHex) {
-			return { success: false, errorMessage: 'Мой ikPub не найден' }
-		}
-		const ikPubRaw = fromHex(myIkPubHex)
-		const IK = {
-			privateKey: await importPrivateRaw(ikPrivRaw),
-			publicKey: await importPublicRaw(ikPubRaw)
-		} as const
-
-		let recipientBundle = preKeysPub.find(pk => pk.userId === targetUserId)
-		if (!recipientBundle) {
-			try {
-				const preKeysResponse = await getPreKeys({
-					variables: { chatId }
-				})
-				if (preKeysResponse.data?.getPreKeys) {
-					recipientBundle = preKeysResponse.data.getPreKeys.find(
-						pk => pk.userId === targetUserId
-					) as any
-				}
-			} catch {}
-		}
-		if (!recipientBundle) {
+		if (targetBundles.length === 0) {
 			return {
 				success: false,
-				errorMessage: `PreKeys не найдены для ${targetUserId}`
+				errorMessage: `Session prekeys не найдены для ${targetUserId}`
 			}
 		}
 
-		const aliceEK = await generateEphemeralKeyPair()
-
-		const {
-			sessionKey: pairSessionKey,
-			ukm,
-			verifiedSpk
-		} = await establishSessionX3DH({
-			IK,
-			aliceEK,
-			bobBundle: {
-				ikPub: recipientBundle.ikPub,
-				spkPub: recipientBundle.spkPub,
-				spkSig: recipientBundle.spkSig,
-				opk:
-					recipientBundle.opkPubs[recipientBundle.indexOpkPub] ?? null
-			}
+		return shareSessionKeyWithBundlesAction({
+			chatId,
+			groupId,
+			userId,
+			fromSessionId: secretSessionId,
+			sessionKey,
+			mySecretPreKey,
+			preKeysPub,
+			targetBundles,
+			getPreKeys,
+			sendSharedSecretKey
 		})
-
-		if (!verifiedSpk) {
-			return {
-				success: false,
-				errorMessage: `SPK подпись не прошла для ${targetUserId}`
-			}
-		}
-
-		const enc = await encryptKuz(pairSessionKey, sessionKey)
-
-		const ikAPubRaw = await exportPublicRaw(IK.publicKey)
-		const ekAPubRaw = await exportPublicRaw(aliceEK.publicKey)
-		const aad = new Uint8Array([
-			...new TextEncoder().encode('GROUPKEYv1'),
-			...ikAPubRaw,
-			...ekAPubRaw
-		])
-		const signature = await signBytes(
-			IK.privateKey,
-			new Uint8Array([...aad, ...enc.iv, ...enc.ciphertext])
-		)
-
-		await sendSharedSecretKey({
-			variables: {
-				data: {
-					chatId,
-					groupId,
-					toUserId: targetUserId,
-					ikPub: myIkPubHex,
-					ekPub: toHex(ekAPubRaw),
-					usedOpk:
-						recipientBundle.opkPubs[recipientBundle.indexOpkPub] ??
-						null,
-					ukm: toHex(ukm),
-					iv: toHex(enc.iv),
-					encryptedKey: toHex(enc.ciphertext),
-					sig: toHex(signature)
-				}
-			}
-		})
-
-		return { success: true }
 	} catch (e) {
 		console.error(
 			'[SecretChat][InviteKey] Ошибка отправки ключа новому участнику:',
@@ -2203,10 +1965,11 @@ export const initGroupSessionAction = async (params: {
 	chatId: string
 	groupId: string
 	userId: string
+	secretSessionId: string
 	mySecretPreKey: PreKeyBundleClient
-	preKeysPub: GetPreKeysQuery['getPreKeys']
-	getPreKeys: ReturnType<typeof useGetPreKeysLazyQuery>[0]
-	sendSharedSecretKey: ReturnType<typeof useSendSharedSecretKeyMutation>[0]
+	preKeysPub: SecretSessionPreKeyRecord[]
+	getPreKeys: SecretSessionPreKeysQueryFn
+	sendSharedSecretKey: SendSessionSharedSecretKeyMutationFn
 }): Promise<{
 	groupKey?: Uint8Array
 	groupKeyHex?: string
@@ -2218,6 +1981,7 @@ export const initGroupSessionAction = async (params: {
 		chatId,
 		groupId,
 		userId,
+		secretSessionId,
 		mySecretPreKey,
 		preKeysPub,
 		getPreKeys,
@@ -2238,121 +2002,41 @@ export const initGroupSessionAction = async (params: {
 	try {
 		const { keyBytes: groupKeyBytes, keyHex: groupKeyHex } =
 			await generateKuznechikKey()
-
-		const ikPrivRaw = fromHex(mySecretPreKey.ikPriv)
-		let myIkPubHex = preKeysPub.find(pk => pk.userId === userId)?.ikPub
-		if (!myIkPubHex) {
+		let targetBundles = getTargetBundles(
+			preKeysPub,
+			otherMembers.map((member: any) => member.user.id),
+			secretSessionId
+		)
+		if (targetBundles.length === 0) {
 			try {
 				const preKeysResponse = await getPreKeys({
 					variables: { chatId }
 				})
-				if (preKeysResponse.data?.getPreKeys) {
-					myIkPubHex = preKeysResponse.data.getPreKeys.find(
-						pk => pk.userId === userId
-					)?.ikPub
-				}
+				targetBundles = getTargetBundles(
+					preKeysResponse.data?.getSecretSessionPreKeys ?? [],
+					otherMembers.map((member: any) => member.user.id),
+					secretSessionId
+				)
 			} catch {}
 		}
-		if (!myIkPubHex) {
-			return { errorMessage: 'Мой ikPub не найден в preKeys' }
+		if (targetBundles.length === 0) {
+			return { errorMessage: 'Session prekeys участников не найдены' }
 		}
-		const ikPubRaw = fromHex(myIkPubHex)
-		const IK = {
-			privateKey: await importPrivateRaw(ikPrivRaw),
-			publicKey: await importPublicRaw(ikPubRaw)
-		} as const
 
-		for (const member of otherMembers) {
-			const recipientUserId = member.user.id
-
-			let recipientBundle = preKeysPub.find(
-				pk => pk.userId === recipientUserId
-			)
-			if (!recipientBundle) {
-				try {
-					const preKeysResponse = await getPreKeys({
-						variables: { chatId }
-					})
-					if (preKeysResponse.data?.getPreKeys) {
-						recipientBundle = preKeysResponse.data.getPreKeys.find(
-							pk => pk.userId === recipientUserId
-						) as any
-					}
-				} catch {}
-			}
-			if (!recipientBundle) {
-				console.warn(
-					`[SecretChat][InitGroup] PreKeys не найдены для ${recipientUserId}, пропускаем`
-				)
-				continue
-			}
-
-			const aliceEK = await generateEphemeralKeyPair()
-
-			const {
-				sessionKey: pairSessionKey,
-				ukm,
-				verifiedSpk
-			} = await establishSessionX3DH({
-				IK,
-				aliceEK,
-				bobBundle: {
-					ikPub: recipientBundle.ikPub,
-					spkPub: recipientBundle.spkPub,
-					spkSig: recipientBundle.spkSig,
-					opk:
-						recipientBundle.opkPubs[recipientBundle.indexOpkPub] ??
-						null
-				}
-			})
-
-			if (!verifiedSpk) {
-				console.warn(
-					`[SecretChat][InitGroup] SPK подпись не прошла для ${recipientUserId}, пропускаем`
-				)
-				continue
-			}
-
-			const enc = await encryptKuz(pairSessionKey, groupKeyBytes)
-
-			const ikAPubRaw = await exportPublicRaw(IK.publicKey)
-			const ekAPubRaw = await exportPublicRaw(aliceEK.publicKey)
-			const aad = new Uint8Array([
-				...new TextEncoder().encode('GROUPKEYv1'),
-				...ikAPubRaw,
-				...ekAPubRaw
-			])
-			const signature = await signBytes(
-				IK.privateKey,
-				new Uint8Array([...aad, ...enc.iv, ...enc.ciphertext])
-			)
-
-			try {
-				await sendSharedSecretKey({
-					variables: {
-						data: {
-							chatId,
-							groupId,
-							toUserId: recipientUserId,
-							ikPub: myIkPubHex,
-							ekPub: toHex(ekAPubRaw),
-							usedOpk:
-								recipientBundle.opkPubs[
-									recipientBundle.indexOpkPub
-								] ?? null,
-							ukm: toHex(ukm),
-							iv: toHex(enc.iv),
-							encryptedKey: toHex(enc.ciphertext),
-							sig: toHex(signature)
-						}
-					}
-				})
-			} catch (e) {
-				console.warn(
-					`[SecretChat][InitGroup] sendSharedSecretKey failed для ${recipientUserId}:`,
-					e
-				)
-			}
+		const shared = await shareSessionKeyWithBundlesAction({
+			chatId,
+			groupId,
+			userId,
+			fromSessionId: secretSessionId,
+			sessionKey: groupKeyBytes,
+			mySecretPreKey,
+			preKeysPub,
+			targetBundles,
+			getPreKeys,
+			sendSharedSecretKey
+		})
+		if (!shared.success) {
+			return { errorMessage: shared.errorMessage }
 		}
 
 		return {

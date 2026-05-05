@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Toast from 'react-native-toast-message'
 
 import { useUser } from '@/hooks/useUser'
+import { getStoredSecretSessionId } from '@/services/secret/secret-session.service'
 
 import { chatEvents } from '@/utils/chatEvents'
 import {
@@ -19,13 +20,13 @@ import {
 import {
 	ChatUpdatedSubscription,
 	FindAllChatsByGroupQuery,
-	useAddSharedSecretKeySubscription,
+	useAddSessionSharedSecretKeySubscription,
 	useChatAddedSubscription,
 	useChatDeletedSubscription,
 	useChatUpdatedSubscription,
 	useDeleteChatMutation,
 	useFindAllChatsByGroupQuery,
-	useHasSharedSecretKeyLazyQuery,
+	useGetSessionSharedSecretKeysLazyQuery,
 	usePinChatMutation,
 	useUnPinChatMutation,
 	useUpdatePinnedChatsOrderMutation
@@ -74,6 +75,20 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 	const initialLoadDone = useRef(false)
 	const readySecretChatIdsRef = useRef<Set<string>>(new Set())
 	const { userId } = useUser()
+	const [secretSessionId, setSecretSessionId] = useState<string | null>(null)
+
+	useEffect(() => {
+		let isCancelled = false
+
+		void getStoredSecretSessionId().then(storedSecretSessionId => {
+			if (isCancelled) return
+			setSecretSessionId(storedSecretSessionId ?? null)
+		})
+
+		return () => {
+			isCancelled = true
+		}
+	}, [userId])
 
 	const {
 		data: allChatsData,
@@ -102,11 +117,14 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 		skip: !(userId && groupId)
 	})
 
-	const { data: sharedKeyData } = useAddSharedSecretKeySubscription({
-		variables: { userId },
-		skip: !userId
+	const { data: sharedKeyData } = useAddSessionSharedSecretKeySubscription({
+		variables: {
+			userId,
+			secretSessionId: secretSessionId ?? ''
+		},
+		skip: !userId || !secretSessionId
 	})
-	const [hasSharedSecretKey] = useHasSharedSecretKeyLazyQuery({
+	const [getSessionSharedSecretKeys] = useGetSessionSharedSecretKeysLazyQuery({
 		fetchPolicy: 'network-only'
 	})
 
@@ -214,6 +232,12 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 
 	const refreshSecretChatAvailability = useCallback(async () => {
 		const nextDisabledIds: string[] = []
+		if (!secretSessionId) {
+			setDisabledChatIds(
+				allChatsRaw.filter(chat => chat.isSecret).map(chat => chat.id)
+			)
+			return
+		}
 
 		try {
 			for (const chat of allChatsRaw) {
@@ -237,13 +261,17 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 					continue
 				}
 
-				const hasQueuedSharedKey =
+				const queuedSharedKeys =
 					(
-						await hasSharedSecretKey({
-							variables: { chatId: chat.id },
+						await getSessionSharedSecretKeys({
+							variables: {
+								chatId: chat.id,
+								secretSessionId
+							},
 							fetchPolicy: 'network-only'
 						})
-					).data?.hasSharedSecretKey ?? false
+					).data?.getSessionSharedSecretKeys ?? []
+				const hasQueuedSharedKey = queuedSharedKeys.length > 0
 
 				if (hasQueuedSharedKey) {
 					readySecretChatIdsRef.current.add(chat.id)
@@ -260,7 +288,7 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 		}
 
 		setDisabledChatIds(nextDisabledIds)
-	}, [allChatsRaw, groupId, hasSharedSecretKey])
+	}, [allChatsRaw, getSessionSharedSecretKeys, groupId, secretSessionId])
 
 	useEffect(() => {
 		if (!allChatsData?.findAllChatsByGroup) return
@@ -418,7 +446,7 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 	}, [groupId, refreshSecretChatAvailability])
 
 	useEffect(() => {
-		const chatId = sharedKeyData?.addSharedSecretKey?.chatId
+		const chatId = sharedKeyData?.addSessionSharedSecretKey?.chatId
 		if (!chatId) return
 		readySecretChatIdsRef.current.add(chatId)
 		void refreshSecretChatAvailability()

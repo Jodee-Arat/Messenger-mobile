@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
+import { getStoredSecretSessionId } from '@/services/secret/secret-session.service'
+
 import {
 	DM_STORAGE_GROUP_ID,
 	loadChatAction,
@@ -8,9 +10,9 @@ import {
 } from './useSecretChat.actions'
 import { ensureDirectChatDirectory } from './useSecretChat.actions'
 import {
-	GetPreKeysQuery,
-	useGetPreKeysLazyQuery,
-	useSendSharedSecretKeyMutation
+	GetSecretSessionPreKeysQuery,
+	useGetSecretSessionPreKeysLazyQuery,
+	useSendSessionSharedSecretKeyMutation
 } from '@/graphql/generated/output'
 import { PreKeyBundleClient } from '@/libs/e2ee/gost'
 
@@ -35,21 +37,35 @@ export function useSendSecretKey(
 
 	const [mySecretPreKey, setMySecretPreKey] =
 		useState<PreKeyBundleClient | null>(null)
-	const [preKeysPub, setPreKeysPub] = useState<GetPreKeysQuery['getPreKeys']>(
-		[]
-	)
+	const [preKeysPub, setPreKeysPub] = useState<
+		GetSecretSessionPreKeysQuery['getSecretSessionPreKeys']
+	>([])
+	const [secretSessionId, setSecretSessionId] = useState<string | null>(null)
 	const [sessionKey, setSessionKey] =
 		useState<Uint8Array<ArrayBufferLike> | null>(null)
 	const [ready, setReady] = useState(false)
 
-	const [getPreKeys] = useGetPreKeysLazyQuery({
+	const [getPreKeys] = useGetSecretSessionPreKeysLazyQuery({
 		fetchPolicy: 'network-only'
 	})
-	const [sendSharedSecretKey] = useSendSharedSecretKeyMutation()
+	const [sendSharedSecretKey] = useSendSessionSharedSecretKeyMutation()
+
+	useEffect(() => {
+		let isCancelled = false
+
+		void getStoredSecretSessionId().then(storedSecretSessionId => {
+			if (isCancelled) return
+			setSecretSessionId(storedSecretSessionId ?? null)
+		})
+
+		return () => {
+			isCancelled = true
+		}
+	}, [userId])
 
 	// Load keys on mount (only if enabled)
 	useEffect(() => {
-		if (!enabled || !chatId || !userId) return
+		if (!enabled || !chatId || !userId || !secretSessionId) return
 		;(async () => {
 			try {
 				if (isDM) {
@@ -57,6 +73,7 @@ export function useSendSecretKey(
 					const res = await loadDMKeysAction({
 						chatId,
 						userId,
+						secretSessionId,
 						getPreKeys
 					})
 					if (res.mySecretPreKey !== undefined)
@@ -70,6 +87,7 @@ export function useSendSecretKey(
 						chatId,
 						groupId: effectiveGroupId,
 						userId,
+						secretSessionId,
 						getPreKeys
 					})
 					if (res.mySecretPreKey !== undefined)
@@ -84,13 +102,13 @@ export function useSendSecretKey(
 				console.error('[useSendSecretKey] Failed to load keys:', e)
 			}
 		})()
-	}, [enabled, chatId, userId])
+	}, [enabled, chatId, effectiveGroupId, getPreKeys, isDM, secretSessionId, userId])
 
 	const sendKeyToNewMember = useCallback(
 		async (targetUserId: string) => {
-			if (!sessionKey || !mySecretPreKey) {
+			if (!sessionKey || !mySecretPreKey || !secretSessionId) {
 				console.warn(
-					'[useSendSecretKey] sendKeyToNewMember: нет sessionKey или mySecretPreKey'
+					'[useSendSecretKey] sendKeyToNewMember: missing sessionKey, mySecretPreKey, or secretSessionId'
 				)
 				return
 			}
@@ -98,6 +116,7 @@ export function useSendSecretKey(
 				chatId,
 				groupId: effectiveGroupId,
 				userId,
+				secretSessionId,
 				targetUserId,
 				sessionKey,
 				mySecretPreKey,
@@ -120,6 +139,7 @@ export function useSendSecretKey(
 			mySecretPreKey,
 			preKeysPub,
 			getPreKeys,
+			secretSessionId,
 			sendSharedSecretKey
 		]
 	)

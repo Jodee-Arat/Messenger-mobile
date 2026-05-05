@@ -103,7 +103,6 @@ export type ChatMessageModel = {
   isStarted: Scalars['Boolean']['output'];
   lastMessageForChat?: Maybe<ChatModel>;
   pinnedInChat?: Maybe<ChatModel>;
-  readCount?: Maybe<Scalars['String']['output']>;
   repliedToLinks?: Maybe<Array<Maybe<ChatMessageReplyModel>>>;
   replies?: Maybe<Array<Maybe<ChatMessageReplyModel>>>;
   text?: Maybe<Scalars['String']['output']>;
@@ -134,11 +133,13 @@ export type ChatModel = {
   isDeleted: Scalars['Boolean']['output'];
   isGroup: Scalars['Boolean']['output'];
   isPinned?: Maybe<Scalars['Boolean']['output']>;
+  isSaved: Scalars['Boolean']['output'];
   isSecret: Scalars['Boolean']['output'];
   lastMessage?: Maybe<ChatMessageModel>;
   lastMessageAt?: Maybe<Scalars['DateTime']['output']>;
   lastMessageId?: Maybe<Scalars['String']['output']>;
   members: Array<ChatMemberModel>;
+  ownerId?: Maybe<Scalars['String']['output']>;
   pinnedMessage?: Maybe<ChatMessageModel>;
   pinnedMessageId?: Maybe<Scalars['String']['output']>;
   pinnedOrder?: Maybe<Scalars['Int']['output']>;
@@ -343,8 +344,8 @@ export type MemberRoleModel = {
 export type Mutation = {
   __typename?: 'Mutation';
   acceptFriendRequest: Scalars['Boolean']['output'];
-  ackSecretMessages: Scalars['Boolean']['output'];
-  ackSharedSecretKeys: Scalars['Boolean']['output'];
+  ackSessionSecretMessages: Scalars['Boolean']['output'];
+  ackSessionSharedSecretKeys: Scalars['Boolean']['output'];
   assignGroupRoleToMember: Scalars['Boolean']['output'];
   assignRoleToUser: Scalars['Boolean']['output'];
   blockUser: Scalars['Boolean']['output'];
@@ -356,8 +357,10 @@ export type Mutation = {
   changeProfileAvatar: Scalars['String']['output'];
   changeProfileInfo: Scalars['Boolean']['output'];
   clearSessionCookie: Scalars['Boolean']['output'];
+  confirmSavedSecretPairing: SavedSecretPairingModel;
   createChat: ChatModel;
   createGroup: GroupModel;
+  createSavedSecretPairing: SavedSecretPairingModel;
   createUserWEmail: Scalars['Boolean']['output'];
   declineFriendRequest: Scalars['Boolean']['output'];
   deleteChat: Scalars['Boolean']['output'];
@@ -379,7 +382,9 @@ export type Mutation = {
   logoutUser: Scalars['Boolean']['output'];
   pinChat: Scalars['Boolean']['output'];
   pinMessage: Scalars['Boolean']['output'];
+  refreshSecretSession: SecretSessionModel;
   refreshToken: Scalars['String']['output'];
+  registerSecretSession: SecretSessionModel;
   removeChatAvatar: Scalars['Boolean']['output'];
   removeDraft: Scalars['Boolean']['output'];
   removeFile: Scalars['Boolean']['output'];
@@ -391,14 +396,15 @@ export type Mutation = {
   removeMessages: Scalars['Boolean']['output'];
   removeProfileAvatar: Scalars['Boolean']['output'];
   removeRoleFromUser: Scalars['Boolean']['output'];
+  removeSession: Scalars['Boolean']['output'];
+  revokeSecretSession: Scalars['Boolean']['output'];
   sendChatDraftMessage: Scalars['Boolean']['output'];
   sendChatMessage: Scalars['Boolean']['output'];
   sendFile: AttachFileModel;
   sendFriendRequest: Scalars['Boolean']['output'];
   sendFriendRequestByUsername: Scalars['Boolean']['output'];
-  sendPreKey: Scalars['Boolean']['output'];
-  sendSecretMessage: QueueSecretMessageModel;
-  sendSharedSecretKey: QueueSharedSecretKeyModel;
+  sendSessionSecretMessage: QueueSecretMessageModel;
+  sendSessionSharedSecretKey: QueueSharedSecretKeyModel;
   startTyping: Scalars['Boolean']['output'];
   toggleChatRequireTotp: Scalars['Boolean']['output'];
   unPinChat: Scalars['Boolean']['output'];
@@ -417,14 +423,16 @@ export type MutationAcceptFriendRequestArgs = {
 };
 
 
-export type MutationAckSecretMessagesArgs = {
+export type MutationAckSessionSecretMessagesArgs = {
   chatId: Scalars['String']['input'];
   messageIds: Array<Scalars['String']['input']>;
+  secretSessionId: Scalars['String']['input'];
 };
 
 
-export type MutationAckSharedSecretKeysArgs = {
+export type MutationAckSessionSharedSecretKeysArgs = {
   chatId: Scalars['String']['input'];
+  secretSessionId: Scalars['String']['input'];
   sharedKeyIds: Array<Scalars['String']['input']>;
 };
 
@@ -487,6 +495,14 @@ export type MutationChangeProfileInfoArgs = {
 };
 
 
+export type MutationConfirmSavedSecretPairingArgs = {
+  challenge?: InputMaybe<Scalars['String']['input']>;
+  mobileSecretSessionId: Scalars['String']['input'];
+  pairingId: Scalars['String']['input'];
+  safetyCode?: InputMaybe<Scalars['String']['input']>;
+};
+
+
 export type MutationCreateChatArgs = {
   data: CreateChatInput;
   groupId: Scalars['String']['input'];
@@ -495,6 +511,11 @@ export type MutationCreateChatArgs = {
 
 export type MutationCreateGroupArgs = {
   data: CreateGroupInput;
+};
+
+
+export type MutationCreateSavedSecretPairingArgs = {
+  webSecretSessionId: Scalars['String']['input'];
 };
 
 
@@ -603,8 +624,19 @@ export type MutationPinMessageArgs = {
 };
 
 
+export type MutationRefreshSecretSessionArgs = {
+  publicPreKey: PreKeyInput;
+  secretSessionId: Scalars['String']['input'];
+};
+
+
 export type MutationRefreshTokenArgs = {
   data: Scalars['String']['input'];
+};
+
+
+export type MutationRegisterSecretSessionArgs = {
+  data: RegisterSecretSessionInput;
 };
 
 
@@ -666,6 +698,16 @@ export type MutationRemoveRoleFromUserArgs = {
 };
 
 
+export type MutationRemoveSessionArgs = {
+  id: Scalars['String']['input'];
+};
+
+
+export type MutationRevokeSecretSessionArgs = {
+  secretSessionId: Scalars['String']['input'];
+};
+
+
 export type MutationSendChatDraftMessageArgs = {
   chatId: Scalars['String']['input'];
   data: SendChatMessageInput;
@@ -695,18 +737,13 @@ export type MutationSendFriendRequestByUsernameArgs = {
 };
 
 
-export type MutationSendPreKeyArgs = {
-  data: PreKeyInput;
+export type MutationSendSessionSecretMessageArgs = {
+  data: SessionSecretMessageInput;
 };
 
 
-export type MutationSendSecretMessageArgs = {
-  data: SendSecretMessageInput;
-};
-
-
-export type MutationSendSharedSecretKeyArgs = {
-  data: SharedSecretKeyInput;
+export type MutationSendSessionSharedSecretKeyArgs = {
+  data: SessionSharedSecretKeyInput;
 };
 
 
@@ -765,22 +802,10 @@ export type MutationVerifyChatTotpArgs = {
 
 export type PreKeyInput = {
   ikPub: Scalars['String']['input'];
+  indexOpkPub?: InputMaybe<Scalars['Float']['input']>;
   opkPubs: Array<Scalars['String']['input']>;
   spkPub: Scalars['String']['input'];
   spkSig: Scalars['String']['input'];
-};
-
-export type PreKeyModel = {
-  __typename?: 'PreKeyModel';
-  createdAt: Scalars['DateTime']['output'];
-  id: Scalars['ID']['output'];
-  ikPub: Scalars['String']['output'];
-  indexOpkPub: Scalars['Float']['output'];
-  opkPubs: Array<Scalars['String']['output']>;
-  spkPub: Scalars['String']['output'];
-  spkSig: Scalars['String']['output'];
-  updatedAt: Scalars['DateTime']['output'];
-  userId: Scalars['String']['output'];
 };
 
 export type Query = {
@@ -795,6 +820,9 @@ export type Query = {
   findChatByChatId: ChatModel;
   findCurrentSession: SessionModel;
   findGroupByGroupId: GroupModel;
+  findMyPendingSavedSecretPairing?: Maybe<SavedSecretPairingModel>;
+  findMySecretSessions: Array<SecretSessionModel>;
+  findOrCreateSavedSecretChat: ChatModel;
   findProfile: UserModel;
   findSessionsByUser: Array<SessionModel>;
   getBlockedUsers: Array<FriendshipModel>;
@@ -805,11 +833,9 @@ export type Query = {
   getMemberChatRole: MemberChatRoleModel;
   getMemberRole: MemberRoleModel;
   getOutgoingFriendRequests: Array<FriendshipModel>;
-  getPreKeys: Array<PreKeyModel>;
-  getSecretMessage: QueueSecretMessageModel;
-  getSecretMessages: Array<QueueSecretMessageModel>;
-  getSharedSecretKey: Array<QueueSharedSecretKeyModel>;
-  hasSharedSecretKey: Scalars['Boolean']['output'];
+  getSecretSessionPreKeys: Array<SecretSessionPreKeyModel>;
+  getSessionSecretMessages: Array<QueueSecretMessageModel>;
+  getSessionSharedSecretKeys: Array<QueueSharedSecretKeyModel>;
 };
 
 
@@ -880,36 +906,30 @@ export type QueryGetMemberRoleArgs = {
 };
 
 
-export type QueryGetPreKeysArgs = {
+export type QueryGetSecretSessionPreKeysArgs = {
   chatId: Scalars['String']['input'];
 };
 
 
-export type QueryGetSecretMessageArgs = {
+export type QueryGetSessionSecretMessagesArgs = {
   chatId: Scalars['String']['input'];
+  secretSessionId: Scalars['String']['input'];
 };
 
 
-export type QueryGetSecretMessagesArgs = {
+export type QueryGetSessionSharedSecretKeysArgs = {
   chatId: Scalars['String']['input'];
-};
-
-
-export type QueryGetSharedSecretKeyArgs = {
-  chatId: Scalars['String']['input'];
-};
-
-
-export type QueryHasSharedSecretKeyArgs = {
-  chatId: Scalars['String']['input'];
+  secretSessionId: Scalars['String']['input'];
 };
 
 export type QueueSecretMessageModel = {
   __typename?: 'QueueSecretMessageModel';
   chatId: Scalars['String']['output'];
+  checkedSessionIds: Array<Scalars['String']['output']>;
   createdAt: Scalars['DateTime']['output'];
   ekPub?: Maybe<Scalars['String']['output']>;
   encryptedMessage: Scalars['String']['output'];
+  fromSessionId?: Maybe<Scalars['String']['output']>;
   fromUserId: Scalars['String']['output'];
   groupId: Scalars['String']['output'];
   id: Scalars['ID']['output'];
@@ -918,6 +938,7 @@ export type QueueSecretMessageModel = {
   iv: Scalars['String']['output'];
   secretAttachmentIds: Array<Scalars['String']['output']>;
   sig: Scalars['String']['output'];
+  toSessionIds: Array<Scalars['String']['output']>;
   toUserIds: Array<Scalars['String']['output']>;
   ukm?: Maybe<Scalars['String']['output']>;
   updatedAt: Scalars['DateTime']['output'];
@@ -931,20 +952,44 @@ export type QueueSharedSecretKeyModel = {
   createdAt: Scalars['DateTime']['output'];
   ekPub: Scalars['String']['output'];
   encryptedKey: Scalars['String']['output'];
+  fromSessionId?: Maybe<Scalars['String']['output']>;
   fromUserId: Scalars['String']['output'];
   groupId: Scalars['String']['output'];
   id: Scalars['ID']['output'];
   ikPub: Scalars['String']['output'];
   iv: Scalars['String']['output'];
   sig: Scalars['String']['output'];
+  toSessionId?: Maybe<Scalars['String']['output']>;
   toUserId: Scalars['String']['output'];
   ukm: Scalars['String']['output'];
   updatedAt: Scalars['DateTime']['output'];
   usedOpk?: Maybe<Scalars['String']['output']>;
 };
 
+export type RegisterSecretSessionInput = {
+  deviceName?: InputMaybe<Scalars['String']['input']>;
+  platform: SecretSessionPlatform;
+  publicPreKey: PreKeyInput;
+};
+
 export type RemoveMessagesInput = {
   messageIds: Array<Scalars['String']['input']>;
+};
+
+export type SavedSecretPairingModel = {
+  __typename?: 'SavedSecretPairingModel';
+  challenge: Scalars['String']['output'];
+  chatId: Scalars['String']['output'];
+  confirmedAt?: Maybe<Scalars['DateTime']['output']>;
+  createdAt: Scalars['DateTime']['output'];
+  expiresAt: Scalars['DateTime']['output'];
+  mobileSecretSessionId?: Maybe<Scalars['String']['output']>;
+  pairingId: Scalars['String']['output'];
+  qrCodeUrl?: Maybe<Scalars['String']['output']>;
+  qrPayload?: Maybe<Scalars['String']['output']>;
+  safetyCode: Scalars['String']['output'];
+  userId: Scalars['String']['output'];
+  webSecretSessionId: Scalars['String']['output'];
 };
 
 export type SecretAttachmentDownloadModel = {
@@ -971,24 +1016,51 @@ export type SecretKeyRotationModel = {
   chatId: Scalars['String']['output'];
 };
 
+export type SecretSessionModel = {
+  __typename?: 'SecretSessionModel';
+  createdAt: Scalars['DateTime']['output'];
+  deviceName?: Maybe<Scalars['String']['output']>;
+  expiresAt: Scalars['DateTime']['output'];
+  id: Scalars['String']['output'];
+  platform: SecretSessionPlatform;
+  publicPreKey: SecretSessionPublicPreKeyModel;
+  revokedAt?: Maybe<Scalars['DateTime']['output']>;
+  userId: Scalars['String']['output'];
+};
+
+export enum SecretSessionPlatform {
+  Mobile = 'MOBILE',
+  Web = 'WEB'
+}
+
+export type SecretSessionPreKeyModel = {
+  __typename?: 'SecretSessionPreKeyModel';
+  deviceName?: Maybe<Scalars['String']['output']>;
+  ikPub: Scalars['String']['output'];
+  indexOpkPub: Scalars['Float']['output'];
+  opkPubs: Array<Scalars['String']['output']>;
+  platform: SecretSessionPlatform;
+  secretSessionId: Scalars['String']['output'];
+  spkPub: Scalars['String']['output'];
+  spkSig: Scalars['String']['output'];
+  userId: Scalars['String']['output'];
+};
+
+export type SecretSessionPublicPreKeyModel = {
+  __typename?: 'SecretSessionPublicPreKeyModel';
+  ikPub: Scalars['String']['output'];
+  indexOpkPub: Scalars['Float']['output'];
+  opkPubs: Array<Scalars['String']['output']>;
+  spkPub: Scalars['String']['output'];
+  spkSig: Scalars['String']['output'];
+};
+
 export type SendChatMessageInput = {
   editId?: InputMaybe<Scalars['String']['input']>;
   fileIds?: InputMaybe<Array<Scalars['String']['input']>>;
   forwardedMessageIds?: InputMaybe<Array<Scalars['String']['input']>>;
   targetChatsId?: InputMaybe<Array<Scalars['String']['input']>>;
   text?: InputMaybe<Scalars['String']['input']>;
-};
-
-export type SendSecretMessageInput = {
-  chatId: Scalars['String']['input'];
-  encryptedMessage: Scalars['String']['input'];
-  groupId: Scalars['String']['input'];
-  isKey?: InputMaybe<Scalars['Boolean']['input']>;
-  iv: Scalars['String']['input'];
-  secretAttachmentIds?: InputMaybe<Array<Scalars['String']['input']>>;
-  sig: Scalars['String']['input'];
-  toUserIds: Array<Scalars['String']['input']>;
-  ukm?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type SessionMetadataModel = {
@@ -1006,14 +1078,30 @@ export type SessionModel = {
   userId: Scalars['String']['output'];
 };
 
-export type SharedSecretKeyInput = {
+export type SessionSecretMessageInput = {
+  chatId: Scalars['String']['input'];
+  encryptedMessage: Scalars['String']['input'];
+  fromSessionId: Scalars['String']['input'];
+  groupId?: InputMaybe<Scalars['String']['input']>;
+  isKey?: InputMaybe<Scalars['Boolean']['input']>;
+  iv: Scalars['String']['input'];
+  secretAttachmentIds?: InputMaybe<Array<Scalars['String']['input']>>;
+  sig: Scalars['String']['input'];
+  toSessionIds: Array<Scalars['String']['input']>;
+  toUserIds: Array<Scalars['String']['input']>;
+  ukm?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type SessionSharedSecretKeyInput = {
   chatId: Scalars['String']['input'];
   ekPub: Scalars['String']['input'];
   encryptedKey: Scalars['String']['input'];
-  groupId: Scalars['String']['input'];
+  fromSessionId: Scalars['String']['input'];
+  groupId?: InputMaybe<Scalars['String']['input']>;
   ikPub: Scalars['String']['input'];
   iv: Scalars['String']['input'];
   sig: Scalars['String']['input'];
+  toSessionId: Scalars['String']['input'];
   toUserId: Scalars['String']['input'];
   ukm: Scalars['String']['input'];
   usedOpk?: InputMaybe<Scalars['String']['input']>;
@@ -1021,8 +1109,8 @@ export type SharedSecretKeyInput = {
 
 export type Subscription = {
   __typename?: 'Subscription';
-  addSecretMessage: QueueSecretMessageModel;
-  addSharedSecretKey?: Maybe<QueueSharedSecretKeyModel>;
+  addSessionSecretMessage: QueueSecretMessageModel;
+  addSessionSharedSecretKey?: Maybe<QueueSharedSecretKeyModel>;
   chatAdded: ChatModel;
   chatAssignedRole: ChatRoleModel;
   chatDeleted: ChatModel;
@@ -1048,12 +1136,14 @@ export type Subscription = {
 };
 
 
-export type SubscriptionAddSecretMessageArgs = {
+export type SubscriptionAddSessionSecretMessageArgs = {
+  secretSessionId: Scalars['String']['input'];
   userId: Scalars['String']['input'];
 };
 
 
-export type SubscriptionAddSharedSecretKeyArgs = {
+export type SubscriptionAddSessionSharedSecretKeyArgs = {
+  secretSessionId: Scalars['String']['input'];
   userId: Scalars['String']['input'];
 };
 
@@ -1264,6 +1354,13 @@ export type LogoutUserMutationVariables = Exact<{ [key: string]: never; }>;
 
 
 export type LogoutUserMutation = { __typename?: 'Mutation', logoutUser: boolean };
+
+export type RemoveSessionMutationVariables = Exact<{
+  id: Scalars['String']['input'];
+}>;
+
+
+export type RemoveSessionMutation = { __typename?: 'Mutation', removeSession: boolean };
 
 export type ToggleChatRequireTotpMutationVariables = Exact<{
   chatId: Scalars['String']['input'];
@@ -1627,21 +1724,40 @@ export type UpsertGroupRoleMutationVariables = Exact<{
 
 export type UpsertGroupRoleMutation = { __typename?: 'Mutation', upsertGroupRole: boolean };
 
-export type AckSecretMessagesMutationVariables = Exact<{
+export type AckSessionSecretMessagesMutationVariables = Exact<{
   chatId: Scalars['String']['input'];
+  secretSessionId: Scalars['String']['input'];
   messageIds: Array<Scalars['String']['input']> | Scalars['String']['input'];
 }>;
 
 
-export type AckSecretMessagesMutation = { __typename?: 'Mutation', ackSecretMessages: boolean };
+export type AckSessionSecretMessagesMutation = { __typename?: 'Mutation', ackSessionSecretMessages: boolean };
 
-export type AckSharedSecretKeysMutationVariables = Exact<{
+export type AckSessionSharedSecretKeysMutationVariables = Exact<{
   chatId: Scalars['String']['input'];
+  secretSessionId: Scalars['String']['input'];
   sharedKeyIds: Array<Scalars['String']['input']> | Scalars['String']['input'];
 }>;
 
 
-export type AckSharedSecretKeysMutation = { __typename?: 'Mutation', ackSharedSecretKeys: boolean };
+export type AckSessionSharedSecretKeysMutation = { __typename?: 'Mutation', ackSessionSharedSecretKeys: boolean };
+
+export type ConfirmSavedSecretPairingMutationVariables = Exact<{
+  pairingId: Scalars['String']['input'];
+  mobileSecretSessionId: Scalars['String']['input'];
+  challenge?: InputMaybe<Scalars['String']['input']>;
+  safetyCode?: InputMaybe<Scalars['String']['input']>;
+}>;
+
+
+export type ConfirmSavedSecretPairingMutation = { __typename?: 'Mutation', confirmSavedSecretPairing: { __typename?: 'SavedSecretPairingModel', pairingId: string, userId: string, chatId: string, webSecretSessionId: string, mobileSecretSessionId?: string | null, challenge: string, safetyCode: string, expiresAt: any, confirmedAt?: any | null } };
+
+export type CreateSavedSecretPairingMutationVariables = Exact<{
+  webSecretSessionId: Scalars['String']['input'];
+}>;
+
+
+export type CreateSavedSecretPairingMutation = { __typename?: 'Mutation', createSavedSecretPairing: { __typename?: 'SavedSecretPairingModel', pairingId: string, userId: string, chatId: string, webSecretSessionId: string, mobileSecretSessionId?: string | null, challenge: string, safetyCode: string, qrPayload?: string | null, qrCodeUrl?: string | null, createdAt: any, expiresAt: any, confirmedAt?: any | null } };
 
 export type DiscardSecretAttachmentMutationVariables = Exact<{
   chatId: Scalars['String']['input'];
@@ -1659,26 +1775,41 @@ export type DownloadSecretAttachmentMutationVariables = Exact<{
 
 export type DownloadSecretAttachmentMutation = { __typename?: 'Mutation', downloadSecretAttachment: { __typename?: 'SecretAttachmentDownloadModel', attachmentId: string, chatId: string, ciphertextBase64: string, ciphertextSize: string } };
 
-export type SendPreKeyMutationVariables = Exact<{
-  data: PreKeyInput;
+export type RefreshSecretSessionMutationVariables = Exact<{
+  secretSessionId: Scalars['String']['input'];
+  publicPreKey: PreKeyInput;
 }>;
 
 
-export type SendPreKeyMutation = { __typename?: 'Mutation', sendPreKey: boolean };
+export type RefreshSecretSessionMutation = { __typename?: 'Mutation', refreshSecretSession: { __typename?: 'SecretSessionModel', id: string, userId: string, platform: SecretSessionPlatform, deviceName?: string | null, createdAt: any, expiresAt: any, revokedAt?: any | null } };
 
-export type SendSecretMessageMutationVariables = Exact<{
-  data: SendSecretMessageInput;
+export type RegisterSecretSessionMutationVariables = Exact<{
+  data: RegisterSecretSessionInput;
 }>;
 
 
-export type SendSecretMessageMutation = { __typename?: 'Mutation', sendSecretMessage: { __typename?: 'QueueSecretMessageModel', id: string } };
+export type RegisterSecretSessionMutation = { __typename?: 'Mutation', registerSecretSession: { __typename?: 'SecretSessionModel', id: string, userId: string, platform: SecretSessionPlatform, deviceName?: string | null, createdAt: any, expiresAt: any, revokedAt?: any | null, publicPreKey: { __typename?: 'SecretSessionPublicPreKeyModel', ikPub: string, spkPub: string, spkSig: string, opkPubs: Array<string>, indexOpkPub: number } } };
 
-export type SendSharedSecretKeyMutationVariables = Exact<{
-  data: SharedSecretKeyInput;
+export type RevokeSecretSessionMutationVariables = Exact<{
+  secretSessionId: Scalars['String']['input'];
 }>;
 
 
-export type SendSharedSecretKeyMutation = { __typename?: 'Mutation', sendSharedSecretKey: { __typename?: 'QueueSharedSecretKeyModel', id: string } };
+export type RevokeSecretSessionMutation = { __typename?: 'Mutation', revokeSecretSession: boolean };
+
+export type SendSessionSecretMessageMutationVariables = Exact<{
+  data: SessionSecretMessageInput;
+}>;
+
+
+export type SendSessionSecretMessageMutation = { __typename?: 'Mutation', sendSessionSecretMessage: { __typename?: 'QueueSecretMessageModel', id: string, groupId: string, isKey: boolean, chatId: string, fromUserId: string, fromSessionId?: string | null, toUserIds: Array<string>, toSessionIds: Array<string>, whoCheckedIds: Array<string>, checkedSessionIds: Array<string>, ukm?: string | null, iv: string, encryptedMessage: string, sig: string, secretAttachmentIds: Array<string>, ikPub?: string | null, ekPub?: string | null, usedOpk?: string | null, createdAt: any, updatedAt: any } };
+
+export type SendSessionSharedSecretKeyMutationVariables = Exact<{
+  data: SessionSharedSecretKeyInput;
+}>;
+
+
+export type SendSessionSharedSecretKeyMutation = { __typename?: 'Mutation', sendSessionSharedSecretKey: { __typename?: 'QueueSharedSecretKeyModel', id: string, groupId: string, chatId: string, fromUserId: string, toUserId: string, fromSessionId?: string | null, toSessionId?: string | null, ikPub: string, ekPub: string, usedOpk?: string | null, ukm: string, iv: string, encryptedKey: string, sig: string, createdAt: any, updatedAt: any } };
 
 export type UploadSecretAttachmentMutationVariables = Exact<{
   data: UploadSecretAttachmentInput;
@@ -1741,7 +1872,7 @@ export type FindChatByChatIdQueryVariables = Exact<{
 }>;
 
 
-export type FindChatByChatIdQuery = { __typename?: 'Query', findChatByChatId: { __typename?: 'ChatModel', id: string, chatName?: string | null, avatarUrl?: string | null, updatedAt: any, isSecret: boolean, requireTotp: boolean, isGroup: boolean, groupId?: string | null, description?: string | null, pinnedMessage?: { __typename?: 'ChatMessageModel', id: string, text?: string | null, createdAt: any, isEdited: boolean, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', id: string, username: string }, repliedToLinks?: Array<{ __typename?: 'ChatMessageReplyModel', id: string, repliedTo?: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', username: string, id: string } } | null } | null> | null } | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', editId?: string | null, id: string, text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }>, repliedToLinks: Array<{ __typename?: 'chatDraftMessageReplyModel', id: string, repliedTo: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', username: string, id: string } } }> }> | null, members: Array<{ __typename?: 'ChatMemberModel', id: string, isCreator?: boolean | null, user: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null }, roles?: Array<{ __typename?: 'ChatRoleModel', id: string, name: string, color: string, permissions: Array<ChatPermissionEnum> }> | null }> } };
+export type FindChatByChatIdQuery = { __typename?: 'Query', findChatByChatId: { __typename?: 'ChatModel', id: string, chatName?: string | null, avatarUrl?: string | null, updatedAt: any, isSecret: boolean, requireTotp: boolean, isGroup: boolean, groupId?: string | null, description?: string | null, pinnedMessage?: { __typename?: 'ChatMessageModel', id: string, text?: string | null, createdAt: any, isEdited: boolean, isStarted: boolean, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, chat: { __typename?: 'ChatModel', chatName?: string | null }, user: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null }, repliedToLinks?: Array<{ __typename?: 'ChatMessageReplyModel', id: string, repliedTo?: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', username: string, id: string, avatarUrl?: string | null } } | null } | null> | null } | null, draftMessages?: Array<{ __typename?: 'ChatDraftMessageModel', editId?: string | null, id: string, text: string, files: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }>, repliedToLinks: Array<{ __typename?: 'chatDraftMessageReplyModel', id: string, repliedTo: { __typename?: 'ChatMessageModel', id: string, text?: string | null, files?: Array<{ __typename?: 'FileMessageModel', fileName: string, fileFormat: string, fileSize: string, id: string }> | null, user: { __typename?: 'UserModel', username: string, id: string } } }> }> | null, members: Array<{ __typename?: 'ChatMemberModel', id: string, isCreator?: boolean | null, user: { __typename?: 'UserModel', id: string, username: string, avatarUrl?: string | null }, roles?: Array<{ __typename?: 'ChatRoleModel', id: string, name: string, color: string, permissions: Array<ChatPermissionEnum> }> | null }> } };
 
 export type GetChatRolesQueryVariables = Exact<{
   chatId: Scalars['String']['input'];
@@ -1805,40 +1936,43 @@ export type GetMemberRoleQueryVariables = Exact<{
 
 export type GetMemberRoleQuery = { __typename?: 'Query', getMemberRole: { __typename?: 'MemberRoleModel', id: string, name: string, permissions: Array<GroupPermissionEnum>, isCreator: boolean } };
 
-export type GetPreKeysQueryVariables = Exact<{
+export type FindMyPendingSavedSecretPairingQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type FindMyPendingSavedSecretPairingQuery = { __typename?: 'Query', findMyPendingSavedSecretPairing?: { __typename?: 'SavedSecretPairingModel', pairingId: string, userId: string, chatId: string, webSecretSessionId: string, mobileSecretSessionId?: string | null, challenge: string, safetyCode: string, qrPayload?: string | null, qrCodeUrl?: string | null, createdAt: any, expiresAt: any, confirmedAt?: any | null } | null };
+
+export type FindMySecretSessionsQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type FindMySecretSessionsQuery = { __typename?: 'Query', findMySecretSessions: Array<{ __typename?: 'SecretSessionModel', id: string, userId: string, platform: SecretSessionPlatform, deviceName?: string | null, createdAt: any, expiresAt: any, revokedAt?: any | null }> };
+
+export type FindOrCreateSavedSecretChatQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type FindOrCreateSavedSecretChatQuery = { __typename?: 'Query', findOrCreateSavedSecretChat: { __typename?: 'ChatModel', id: string, groupId?: string | null, chatName?: string | null, isSecret: boolean, isSaved: boolean, ownerId?: string | null, createdAt: any, updatedAt: any } };
+
+export type GetSecretSessionPreKeysQueryVariables = Exact<{
   chatId: Scalars['String']['input'];
 }>;
 
 
-export type GetPreKeysQuery = { __typename?: 'Query', getPreKeys: Array<{ __typename?: 'PreKeyModel', ikPub: string, spkPub: string, spkSig: string, opkPubs: Array<string>, indexOpkPub: number, userId: string }> };
+export type GetSecretSessionPreKeysQuery = { __typename?: 'Query', getSecretSessionPreKeys: Array<{ __typename?: 'SecretSessionPreKeyModel', secretSessionId: string, userId: string, platform: SecretSessionPlatform, deviceName?: string | null, ikPub: string, spkPub: string, spkSig: string, opkPubs: Array<string>, indexOpkPub: number }> };
 
-export type GetSecretMessageQueryVariables = Exact<{
+export type GetSessionSecretMessagesQueryVariables = Exact<{
   chatId: Scalars['String']['input'];
+  secretSessionId: Scalars['String']['input'];
 }>;
 
 
-export type GetSecretMessageQuery = { __typename?: 'Query', getSecretMessage: { __typename?: 'QueueSecretMessageModel', id: string, chatId: string, fromUserId: string, ikPub?: string | null, usedOpk?: string | null, ukm?: string | null, ekPub?: string | null, iv: string, encryptedMessage: string, sig: string } };
+export type GetSessionSecretMessagesQuery = { __typename?: 'Query', getSessionSecretMessages: Array<{ __typename?: 'QueueSecretMessageModel', id: string, groupId: string, isKey: boolean, chatId: string, fromUserId: string, fromSessionId?: string | null, toUserIds: Array<string>, toSessionIds: Array<string>, whoCheckedIds: Array<string>, checkedSessionIds: Array<string>, ukm?: string | null, iv: string, encryptedMessage: string, sig: string, secretAttachmentIds: Array<string>, ikPub?: string | null, ekPub?: string | null, usedOpk?: string | null, createdAt: any, updatedAt: any }> };
 
-export type GetSecretMessagesQueryVariables = Exact<{
+export type GetSessionSharedSecretKeysQueryVariables = Exact<{
   chatId: Scalars['String']['input'];
+  secretSessionId: Scalars['String']['input'];
 }>;
 
 
-export type GetSecretMessagesQuery = { __typename?: 'Query', getSecretMessages: Array<{ __typename?: 'QueueSecretMessageModel', id: string, groupId: string, isKey: boolean, chatId: string, fromUserId: string, toUserIds: Array<string>, whoCheckedIds: Array<string>, ukm?: string | null, iv: string, encryptedMessage: string, sig: string, secretAttachmentIds: Array<string>, ikPub?: string | null, ekPub?: string | null, usedOpk?: string | null, createdAt: any, updatedAt: any }> };
-
-export type GetSharedSecretKeyQueryVariables = Exact<{
-  chatId: Scalars['String']['input'];
-}>;
-
-
-export type GetSharedSecretKeyQuery = { __typename?: 'Query', getSharedSecretKey: Array<{ __typename?: 'QueueSharedSecretKeyModel', id: string, groupId: string, createdAt: any, updatedAt: any, ikPub: string, chatId: string, fromUserId: string, toUserId: string, ekPub: string, usedOpk?: string | null, ukm: string, iv: string, encryptedKey: string, sig: string }> };
-
-export type HasSharedSecretKeyQueryVariables = Exact<{
-  chatId: Scalars['String']['input'];
-}>;
-
-
-export type HasSharedSecretKeyQuery = { __typename?: 'Query', hasSharedSecretKey: boolean };
+export type GetSessionSharedSecretKeysQuery = { __typename?: 'Query', getSessionSharedSecretKeys: Array<{ __typename?: 'QueueSharedSecretKeyModel', id: string, groupId: string, chatId: string, fromUserId: string, toUserId: string, fromSessionId?: string | null, toSessionId?: string | null, ikPub: string, ekPub: string, usedOpk?: string | null, ukm: string, iv: string, encryptedKey: string, sig: string, createdAt: any, updatedAt: any }> };
 
 export type FindAllUsersQueryVariables = Exact<{
   filters?: InputMaybe<FiltersInput>;
@@ -2014,19 +2148,21 @@ export type GroupUpsertedRoleSubscriptionVariables = Exact<{
 
 export type GroupUpsertedRoleSubscription = { __typename?: 'Subscription', groupUpsertedRole: { __typename?: 'GroupRoleModel', id: string, name: string, color: string, groupId: string, permissions: Array<GroupPermissionEnum>, createdAt: any, updatedAt: any } };
 
-export type AddSecretMessageSubscriptionVariables = Exact<{
+export type AddSessionSecretMessageSubscriptionVariables = Exact<{
   userId: Scalars['String']['input'];
+  secretSessionId: Scalars['String']['input'];
 }>;
 
 
-export type AddSecretMessageSubscription = { __typename?: 'Subscription', addSecretMessage: { __typename?: 'QueueSecretMessageModel', id: string, chatId: string, fromUserId: string, ukm?: string | null, iv: string, encryptedMessage: string, sig: string } };
+export type AddSessionSecretMessageSubscription = { __typename?: 'Subscription', addSessionSecretMessage: { __typename?: 'QueueSecretMessageModel', id: string, groupId: string, isKey: boolean, chatId: string, fromUserId: string, fromSessionId?: string | null, toUserIds: Array<string>, toSessionIds: Array<string>, whoCheckedIds: Array<string>, checkedSessionIds: Array<string>, ukm?: string | null, iv: string, encryptedMessage: string, sig: string, secretAttachmentIds: Array<string>, ikPub?: string | null, ekPub?: string | null, usedOpk?: string | null, createdAt: any, updatedAt: any } };
 
-export type AddSharedSecretKeySubscriptionVariables = Exact<{
+export type AddSessionSharedSecretKeySubscriptionVariables = Exact<{
   userId: Scalars['String']['input'];
+  secretSessionId: Scalars['String']['input'];
 }>;
 
 
-export type AddSharedSecretKeySubscription = { __typename?: 'Subscription', addSharedSecretKey?: { __typename?: 'QueueSharedSecretKeyModel', chatId: string, fromUserId: string, toUserId: string, ekPub: string, usedOpk?: string | null, ukm: string, iv: string, encryptedKey: string, sig: string } | null };
+export type AddSessionSharedSecretKeySubscription = { __typename?: 'Subscription', addSessionSharedSecretKey?: { __typename?: 'QueueSharedSecretKeyModel', id: string, groupId: string, chatId: string, fromUserId: string, toUserId: string, fromSessionId?: string | null, toSessionId?: string | null, ikPub: string, ekPub: string, usedOpk?: string | null, ukm: string, iv: string, encryptedKey: string, sig: string, createdAt: any, updatedAt: any } | null };
 
 export type SecretKeyRotationSubscriptionVariables = Exact<{
   userId: Scalars['String']['input'];
@@ -2231,6 +2367,37 @@ export function useLogoutUserMutation(baseOptions?: Apollo.MutationHookOptions<L
 export type LogoutUserMutationHookResult = ReturnType<typeof useLogoutUserMutation>;
 export type LogoutUserMutationResult = Apollo.MutationResult<LogoutUserMutation>;
 export type LogoutUserMutationOptions = Apollo.BaseMutationOptions<LogoutUserMutation, LogoutUserMutationVariables>;
+export const RemoveSessionDocument = gql`
+    mutation RemoveSession($id: String!) {
+  removeSession(id: $id)
+}
+    `;
+export type RemoveSessionMutationFn = Apollo.MutationFunction<RemoveSessionMutation, RemoveSessionMutationVariables>;
+
+/**
+ * __useRemoveSessionMutation__
+ *
+ * To run a mutation, you first call `useRemoveSessionMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useRemoveSessionMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [removeSessionMutation, { data, loading, error }] = useRemoveSessionMutation({
+ *   variables: {
+ *      id: // value for 'id'
+ *   },
+ * });
+ */
+export function useRemoveSessionMutation(baseOptions?: Apollo.MutationHookOptions<RemoveSessionMutation, RemoveSessionMutationVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useMutation<RemoveSessionMutation, RemoveSessionMutationVariables>(RemoveSessionDocument, options);
+      }
+export type RemoveSessionMutationHookResult = ReturnType<typeof useRemoveSessionMutation>;
+export type RemoveSessionMutationResult = Apollo.MutationResult<RemoveSessionMutation>;
+export type RemoveSessionMutationOptions = Apollo.BaseMutationOptions<RemoveSessionMutation, RemoveSessionMutationVariables>;
 export const ToggleChatRequireTotpDocument = gql`
     mutation ToggleChatRequireTotp($chatId: String!, $enable: Boolean!) {
   toggleChatRequireTotp(chatId: $chatId, enable: $enable)
@@ -3747,70 +3914,173 @@ export function useUpsertGroupRoleMutation(baseOptions?: Apollo.MutationHookOpti
 export type UpsertGroupRoleMutationHookResult = ReturnType<typeof useUpsertGroupRoleMutation>;
 export type UpsertGroupRoleMutationResult = Apollo.MutationResult<UpsertGroupRoleMutation>;
 export type UpsertGroupRoleMutationOptions = Apollo.BaseMutationOptions<UpsertGroupRoleMutation, UpsertGroupRoleMutationVariables>;
-export const AckSecretMessagesDocument = gql`
-    mutation AckSecretMessages($chatId: String!, $messageIds: [String!]!) {
-  ackSecretMessages(chatId: $chatId, messageIds: $messageIds)
+export const AckSessionSecretMessagesDocument = gql`
+    mutation AckSessionSecretMessages($chatId: String!, $secretSessionId: String!, $messageIds: [String!]!) {
+  ackSessionSecretMessages(
+    chatId: $chatId
+    secretSessionId: $secretSessionId
+    messageIds: $messageIds
+  )
 }
     `;
-export type AckSecretMessagesMutationFn = Apollo.MutationFunction<AckSecretMessagesMutation, AckSecretMessagesMutationVariables>;
+export type AckSessionSecretMessagesMutationFn = Apollo.MutationFunction<AckSessionSecretMessagesMutation, AckSessionSecretMessagesMutationVariables>;
 
 /**
- * __useAckSecretMessagesMutation__
+ * __useAckSessionSecretMessagesMutation__
  *
- * To run a mutation, you first call `useAckSecretMessagesMutation` within a React component and pass it any options that fit your needs.
- * When your component renders, `useAckSecretMessagesMutation` returns a tuple that includes:
+ * To run a mutation, you first call `useAckSessionSecretMessagesMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useAckSessionSecretMessagesMutation` returns a tuple that includes:
  * - A mutate function that you can call at any time to execute the mutation
  * - An object with fields that represent the current status of the mutation's execution
  *
  * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
  *
  * @example
- * const [ackSecretMessagesMutation, { data, loading, error }] = useAckSecretMessagesMutation({
+ * const [ackSessionSecretMessagesMutation, { data, loading, error }] = useAckSessionSecretMessagesMutation({
  *   variables: {
  *      chatId: // value for 'chatId'
+ *      secretSessionId: // value for 'secretSessionId'
  *      messageIds: // value for 'messageIds'
  *   },
  * });
  */
-export function useAckSecretMessagesMutation(baseOptions?: Apollo.MutationHookOptions<AckSecretMessagesMutation, AckSecretMessagesMutationVariables>) {
+export function useAckSessionSecretMessagesMutation(baseOptions?: Apollo.MutationHookOptions<AckSessionSecretMessagesMutation, AckSessionSecretMessagesMutationVariables>) {
         const options = {...defaultOptions, ...baseOptions}
-        return Apollo.useMutation<AckSecretMessagesMutation, AckSecretMessagesMutationVariables>(AckSecretMessagesDocument, options);
+        return Apollo.useMutation<AckSessionSecretMessagesMutation, AckSessionSecretMessagesMutationVariables>(AckSessionSecretMessagesDocument, options);
       }
-export type AckSecretMessagesMutationHookResult = ReturnType<typeof useAckSecretMessagesMutation>;
-export type AckSecretMessagesMutationResult = Apollo.MutationResult<AckSecretMessagesMutation>;
-export type AckSecretMessagesMutationOptions = Apollo.BaseMutationOptions<AckSecretMessagesMutation, AckSecretMessagesMutationVariables>;
-export const AckSharedSecretKeysDocument = gql`
-    mutation AckSharedSecretKeys($chatId: String!, $sharedKeyIds: [String!]!) {
-  ackSharedSecretKeys(chatId: $chatId, sharedKeyIds: $sharedKeyIds)
+export type AckSessionSecretMessagesMutationHookResult = ReturnType<typeof useAckSessionSecretMessagesMutation>;
+export type AckSessionSecretMessagesMutationResult = Apollo.MutationResult<AckSessionSecretMessagesMutation>;
+export type AckSessionSecretMessagesMutationOptions = Apollo.BaseMutationOptions<AckSessionSecretMessagesMutation, AckSessionSecretMessagesMutationVariables>;
+export const AckSessionSharedSecretKeysDocument = gql`
+    mutation AckSessionSharedSecretKeys($chatId: String!, $secretSessionId: String!, $sharedKeyIds: [String!]!) {
+  ackSessionSharedSecretKeys(
+    chatId: $chatId
+    secretSessionId: $secretSessionId
+    sharedKeyIds: $sharedKeyIds
+  )
 }
     `;
-export type AckSharedSecretKeysMutationFn = Apollo.MutationFunction<AckSharedSecretKeysMutation, AckSharedSecretKeysMutationVariables>;
+export type AckSessionSharedSecretKeysMutationFn = Apollo.MutationFunction<AckSessionSharedSecretKeysMutation, AckSessionSharedSecretKeysMutationVariables>;
 
 /**
- * __useAckSharedSecretKeysMutation__
+ * __useAckSessionSharedSecretKeysMutation__
  *
- * To run a mutation, you first call `useAckSharedSecretKeysMutation` within a React component and pass it any options that fit your needs.
- * When your component renders, `useAckSharedSecretKeysMutation` returns a tuple that includes:
+ * To run a mutation, you first call `useAckSessionSharedSecretKeysMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useAckSessionSharedSecretKeysMutation` returns a tuple that includes:
  * - A mutate function that you can call at any time to execute the mutation
  * - An object with fields that represent the current status of the mutation's execution
  *
  * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
  *
  * @example
- * const [ackSharedSecretKeysMutation, { data, loading, error }] = useAckSharedSecretKeysMutation({
+ * const [ackSessionSharedSecretKeysMutation, { data, loading, error }] = useAckSessionSharedSecretKeysMutation({
  *   variables: {
  *      chatId: // value for 'chatId'
+ *      secretSessionId: // value for 'secretSessionId'
  *      sharedKeyIds: // value for 'sharedKeyIds'
  *   },
  * });
  */
-export function useAckSharedSecretKeysMutation(baseOptions?: Apollo.MutationHookOptions<AckSharedSecretKeysMutation, AckSharedSecretKeysMutationVariables>) {
+export function useAckSessionSharedSecretKeysMutation(baseOptions?: Apollo.MutationHookOptions<AckSessionSharedSecretKeysMutation, AckSessionSharedSecretKeysMutationVariables>) {
         const options = {...defaultOptions, ...baseOptions}
-        return Apollo.useMutation<AckSharedSecretKeysMutation, AckSharedSecretKeysMutationVariables>(AckSharedSecretKeysDocument, options);
+        return Apollo.useMutation<AckSessionSharedSecretKeysMutation, AckSessionSharedSecretKeysMutationVariables>(AckSessionSharedSecretKeysDocument, options);
       }
-export type AckSharedSecretKeysMutationHookResult = ReturnType<typeof useAckSharedSecretKeysMutation>;
-export type AckSharedSecretKeysMutationResult = Apollo.MutationResult<AckSharedSecretKeysMutation>;
-export type AckSharedSecretKeysMutationOptions = Apollo.BaseMutationOptions<AckSharedSecretKeysMutation, AckSharedSecretKeysMutationVariables>;
+export type AckSessionSharedSecretKeysMutationHookResult = ReturnType<typeof useAckSessionSharedSecretKeysMutation>;
+export type AckSessionSharedSecretKeysMutationResult = Apollo.MutationResult<AckSessionSharedSecretKeysMutation>;
+export type AckSessionSharedSecretKeysMutationOptions = Apollo.BaseMutationOptions<AckSessionSharedSecretKeysMutation, AckSessionSharedSecretKeysMutationVariables>;
+export const ConfirmSavedSecretPairingDocument = gql`
+    mutation ConfirmSavedSecretPairing($pairingId: String!, $mobileSecretSessionId: String!, $challenge: String, $safetyCode: String) {
+  confirmSavedSecretPairing(
+    pairingId: $pairingId
+    mobileSecretSessionId: $mobileSecretSessionId
+    challenge: $challenge
+    safetyCode: $safetyCode
+  ) {
+    pairingId
+    userId
+    chatId
+    webSecretSessionId
+    mobileSecretSessionId
+    challenge
+    safetyCode
+    expiresAt
+    confirmedAt
+  }
+}
+    `;
+export type ConfirmSavedSecretPairingMutationFn = Apollo.MutationFunction<ConfirmSavedSecretPairingMutation, ConfirmSavedSecretPairingMutationVariables>;
+
+/**
+ * __useConfirmSavedSecretPairingMutation__
+ *
+ * To run a mutation, you first call `useConfirmSavedSecretPairingMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useConfirmSavedSecretPairingMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [confirmSavedSecretPairingMutation, { data, loading, error }] = useConfirmSavedSecretPairingMutation({
+ *   variables: {
+ *      pairingId: // value for 'pairingId'
+ *      mobileSecretSessionId: // value for 'mobileSecretSessionId'
+ *      challenge: // value for 'challenge'
+ *      safetyCode: // value for 'safetyCode'
+ *   },
+ * });
+ */
+export function useConfirmSavedSecretPairingMutation(baseOptions?: Apollo.MutationHookOptions<ConfirmSavedSecretPairingMutation, ConfirmSavedSecretPairingMutationVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useMutation<ConfirmSavedSecretPairingMutation, ConfirmSavedSecretPairingMutationVariables>(ConfirmSavedSecretPairingDocument, options);
+      }
+export type ConfirmSavedSecretPairingMutationHookResult = ReturnType<typeof useConfirmSavedSecretPairingMutation>;
+export type ConfirmSavedSecretPairingMutationResult = Apollo.MutationResult<ConfirmSavedSecretPairingMutation>;
+export type ConfirmSavedSecretPairingMutationOptions = Apollo.BaseMutationOptions<ConfirmSavedSecretPairingMutation, ConfirmSavedSecretPairingMutationVariables>;
+export const CreateSavedSecretPairingDocument = gql`
+    mutation CreateSavedSecretPairing($webSecretSessionId: String!) {
+  createSavedSecretPairing(webSecretSessionId: $webSecretSessionId) {
+    pairingId
+    userId
+    chatId
+    webSecretSessionId
+    mobileSecretSessionId
+    challenge
+    safetyCode
+    qrPayload
+    qrCodeUrl
+    createdAt
+    expiresAt
+    confirmedAt
+  }
+}
+    `;
+export type CreateSavedSecretPairingMutationFn = Apollo.MutationFunction<CreateSavedSecretPairingMutation, CreateSavedSecretPairingMutationVariables>;
+
+/**
+ * __useCreateSavedSecretPairingMutation__
+ *
+ * To run a mutation, you first call `useCreateSavedSecretPairingMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useCreateSavedSecretPairingMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [createSavedSecretPairingMutation, { data, loading, error }] = useCreateSavedSecretPairingMutation({
+ *   variables: {
+ *      webSecretSessionId: // value for 'webSecretSessionId'
+ *   },
+ * });
+ */
+export function useCreateSavedSecretPairingMutation(baseOptions?: Apollo.MutationHookOptions<CreateSavedSecretPairingMutation, CreateSavedSecretPairingMutationVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useMutation<CreateSavedSecretPairingMutation, CreateSavedSecretPairingMutationVariables>(CreateSavedSecretPairingDocument, options);
+      }
+export type CreateSavedSecretPairingMutationHookResult = ReturnType<typeof useCreateSavedSecretPairingMutation>;
+export type CreateSavedSecretPairingMutationResult = Apollo.MutationResult<CreateSavedSecretPairingMutation>;
+export type CreateSavedSecretPairingMutationOptions = Apollo.BaseMutationOptions<CreateSavedSecretPairingMutation, CreateSavedSecretPairingMutationVariables>;
 export const DiscardSecretAttachmentDocument = gql`
     mutation DiscardSecretAttachment($chatId: String!, $attachmentId: String!) {
   discardSecretAttachment(chatId: $chatId, attachmentId: $attachmentId)
@@ -3880,103 +4150,226 @@ export function useDownloadSecretAttachmentMutation(baseOptions?: Apollo.Mutatio
 export type DownloadSecretAttachmentMutationHookResult = ReturnType<typeof useDownloadSecretAttachmentMutation>;
 export type DownloadSecretAttachmentMutationResult = Apollo.MutationResult<DownloadSecretAttachmentMutation>;
 export type DownloadSecretAttachmentMutationOptions = Apollo.BaseMutationOptions<DownloadSecretAttachmentMutation, DownloadSecretAttachmentMutationVariables>;
-export const SendPreKeyDocument = gql`
-    mutation SendPreKey($data: PreKeyInput!) {
-  sendPreKey(data: $data)
-}
-    `;
-export type SendPreKeyMutationFn = Apollo.MutationFunction<SendPreKeyMutation, SendPreKeyMutationVariables>;
-
-/**
- * __useSendPreKeyMutation__
- *
- * To run a mutation, you first call `useSendPreKeyMutation` within a React component and pass it any options that fit your needs.
- * When your component renders, `useSendPreKeyMutation` returns a tuple that includes:
- * - A mutate function that you can call at any time to execute the mutation
- * - An object with fields that represent the current status of the mutation's execution
- *
- * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
- *
- * @example
- * const [sendPreKeyMutation, { data, loading, error }] = useSendPreKeyMutation({
- *   variables: {
- *      data: // value for 'data'
- *   },
- * });
- */
-export function useSendPreKeyMutation(baseOptions?: Apollo.MutationHookOptions<SendPreKeyMutation, SendPreKeyMutationVariables>) {
-        const options = {...defaultOptions, ...baseOptions}
-        return Apollo.useMutation<SendPreKeyMutation, SendPreKeyMutationVariables>(SendPreKeyDocument, options);
-      }
-export type SendPreKeyMutationHookResult = ReturnType<typeof useSendPreKeyMutation>;
-export type SendPreKeyMutationResult = Apollo.MutationResult<SendPreKeyMutation>;
-export type SendPreKeyMutationOptions = Apollo.BaseMutationOptions<SendPreKeyMutation, SendPreKeyMutationVariables>;
-export const SendSecretMessageDocument = gql`
-    mutation SendSecretMessage($data: SendSecretMessageInput!) {
-  sendSecretMessage(data: $data) {
+export const RefreshSecretSessionDocument = gql`
+    mutation RefreshSecretSession($secretSessionId: String!, $publicPreKey: PreKeyInput!) {
+  refreshSecretSession(
+    secretSessionId: $secretSessionId
+    publicPreKey: $publicPreKey
+  ) {
     id
+    userId
+    platform
+    deviceName
+    createdAt
+    expiresAt
+    revokedAt
   }
 }
     `;
-export type SendSecretMessageMutationFn = Apollo.MutationFunction<SendSecretMessageMutation, SendSecretMessageMutationVariables>;
+export type RefreshSecretSessionMutationFn = Apollo.MutationFunction<RefreshSecretSessionMutation, RefreshSecretSessionMutationVariables>;
 
 /**
- * __useSendSecretMessageMutation__
+ * __useRefreshSecretSessionMutation__
  *
- * To run a mutation, you first call `useSendSecretMessageMutation` within a React component and pass it any options that fit your needs.
- * When your component renders, `useSendSecretMessageMutation` returns a tuple that includes:
+ * To run a mutation, you first call `useRefreshSecretSessionMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useRefreshSecretSessionMutation` returns a tuple that includes:
  * - A mutate function that you can call at any time to execute the mutation
  * - An object with fields that represent the current status of the mutation's execution
  *
  * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
  *
  * @example
- * const [sendSecretMessageMutation, { data, loading, error }] = useSendSecretMessageMutation({
+ * const [refreshSecretSessionMutation, { data, loading, error }] = useRefreshSecretSessionMutation({
  *   variables: {
- *      data: // value for 'data'
+ *      secretSessionId: // value for 'secretSessionId'
+ *      publicPreKey: // value for 'publicPreKey'
  *   },
  * });
  */
-export function useSendSecretMessageMutation(baseOptions?: Apollo.MutationHookOptions<SendSecretMessageMutation, SendSecretMessageMutationVariables>) {
+export function useRefreshSecretSessionMutation(baseOptions?: Apollo.MutationHookOptions<RefreshSecretSessionMutation, RefreshSecretSessionMutationVariables>) {
         const options = {...defaultOptions, ...baseOptions}
-        return Apollo.useMutation<SendSecretMessageMutation, SendSecretMessageMutationVariables>(SendSecretMessageDocument, options);
+        return Apollo.useMutation<RefreshSecretSessionMutation, RefreshSecretSessionMutationVariables>(RefreshSecretSessionDocument, options);
       }
-export type SendSecretMessageMutationHookResult = ReturnType<typeof useSendSecretMessageMutation>;
-export type SendSecretMessageMutationResult = Apollo.MutationResult<SendSecretMessageMutation>;
-export type SendSecretMessageMutationOptions = Apollo.BaseMutationOptions<SendSecretMessageMutation, SendSecretMessageMutationVariables>;
-export const SendSharedSecretKeyDocument = gql`
-    mutation SendSharedSecretKey($data: SharedSecretKeyInput!) {
-  sendSharedSecretKey(data: $data) {
+export type RefreshSecretSessionMutationHookResult = ReturnType<typeof useRefreshSecretSessionMutation>;
+export type RefreshSecretSessionMutationResult = Apollo.MutationResult<RefreshSecretSessionMutation>;
+export type RefreshSecretSessionMutationOptions = Apollo.BaseMutationOptions<RefreshSecretSessionMutation, RefreshSecretSessionMutationVariables>;
+export const RegisterSecretSessionDocument = gql`
+    mutation RegisterSecretSession($data: RegisterSecretSessionInput!) {
+  registerSecretSession(data: $data) {
     id
+    userId
+    platform
+    deviceName
+    createdAt
+    expiresAt
+    revokedAt
+    publicPreKey {
+      ikPub
+      spkPub
+      spkSig
+      opkPubs
+      indexOpkPub
+    }
   }
 }
     `;
-export type SendSharedSecretKeyMutationFn = Apollo.MutationFunction<SendSharedSecretKeyMutation, SendSharedSecretKeyMutationVariables>;
+export type RegisterSecretSessionMutationFn = Apollo.MutationFunction<RegisterSecretSessionMutation, RegisterSecretSessionMutationVariables>;
 
 /**
- * __useSendSharedSecretKeyMutation__
+ * __useRegisterSecretSessionMutation__
  *
- * To run a mutation, you first call `useSendSharedSecretKeyMutation` within a React component and pass it any options that fit your needs.
- * When your component renders, `useSendSharedSecretKeyMutation` returns a tuple that includes:
+ * To run a mutation, you first call `useRegisterSecretSessionMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useRegisterSecretSessionMutation` returns a tuple that includes:
  * - A mutate function that you can call at any time to execute the mutation
  * - An object with fields that represent the current status of the mutation's execution
  *
  * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
  *
  * @example
- * const [sendSharedSecretKeyMutation, { data, loading, error }] = useSendSharedSecretKeyMutation({
+ * const [registerSecretSessionMutation, { data, loading, error }] = useRegisterSecretSessionMutation({
  *   variables: {
  *      data: // value for 'data'
  *   },
  * });
  */
-export function useSendSharedSecretKeyMutation(baseOptions?: Apollo.MutationHookOptions<SendSharedSecretKeyMutation, SendSharedSecretKeyMutationVariables>) {
+export function useRegisterSecretSessionMutation(baseOptions?: Apollo.MutationHookOptions<RegisterSecretSessionMutation, RegisterSecretSessionMutationVariables>) {
         const options = {...defaultOptions, ...baseOptions}
-        return Apollo.useMutation<SendSharedSecretKeyMutation, SendSharedSecretKeyMutationVariables>(SendSharedSecretKeyDocument, options);
+        return Apollo.useMutation<RegisterSecretSessionMutation, RegisterSecretSessionMutationVariables>(RegisterSecretSessionDocument, options);
       }
-export type SendSharedSecretKeyMutationHookResult = ReturnType<typeof useSendSharedSecretKeyMutation>;
-export type SendSharedSecretKeyMutationResult = Apollo.MutationResult<SendSharedSecretKeyMutation>;
-export type SendSharedSecretKeyMutationOptions = Apollo.BaseMutationOptions<SendSharedSecretKeyMutation, SendSharedSecretKeyMutationVariables>;
+export type RegisterSecretSessionMutationHookResult = ReturnType<typeof useRegisterSecretSessionMutation>;
+export type RegisterSecretSessionMutationResult = Apollo.MutationResult<RegisterSecretSessionMutation>;
+export type RegisterSecretSessionMutationOptions = Apollo.BaseMutationOptions<RegisterSecretSessionMutation, RegisterSecretSessionMutationVariables>;
+export const RevokeSecretSessionDocument = gql`
+    mutation RevokeSecretSession($secretSessionId: String!) {
+  revokeSecretSession(secretSessionId: $secretSessionId)
+}
+    `;
+export type RevokeSecretSessionMutationFn = Apollo.MutationFunction<RevokeSecretSessionMutation, RevokeSecretSessionMutationVariables>;
+
+/**
+ * __useRevokeSecretSessionMutation__
+ *
+ * To run a mutation, you first call `useRevokeSecretSessionMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useRevokeSecretSessionMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [revokeSecretSessionMutation, { data, loading, error }] = useRevokeSecretSessionMutation({
+ *   variables: {
+ *      secretSessionId: // value for 'secretSessionId'
+ *   },
+ * });
+ */
+export function useRevokeSecretSessionMutation(baseOptions?: Apollo.MutationHookOptions<RevokeSecretSessionMutation, RevokeSecretSessionMutationVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useMutation<RevokeSecretSessionMutation, RevokeSecretSessionMutationVariables>(RevokeSecretSessionDocument, options);
+      }
+export type RevokeSecretSessionMutationHookResult = ReturnType<typeof useRevokeSecretSessionMutation>;
+export type RevokeSecretSessionMutationResult = Apollo.MutationResult<RevokeSecretSessionMutation>;
+export type RevokeSecretSessionMutationOptions = Apollo.BaseMutationOptions<RevokeSecretSessionMutation, RevokeSecretSessionMutationVariables>;
+export const SendSessionSecretMessageDocument = gql`
+    mutation SendSessionSecretMessage($data: SessionSecretMessageInput!) {
+  sendSessionSecretMessage(data: $data) {
+    id
+    groupId
+    isKey
+    chatId
+    fromUserId
+    fromSessionId
+    toUserIds
+    toSessionIds
+    whoCheckedIds
+    checkedSessionIds
+    ukm
+    iv
+    encryptedMessage
+    sig
+    secretAttachmentIds
+    ikPub
+    ekPub
+    usedOpk
+    createdAt
+    updatedAt
+  }
+}
+    `;
+export type SendSessionSecretMessageMutationFn = Apollo.MutationFunction<SendSessionSecretMessageMutation, SendSessionSecretMessageMutationVariables>;
+
+/**
+ * __useSendSessionSecretMessageMutation__
+ *
+ * To run a mutation, you first call `useSendSessionSecretMessageMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useSendSessionSecretMessageMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [sendSessionSecretMessageMutation, { data, loading, error }] = useSendSessionSecretMessageMutation({
+ *   variables: {
+ *      data: // value for 'data'
+ *   },
+ * });
+ */
+export function useSendSessionSecretMessageMutation(baseOptions?: Apollo.MutationHookOptions<SendSessionSecretMessageMutation, SendSessionSecretMessageMutationVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useMutation<SendSessionSecretMessageMutation, SendSessionSecretMessageMutationVariables>(SendSessionSecretMessageDocument, options);
+      }
+export type SendSessionSecretMessageMutationHookResult = ReturnType<typeof useSendSessionSecretMessageMutation>;
+export type SendSessionSecretMessageMutationResult = Apollo.MutationResult<SendSessionSecretMessageMutation>;
+export type SendSessionSecretMessageMutationOptions = Apollo.BaseMutationOptions<SendSessionSecretMessageMutation, SendSessionSecretMessageMutationVariables>;
+export const SendSessionSharedSecretKeyDocument = gql`
+    mutation SendSessionSharedSecretKey($data: SessionSharedSecretKeyInput!) {
+  sendSessionSharedSecretKey(data: $data) {
+    id
+    groupId
+    chatId
+    fromUserId
+    toUserId
+    fromSessionId
+    toSessionId
+    ikPub
+    ekPub
+    usedOpk
+    ukm
+    iv
+    encryptedKey
+    sig
+    createdAt
+    updatedAt
+  }
+}
+    `;
+export type SendSessionSharedSecretKeyMutationFn = Apollo.MutationFunction<SendSessionSharedSecretKeyMutation, SendSessionSharedSecretKeyMutationVariables>;
+
+/**
+ * __useSendSessionSharedSecretKeyMutation__
+ *
+ * To run a mutation, you first call `useSendSessionSharedSecretKeyMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useSendSessionSharedSecretKeyMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [sendSessionSharedSecretKeyMutation, { data, loading, error }] = useSendSessionSharedSecretKeyMutation({
+ *   variables: {
+ *      data: // value for 'data'
+ *   },
+ * });
+ */
+export function useSendSessionSharedSecretKeyMutation(baseOptions?: Apollo.MutationHookOptions<SendSessionSharedSecretKeyMutation, SendSessionSharedSecretKeyMutationVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useMutation<SendSessionSharedSecretKeyMutation, SendSessionSharedSecretKeyMutationVariables>(SendSessionSharedSecretKeyDocument, options);
+      }
+export type SendSessionSharedSecretKeyMutationHookResult = ReturnType<typeof useSendSessionSharedSecretKeyMutation>;
+export type SendSessionSharedSecretKeyMutationResult = Apollo.MutationResult<SendSessionSharedSecretKeyMutation>;
+export type SendSessionSharedSecretKeyMutationOptions = Apollo.BaseMutationOptions<SendSessionSharedSecretKeyMutation, SendSessionSharedSecretKeyMutationVariables>;
 export const UploadSecretAttachmentDocument = gql`
     mutation UploadSecretAttachment($data: UploadSecretAttachmentInput!) {
   uploadSecretAttachment(data: $data) {
@@ -4386,17 +4779,21 @@ export const FindChatByChatIdDocument = gql`
       text
       createdAt
       isEdited
+      isStarted
       files {
         fileName
         fileFormat
         fileSize
         id
       }
+      chat {
+        chatName
+      }
       user {
         id
         username
+        avatarUrl
       }
-      id
       repliedToLinks {
         id
         repliedTo {
@@ -4411,6 +4808,7 @@ export const FindChatByChatIdDocument = gql`
           user {
             username
             id
+            avatarUrl
           }
         }
       }
@@ -4974,110 +5372,208 @@ export type GetMemberRoleQueryHookResult = ReturnType<typeof useGetMemberRoleQue
 export type GetMemberRoleLazyQueryHookResult = ReturnType<typeof useGetMemberRoleLazyQuery>;
 export type GetMemberRoleSuspenseQueryHookResult = ReturnType<typeof useGetMemberRoleSuspenseQuery>;
 export type GetMemberRoleQueryResult = Apollo.QueryResult<GetMemberRoleQuery, GetMemberRoleQueryVariables>;
-export const GetPreKeysDocument = gql`
-    query GetPreKeys($chatId: String!) {
-  getPreKeys(chatId: $chatId) {
+export const FindMyPendingSavedSecretPairingDocument = gql`
+    query FindMyPendingSavedSecretPairing {
+  findMyPendingSavedSecretPairing {
+    pairingId
+    userId
+    chatId
+    webSecretSessionId
+    mobileSecretSessionId
+    challenge
+    safetyCode
+    qrPayload
+    qrCodeUrl
+    createdAt
+    expiresAt
+    confirmedAt
+  }
+}
+    `;
+
+/**
+ * __useFindMyPendingSavedSecretPairingQuery__
+ *
+ * To run a query within a React component, call `useFindMyPendingSavedSecretPairingQuery` and pass it any options that fit your needs.
+ * When your component renders, `useFindMyPendingSavedSecretPairingQuery` returns an object from Apollo Client that contains loading, error, and data properties
+ * you can use to render your UI.
+ *
+ * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
+ *
+ * @example
+ * const { data, loading, error } = useFindMyPendingSavedSecretPairingQuery({
+ *   variables: {
+ *   },
+ * });
+ */
+export function useFindMyPendingSavedSecretPairingQuery(baseOptions?: Apollo.QueryHookOptions<FindMyPendingSavedSecretPairingQuery, FindMyPendingSavedSecretPairingQueryVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useQuery<FindMyPendingSavedSecretPairingQuery, FindMyPendingSavedSecretPairingQueryVariables>(FindMyPendingSavedSecretPairingDocument, options);
+      }
+export function useFindMyPendingSavedSecretPairingLazyQuery(baseOptions?: Apollo.LazyQueryHookOptions<FindMyPendingSavedSecretPairingQuery, FindMyPendingSavedSecretPairingQueryVariables>) {
+          const options = {...defaultOptions, ...baseOptions}
+          return Apollo.useLazyQuery<FindMyPendingSavedSecretPairingQuery, FindMyPendingSavedSecretPairingQueryVariables>(FindMyPendingSavedSecretPairingDocument, options);
+        }
+export function useFindMyPendingSavedSecretPairingSuspenseQuery(baseOptions?: Apollo.SkipToken | Apollo.SuspenseQueryHookOptions<FindMyPendingSavedSecretPairingQuery, FindMyPendingSavedSecretPairingQueryVariables>) {
+          const options = baseOptions === Apollo.skipToken ? baseOptions : {...defaultOptions, ...baseOptions}
+          return Apollo.useSuspenseQuery<FindMyPendingSavedSecretPairingQuery, FindMyPendingSavedSecretPairingQueryVariables>(FindMyPendingSavedSecretPairingDocument, options);
+        }
+export type FindMyPendingSavedSecretPairingQueryHookResult = ReturnType<typeof useFindMyPendingSavedSecretPairingQuery>;
+export type FindMyPendingSavedSecretPairingLazyQueryHookResult = ReturnType<typeof useFindMyPendingSavedSecretPairingLazyQuery>;
+export type FindMyPendingSavedSecretPairingSuspenseQueryHookResult = ReturnType<typeof useFindMyPendingSavedSecretPairingSuspenseQuery>;
+export type FindMyPendingSavedSecretPairingQueryResult = Apollo.QueryResult<FindMyPendingSavedSecretPairingQuery, FindMyPendingSavedSecretPairingQueryVariables>;
+export const FindMySecretSessionsDocument = gql`
+    query FindMySecretSessions {
+  findMySecretSessions {
+    id
+    userId
+    platform
+    deviceName
+    createdAt
+    expiresAt
+    revokedAt
+  }
+}
+    `;
+
+/**
+ * __useFindMySecretSessionsQuery__
+ *
+ * To run a query within a React component, call `useFindMySecretSessionsQuery` and pass it any options that fit your needs.
+ * When your component renders, `useFindMySecretSessionsQuery` returns an object from Apollo Client that contains loading, error, and data properties
+ * you can use to render your UI.
+ *
+ * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
+ *
+ * @example
+ * const { data, loading, error } = useFindMySecretSessionsQuery({
+ *   variables: {
+ *   },
+ * });
+ */
+export function useFindMySecretSessionsQuery(baseOptions?: Apollo.QueryHookOptions<FindMySecretSessionsQuery, FindMySecretSessionsQueryVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useQuery<FindMySecretSessionsQuery, FindMySecretSessionsQueryVariables>(FindMySecretSessionsDocument, options);
+      }
+export function useFindMySecretSessionsLazyQuery(baseOptions?: Apollo.LazyQueryHookOptions<FindMySecretSessionsQuery, FindMySecretSessionsQueryVariables>) {
+          const options = {...defaultOptions, ...baseOptions}
+          return Apollo.useLazyQuery<FindMySecretSessionsQuery, FindMySecretSessionsQueryVariables>(FindMySecretSessionsDocument, options);
+        }
+export function useFindMySecretSessionsSuspenseQuery(baseOptions?: Apollo.SkipToken | Apollo.SuspenseQueryHookOptions<FindMySecretSessionsQuery, FindMySecretSessionsQueryVariables>) {
+          const options = baseOptions === Apollo.skipToken ? baseOptions : {...defaultOptions, ...baseOptions}
+          return Apollo.useSuspenseQuery<FindMySecretSessionsQuery, FindMySecretSessionsQueryVariables>(FindMySecretSessionsDocument, options);
+        }
+export type FindMySecretSessionsQueryHookResult = ReturnType<typeof useFindMySecretSessionsQuery>;
+export type FindMySecretSessionsLazyQueryHookResult = ReturnType<typeof useFindMySecretSessionsLazyQuery>;
+export type FindMySecretSessionsSuspenseQueryHookResult = ReturnType<typeof useFindMySecretSessionsSuspenseQuery>;
+export type FindMySecretSessionsQueryResult = Apollo.QueryResult<FindMySecretSessionsQuery, FindMySecretSessionsQueryVariables>;
+export const FindOrCreateSavedSecretChatDocument = gql`
+    query FindOrCreateSavedSecretChat {
+  findOrCreateSavedSecretChat {
+    id
+    groupId
+    chatName
+    isSecret
+    isSaved
+    ownerId
+    createdAt
+    updatedAt
+  }
+}
+    `;
+
+/**
+ * __useFindOrCreateSavedSecretChatQuery__
+ *
+ * To run a query within a React component, call `useFindOrCreateSavedSecretChatQuery` and pass it any options that fit your needs.
+ * When your component renders, `useFindOrCreateSavedSecretChatQuery` returns an object from Apollo Client that contains loading, error, and data properties
+ * you can use to render your UI.
+ *
+ * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
+ *
+ * @example
+ * const { data, loading, error } = useFindOrCreateSavedSecretChatQuery({
+ *   variables: {
+ *   },
+ * });
+ */
+export function useFindOrCreateSavedSecretChatQuery(baseOptions?: Apollo.QueryHookOptions<FindOrCreateSavedSecretChatQuery, FindOrCreateSavedSecretChatQueryVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useQuery<FindOrCreateSavedSecretChatQuery, FindOrCreateSavedSecretChatQueryVariables>(FindOrCreateSavedSecretChatDocument, options);
+      }
+export function useFindOrCreateSavedSecretChatLazyQuery(baseOptions?: Apollo.LazyQueryHookOptions<FindOrCreateSavedSecretChatQuery, FindOrCreateSavedSecretChatQueryVariables>) {
+          const options = {...defaultOptions, ...baseOptions}
+          return Apollo.useLazyQuery<FindOrCreateSavedSecretChatQuery, FindOrCreateSavedSecretChatQueryVariables>(FindOrCreateSavedSecretChatDocument, options);
+        }
+export function useFindOrCreateSavedSecretChatSuspenseQuery(baseOptions?: Apollo.SkipToken | Apollo.SuspenseQueryHookOptions<FindOrCreateSavedSecretChatQuery, FindOrCreateSavedSecretChatQueryVariables>) {
+          const options = baseOptions === Apollo.skipToken ? baseOptions : {...defaultOptions, ...baseOptions}
+          return Apollo.useSuspenseQuery<FindOrCreateSavedSecretChatQuery, FindOrCreateSavedSecretChatQueryVariables>(FindOrCreateSavedSecretChatDocument, options);
+        }
+export type FindOrCreateSavedSecretChatQueryHookResult = ReturnType<typeof useFindOrCreateSavedSecretChatQuery>;
+export type FindOrCreateSavedSecretChatLazyQueryHookResult = ReturnType<typeof useFindOrCreateSavedSecretChatLazyQuery>;
+export type FindOrCreateSavedSecretChatSuspenseQueryHookResult = ReturnType<typeof useFindOrCreateSavedSecretChatSuspenseQuery>;
+export type FindOrCreateSavedSecretChatQueryResult = Apollo.QueryResult<FindOrCreateSavedSecretChatQuery, FindOrCreateSavedSecretChatQueryVariables>;
+export const GetSecretSessionPreKeysDocument = gql`
+    query GetSecretSessionPreKeys($chatId: String!) {
+  getSecretSessionPreKeys(chatId: $chatId) {
+    secretSessionId
+    userId
+    platform
+    deviceName
     ikPub
     spkPub
     spkSig
     opkPubs
     indexOpkPub
-    userId
   }
 }
     `;
 
 /**
- * __useGetPreKeysQuery__
+ * __useGetSecretSessionPreKeysQuery__
  *
- * To run a query within a React component, call `useGetPreKeysQuery` and pass it any options that fit your needs.
- * When your component renders, `useGetPreKeysQuery` returns an object from Apollo Client that contains loading, error, and data properties
+ * To run a query within a React component, call `useGetSecretSessionPreKeysQuery` and pass it any options that fit your needs.
+ * When your component renders, `useGetSecretSessionPreKeysQuery` returns an object from Apollo Client that contains loading, error, and data properties
  * you can use to render your UI.
  *
  * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
  *
  * @example
- * const { data, loading, error } = useGetPreKeysQuery({
+ * const { data, loading, error } = useGetSecretSessionPreKeysQuery({
  *   variables: {
  *      chatId: // value for 'chatId'
  *   },
  * });
  */
-export function useGetPreKeysQuery(baseOptions: Apollo.QueryHookOptions<GetPreKeysQuery, GetPreKeysQueryVariables> & ({ variables: GetPreKeysQueryVariables; skip?: boolean; } | { skip: boolean; }) ) {
+export function useGetSecretSessionPreKeysQuery(baseOptions: Apollo.QueryHookOptions<GetSecretSessionPreKeysQuery, GetSecretSessionPreKeysQueryVariables> & ({ variables: GetSecretSessionPreKeysQueryVariables; skip?: boolean; } | { skip: boolean; }) ) {
         const options = {...defaultOptions, ...baseOptions}
-        return Apollo.useQuery<GetPreKeysQuery, GetPreKeysQueryVariables>(GetPreKeysDocument, options);
+        return Apollo.useQuery<GetSecretSessionPreKeysQuery, GetSecretSessionPreKeysQueryVariables>(GetSecretSessionPreKeysDocument, options);
       }
-export function useGetPreKeysLazyQuery(baseOptions?: Apollo.LazyQueryHookOptions<GetPreKeysQuery, GetPreKeysQueryVariables>) {
+export function useGetSecretSessionPreKeysLazyQuery(baseOptions?: Apollo.LazyQueryHookOptions<GetSecretSessionPreKeysQuery, GetSecretSessionPreKeysQueryVariables>) {
           const options = {...defaultOptions, ...baseOptions}
-          return Apollo.useLazyQuery<GetPreKeysQuery, GetPreKeysQueryVariables>(GetPreKeysDocument, options);
+          return Apollo.useLazyQuery<GetSecretSessionPreKeysQuery, GetSecretSessionPreKeysQueryVariables>(GetSecretSessionPreKeysDocument, options);
         }
-export function useGetPreKeysSuspenseQuery(baseOptions?: Apollo.SkipToken | Apollo.SuspenseQueryHookOptions<GetPreKeysQuery, GetPreKeysQueryVariables>) {
+export function useGetSecretSessionPreKeysSuspenseQuery(baseOptions?: Apollo.SkipToken | Apollo.SuspenseQueryHookOptions<GetSecretSessionPreKeysQuery, GetSecretSessionPreKeysQueryVariables>) {
           const options = baseOptions === Apollo.skipToken ? baseOptions : {...defaultOptions, ...baseOptions}
-          return Apollo.useSuspenseQuery<GetPreKeysQuery, GetPreKeysQueryVariables>(GetPreKeysDocument, options);
+          return Apollo.useSuspenseQuery<GetSecretSessionPreKeysQuery, GetSecretSessionPreKeysQueryVariables>(GetSecretSessionPreKeysDocument, options);
         }
-export type GetPreKeysQueryHookResult = ReturnType<typeof useGetPreKeysQuery>;
-export type GetPreKeysLazyQueryHookResult = ReturnType<typeof useGetPreKeysLazyQuery>;
-export type GetPreKeysSuspenseQueryHookResult = ReturnType<typeof useGetPreKeysSuspenseQuery>;
-export type GetPreKeysQueryResult = Apollo.QueryResult<GetPreKeysQuery, GetPreKeysQueryVariables>;
-export const GetSecretMessageDocument = gql`
-    query GetSecretMessage($chatId: String!) {
-  getSecretMessage(chatId: $chatId) {
-    id
-    chatId
-    fromUserId
-    ikPub
-    usedOpk
-    ukm
-    ekPub
-    iv
-    encryptedMessage
-    sig
-  }
-}
-    `;
-
-/**
- * __useGetSecretMessageQuery__
- *
- * To run a query within a React component, call `useGetSecretMessageQuery` and pass it any options that fit your needs.
- * When your component renders, `useGetSecretMessageQuery` returns an object from Apollo Client that contains loading, error, and data properties
- * you can use to render your UI.
- *
- * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
- *
- * @example
- * const { data, loading, error } = useGetSecretMessageQuery({
- *   variables: {
- *      chatId: // value for 'chatId'
- *   },
- * });
- */
-export function useGetSecretMessageQuery(baseOptions: Apollo.QueryHookOptions<GetSecretMessageQuery, GetSecretMessageQueryVariables> & ({ variables: GetSecretMessageQueryVariables; skip?: boolean; } | { skip: boolean; }) ) {
-        const options = {...defaultOptions, ...baseOptions}
-        return Apollo.useQuery<GetSecretMessageQuery, GetSecretMessageQueryVariables>(GetSecretMessageDocument, options);
-      }
-export function useGetSecretMessageLazyQuery(baseOptions?: Apollo.LazyQueryHookOptions<GetSecretMessageQuery, GetSecretMessageQueryVariables>) {
-          const options = {...defaultOptions, ...baseOptions}
-          return Apollo.useLazyQuery<GetSecretMessageQuery, GetSecretMessageQueryVariables>(GetSecretMessageDocument, options);
-        }
-export function useGetSecretMessageSuspenseQuery(baseOptions?: Apollo.SkipToken | Apollo.SuspenseQueryHookOptions<GetSecretMessageQuery, GetSecretMessageQueryVariables>) {
-          const options = baseOptions === Apollo.skipToken ? baseOptions : {...defaultOptions, ...baseOptions}
-          return Apollo.useSuspenseQuery<GetSecretMessageQuery, GetSecretMessageQueryVariables>(GetSecretMessageDocument, options);
-        }
-export type GetSecretMessageQueryHookResult = ReturnType<typeof useGetSecretMessageQuery>;
-export type GetSecretMessageLazyQueryHookResult = ReturnType<typeof useGetSecretMessageLazyQuery>;
-export type GetSecretMessageSuspenseQueryHookResult = ReturnType<typeof useGetSecretMessageSuspenseQuery>;
-export type GetSecretMessageQueryResult = Apollo.QueryResult<GetSecretMessageQuery, GetSecretMessageQueryVariables>;
-export const GetSecretMessagesDocument = gql`
-    query GetSecretMessages($chatId: String!) {
-  getSecretMessages(chatId: $chatId) {
+export type GetSecretSessionPreKeysQueryHookResult = ReturnType<typeof useGetSecretSessionPreKeysQuery>;
+export type GetSecretSessionPreKeysLazyQueryHookResult = ReturnType<typeof useGetSecretSessionPreKeysLazyQuery>;
+export type GetSecretSessionPreKeysSuspenseQueryHookResult = ReturnType<typeof useGetSecretSessionPreKeysSuspenseQuery>;
+export type GetSecretSessionPreKeysQueryResult = Apollo.QueryResult<GetSecretSessionPreKeysQuery, GetSecretSessionPreKeysQueryVariables>;
+export const GetSessionSecretMessagesDocument = gql`
+    query GetSessionSecretMessages($chatId: String!, $secretSessionId: String!) {
+  getSessionSecretMessages(chatId: $chatId, secretSessionId: $secretSessionId) {
     id
     groupId
     isKey
     chatId
     fromUserId
+    fromSessionId
     toUserIds
+    toSessionIds
     whoCheckedIds
+    checkedSessionIds
     ukm
     iv
     encryptedMessage
@@ -5093,128 +5589,94 @@ export const GetSecretMessagesDocument = gql`
     `;
 
 /**
- * __useGetSecretMessagesQuery__
+ * __useGetSessionSecretMessagesQuery__
  *
- * To run a query within a React component, call `useGetSecretMessagesQuery` and pass it any options that fit your needs.
- * When your component renders, `useGetSecretMessagesQuery` returns an object from Apollo Client that contains loading, error, and data properties
+ * To run a query within a React component, call `useGetSessionSecretMessagesQuery` and pass it any options that fit your needs.
+ * When your component renders, `useGetSessionSecretMessagesQuery` returns an object from Apollo Client that contains loading, error, and data properties
  * you can use to render your UI.
  *
  * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
  *
  * @example
- * const { data, loading, error } = useGetSecretMessagesQuery({
+ * const { data, loading, error } = useGetSessionSecretMessagesQuery({
  *   variables: {
  *      chatId: // value for 'chatId'
+ *      secretSessionId: // value for 'secretSessionId'
  *   },
  * });
  */
-export function useGetSecretMessagesQuery(baseOptions: Apollo.QueryHookOptions<GetSecretMessagesQuery, GetSecretMessagesQueryVariables> & ({ variables: GetSecretMessagesQueryVariables; skip?: boolean; } | { skip: boolean; }) ) {
+export function useGetSessionSecretMessagesQuery(baseOptions: Apollo.QueryHookOptions<GetSessionSecretMessagesQuery, GetSessionSecretMessagesQueryVariables> & ({ variables: GetSessionSecretMessagesQueryVariables; skip?: boolean; } | { skip: boolean; }) ) {
         const options = {...defaultOptions, ...baseOptions}
-        return Apollo.useQuery<GetSecretMessagesQuery, GetSecretMessagesQueryVariables>(GetSecretMessagesDocument, options);
+        return Apollo.useQuery<GetSessionSecretMessagesQuery, GetSessionSecretMessagesQueryVariables>(GetSessionSecretMessagesDocument, options);
       }
-export function useGetSecretMessagesLazyQuery(baseOptions?: Apollo.LazyQueryHookOptions<GetSecretMessagesQuery, GetSecretMessagesQueryVariables>) {
+export function useGetSessionSecretMessagesLazyQuery(baseOptions?: Apollo.LazyQueryHookOptions<GetSessionSecretMessagesQuery, GetSessionSecretMessagesQueryVariables>) {
           const options = {...defaultOptions, ...baseOptions}
-          return Apollo.useLazyQuery<GetSecretMessagesQuery, GetSecretMessagesQueryVariables>(GetSecretMessagesDocument, options);
+          return Apollo.useLazyQuery<GetSessionSecretMessagesQuery, GetSessionSecretMessagesQueryVariables>(GetSessionSecretMessagesDocument, options);
         }
-export function useGetSecretMessagesSuspenseQuery(baseOptions?: Apollo.SkipToken | Apollo.SuspenseQueryHookOptions<GetSecretMessagesQuery, GetSecretMessagesQueryVariables>) {
+export function useGetSessionSecretMessagesSuspenseQuery(baseOptions?: Apollo.SkipToken | Apollo.SuspenseQueryHookOptions<GetSessionSecretMessagesQuery, GetSessionSecretMessagesQueryVariables>) {
           const options = baseOptions === Apollo.skipToken ? baseOptions : {...defaultOptions, ...baseOptions}
-          return Apollo.useSuspenseQuery<GetSecretMessagesQuery, GetSecretMessagesQueryVariables>(GetSecretMessagesDocument, options);
+          return Apollo.useSuspenseQuery<GetSessionSecretMessagesQuery, GetSessionSecretMessagesQueryVariables>(GetSessionSecretMessagesDocument, options);
         }
-export type GetSecretMessagesQueryHookResult = ReturnType<typeof useGetSecretMessagesQuery>;
-export type GetSecretMessagesLazyQueryHookResult = ReturnType<typeof useGetSecretMessagesLazyQuery>;
-export type GetSecretMessagesSuspenseQueryHookResult = ReturnType<typeof useGetSecretMessagesSuspenseQuery>;
-export type GetSecretMessagesQueryResult = Apollo.QueryResult<GetSecretMessagesQuery, GetSecretMessagesQueryVariables>;
-export const GetSharedSecretKeyDocument = gql`
-    query GetSharedSecretKey($chatId: String!) {
-  getSharedSecretKey(chatId: $chatId) {
+export type GetSessionSecretMessagesQueryHookResult = ReturnType<typeof useGetSessionSecretMessagesQuery>;
+export type GetSessionSecretMessagesLazyQueryHookResult = ReturnType<typeof useGetSessionSecretMessagesLazyQuery>;
+export type GetSessionSecretMessagesSuspenseQueryHookResult = ReturnType<typeof useGetSessionSecretMessagesSuspenseQuery>;
+export type GetSessionSecretMessagesQueryResult = Apollo.QueryResult<GetSessionSecretMessagesQuery, GetSessionSecretMessagesQueryVariables>;
+export const GetSessionSharedSecretKeysDocument = gql`
+    query GetSessionSharedSecretKeys($chatId: String!, $secretSessionId: String!) {
+  getSessionSharedSecretKeys(chatId: $chatId, secretSessionId: $secretSessionId) {
     id
     groupId
-    createdAt
-    updatedAt
-    ikPub
     chatId
     fromUserId
     toUserId
+    fromSessionId
+    toSessionId
+    ikPub
     ekPub
     usedOpk
     ukm
     iv
     encryptedKey
     sig
+    createdAt
+    updatedAt
   }
 }
     `;
 
 /**
- * __useGetSharedSecretKeyQuery__
+ * __useGetSessionSharedSecretKeysQuery__
  *
- * To run a query within a React component, call `useGetSharedSecretKeyQuery` and pass it any options that fit your needs.
- * When your component renders, `useGetSharedSecretKeyQuery` returns an object from Apollo Client that contains loading, error, and data properties
+ * To run a query within a React component, call `useGetSessionSharedSecretKeysQuery` and pass it any options that fit your needs.
+ * When your component renders, `useGetSessionSharedSecretKeysQuery` returns an object from Apollo Client that contains loading, error, and data properties
  * you can use to render your UI.
  *
  * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
  *
  * @example
- * const { data, loading, error } = useGetSharedSecretKeyQuery({
+ * const { data, loading, error } = useGetSessionSharedSecretKeysQuery({
  *   variables: {
  *      chatId: // value for 'chatId'
+ *      secretSessionId: // value for 'secretSessionId'
  *   },
  * });
  */
-export function useGetSharedSecretKeyQuery(baseOptions: Apollo.QueryHookOptions<GetSharedSecretKeyQuery, GetSharedSecretKeyQueryVariables> & ({ variables: GetSharedSecretKeyQueryVariables; skip?: boolean; } | { skip: boolean; }) ) {
+export function useGetSessionSharedSecretKeysQuery(baseOptions: Apollo.QueryHookOptions<GetSessionSharedSecretKeysQuery, GetSessionSharedSecretKeysQueryVariables> & ({ variables: GetSessionSharedSecretKeysQueryVariables; skip?: boolean; } | { skip: boolean; }) ) {
         const options = {...defaultOptions, ...baseOptions}
-        return Apollo.useQuery<GetSharedSecretKeyQuery, GetSharedSecretKeyQueryVariables>(GetSharedSecretKeyDocument, options);
+        return Apollo.useQuery<GetSessionSharedSecretKeysQuery, GetSessionSharedSecretKeysQueryVariables>(GetSessionSharedSecretKeysDocument, options);
       }
-export function useGetSharedSecretKeyLazyQuery(baseOptions?: Apollo.LazyQueryHookOptions<GetSharedSecretKeyQuery, GetSharedSecretKeyQueryVariables>) {
+export function useGetSessionSharedSecretKeysLazyQuery(baseOptions?: Apollo.LazyQueryHookOptions<GetSessionSharedSecretKeysQuery, GetSessionSharedSecretKeysQueryVariables>) {
           const options = {...defaultOptions, ...baseOptions}
-          return Apollo.useLazyQuery<GetSharedSecretKeyQuery, GetSharedSecretKeyQueryVariables>(GetSharedSecretKeyDocument, options);
+          return Apollo.useLazyQuery<GetSessionSharedSecretKeysQuery, GetSessionSharedSecretKeysQueryVariables>(GetSessionSharedSecretKeysDocument, options);
         }
-export function useGetSharedSecretKeySuspenseQuery(baseOptions?: Apollo.SkipToken | Apollo.SuspenseQueryHookOptions<GetSharedSecretKeyQuery, GetSharedSecretKeyQueryVariables>) {
+export function useGetSessionSharedSecretKeysSuspenseQuery(baseOptions?: Apollo.SkipToken | Apollo.SuspenseQueryHookOptions<GetSessionSharedSecretKeysQuery, GetSessionSharedSecretKeysQueryVariables>) {
           const options = baseOptions === Apollo.skipToken ? baseOptions : {...defaultOptions, ...baseOptions}
-          return Apollo.useSuspenseQuery<GetSharedSecretKeyQuery, GetSharedSecretKeyQueryVariables>(GetSharedSecretKeyDocument, options);
+          return Apollo.useSuspenseQuery<GetSessionSharedSecretKeysQuery, GetSessionSharedSecretKeysQueryVariables>(GetSessionSharedSecretKeysDocument, options);
         }
-export type GetSharedSecretKeyQueryHookResult = ReturnType<typeof useGetSharedSecretKeyQuery>;
-export type GetSharedSecretKeyLazyQueryHookResult = ReturnType<typeof useGetSharedSecretKeyLazyQuery>;
-export type GetSharedSecretKeySuspenseQueryHookResult = ReturnType<typeof useGetSharedSecretKeySuspenseQuery>;
-export type GetSharedSecretKeyQueryResult = Apollo.QueryResult<GetSharedSecretKeyQuery, GetSharedSecretKeyQueryVariables>;
-export const HasSharedSecretKeyDocument = gql`
-    query HasSharedSecretKey($chatId: String!) {
-  hasSharedSecretKey(chatId: $chatId)
-}
-    `;
-
-/**
- * __useHasSharedSecretKeyQuery__
- *
- * To run a query within a React component, call `useHasSharedSecretKeyQuery` and pass it any options that fit your needs.
- * When your component renders, `useHasSharedSecretKeyQuery` returns an object from Apollo Client that contains loading, error, and data properties
- * you can use to render your UI.
- *
- * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
- *
- * @example
- * const { data, loading, error } = useHasSharedSecretKeyQuery({
- *   variables: {
- *      chatId: // value for 'chatId'
- *   },
- * });
- */
-export function useHasSharedSecretKeyQuery(baseOptions: Apollo.QueryHookOptions<HasSharedSecretKeyQuery, HasSharedSecretKeyQueryVariables> & ({ variables: HasSharedSecretKeyQueryVariables; skip?: boolean; } | { skip: boolean; }) ) {
-        const options = {...defaultOptions, ...baseOptions}
-        return Apollo.useQuery<HasSharedSecretKeyQuery, HasSharedSecretKeyQueryVariables>(HasSharedSecretKeyDocument, options);
-      }
-export function useHasSharedSecretKeyLazyQuery(baseOptions?: Apollo.LazyQueryHookOptions<HasSharedSecretKeyQuery, HasSharedSecretKeyQueryVariables>) {
-          const options = {...defaultOptions, ...baseOptions}
-          return Apollo.useLazyQuery<HasSharedSecretKeyQuery, HasSharedSecretKeyQueryVariables>(HasSharedSecretKeyDocument, options);
-        }
-export function useHasSharedSecretKeySuspenseQuery(baseOptions?: Apollo.SkipToken | Apollo.SuspenseQueryHookOptions<HasSharedSecretKeyQuery, HasSharedSecretKeyQueryVariables>) {
-          const options = baseOptions === Apollo.skipToken ? baseOptions : {...defaultOptions, ...baseOptions}
-          return Apollo.useSuspenseQuery<HasSharedSecretKeyQuery, HasSharedSecretKeyQueryVariables>(HasSharedSecretKeyDocument, options);
-        }
-export type HasSharedSecretKeyQueryHookResult = ReturnType<typeof useHasSharedSecretKeyQuery>;
-export type HasSharedSecretKeyLazyQueryHookResult = ReturnType<typeof useHasSharedSecretKeyLazyQuery>;
-export type HasSharedSecretKeySuspenseQueryHookResult = ReturnType<typeof useHasSharedSecretKeySuspenseQuery>;
-export type HasSharedSecretKeyQueryResult = Apollo.QueryResult<HasSharedSecretKeyQuery, HasSharedSecretKeyQueryVariables>;
+export type GetSessionSharedSecretKeysQueryHookResult = ReturnType<typeof useGetSessionSharedSecretKeysQuery>;
+export type GetSessionSharedSecretKeysLazyQueryHookResult = ReturnType<typeof useGetSessionSharedSecretKeysLazyQuery>;
+export type GetSessionSharedSecretKeysSuspenseQueryHookResult = ReturnType<typeof useGetSessionSharedSecretKeysSuspenseQuery>;
+export type GetSessionSharedSecretKeysQueryResult = Apollo.QueryResult<GetSessionSharedSecretKeysQuery, GetSessionSharedSecretKeysQueryVariables>;
 export const FindAllUsersDocument = gql`
     query FindAllUsers($filters: FiltersInput) {
   findAllUsers(filters: $filters) {
@@ -6273,80 +6735,102 @@ export function useGroupUpsertedRoleSubscription(baseOptions: Apollo.Subscriptio
       }
 export type GroupUpsertedRoleSubscriptionHookResult = ReturnType<typeof useGroupUpsertedRoleSubscription>;
 export type GroupUpsertedRoleSubscriptionResult = Apollo.SubscriptionResult<GroupUpsertedRoleSubscription>;
-export const AddSecretMessageDocument = gql`
-    subscription AddSecretMessage($userId: String!) {
-  addSecretMessage(userId: $userId) {
+export const AddSessionSecretMessageDocument = gql`
+    subscription AddSessionSecretMessage($userId: String!, $secretSessionId: String!) {
+  addSessionSecretMessage(userId: $userId, secretSessionId: $secretSessionId) {
     id
+    groupId
+    isKey
     chatId
     fromUserId
+    fromSessionId
+    toUserIds
+    toSessionIds
+    whoCheckedIds
+    checkedSessionIds
     ukm
     iv
     encryptedMessage
     sig
+    secretAttachmentIds
+    ikPub
+    ekPub
+    usedOpk
+    createdAt
+    updatedAt
   }
 }
     `;
 
 /**
- * __useAddSecretMessageSubscription__
+ * __useAddSessionSecretMessageSubscription__
  *
- * To run a query within a React component, call `useAddSecretMessageSubscription` and pass it any options that fit your needs.
- * When your component renders, `useAddSecretMessageSubscription` returns an object from Apollo Client that contains loading, error, and data properties
+ * To run a query within a React component, call `useAddSessionSecretMessageSubscription` and pass it any options that fit your needs.
+ * When your component renders, `useAddSessionSecretMessageSubscription` returns an object from Apollo Client that contains loading, error, and data properties
  * you can use to render your UI.
  *
  * @param baseOptions options that will be passed into the subscription, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
  *
  * @example
- * const { data, loading, error } = useAddSecretMessageSubscription({
+ * const { data, loading, error } = useAddSessionSecretMessageSubscription({
  *   variables: {
  *      userId: // value for 'userId'
+ *      secretSessionId: // value for 'secretSessionId'
  *   },
  * });
  */
-export function useAddSecretMessageSubscription(baseOptions: Apollo.SubscriptionHookOptions<AddSecretMessageSubscription, AddSecretMessageSubscriptionVariables> & ({ variables: AddSecretMessageSubscriptionVariables; skip?: boolean; } | { skip: boolean; }) ) {
+export function useAddSessionSecretMessageSubscription(baseOptions: Apollo.SubscriptionHookOptions<AddSessionSecretMessageSubscription, AddSessionSecretMessageSubscriptionVariables> & ({ variables: AddSessionSecretMessageSubscriptionVariables; skip?: boolean; } | { skip: boolean; }) ) {
         const options = {...defaultOptions, ...baseOptions}
-        return Apollo.useSubscription<AddSecretMessageSubscription, AddSecretMessageSubscriptionVariables>(AddSecretMessageDocument, options);
+        return Apollo.useSubscription<AddSessionSecretMessageSubscription, AddSessionSecretMessageSubscriptionVariables>(AddSessionSecretMessageDocument, options);
       }
-export type AddSecretMessageSubscriptionHookResult = ReturnType<typeof useAddSecretMessageSubscription>;
-export type AddSecretMessageSubscriptionResult = Apollo.SubscriptionResult<AddSecretMessageSubscription>;
-export const AddSharedSecretKeyDocument = gql`
-    subscription AddSharedSecretKey($userId: String!) {
-  addSharedSecretKey(userId: $userId) {
+export type AddSessionSecretMessageSubscriptionHookResult = ReturnType<typeof useAddSessionSecretMessageSubscription>;
+export type AddSessionSecretMessageSubscriptionResult = Apollo.SubscriptionResult<AddSessionSecretMessageSubscription>;
+export const AddSessionSharedSecretKeyDocument = gql`
+    subscription AddSessionSharedSecretKey($userId: String!, $secretSessionId: String!) {
+  addSessionSharedSecretKey(userId: $userId, secretSessionId: $secretSessionId) {
+    id
+    groupId
     chatId
     fromUserId
     toUserId
+    fromSessionId
+    toSessionId
+    ikPub
     ekPub
     usedOpk
     ukm
     iv
     encryptedKey
     sig
+    createdAt
+    updatedAt
   }
 }
     `;
 
 /**
- * __useAddSharedSecretKeySubscription__
+ * __useAddSessionSharedSecretKeySubscription__
  *
- * To run a query within a React component, call `useAddSharedSecretKeySubscription` and pass it any options that fit your needs.
- * When your component renders, `useAddSharedSecretKeySubscription` returns an object from Apollo Client that contains loading, error, and data properties
+ * To run a query within a React component, call `useAddSessionSharedSecretKeySubscription` and pass it any options that fit your needs.
+ * When your component renders, `useAddSessionSharedSecretKeySubscription` returns an object from Apollo Client that contains loading, error, and data properties
  * you can use to render your UI.
  *
  * @param baseOptions options that will be passed into the subscription, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
  *
  * @example
- * const { data, loading, error } = useAddSharedSecretKeySubscription({
+ * const { data, loading, error } = useAddSessionSharedSecretKeySubscription({
  *   variables: {
  *      userId: // value for 'userId'
+ *      secretSessionId: // value for 'secretSessionId'
  *   },
  * });
  */
-export function useAddSharedSecretKeySubscription(baseOptions: Apollo.SubscriptionHookOptions<AddSharedSecretKeySubscription, AddSharedSecretKeySubscriptionVariables> & ({ variables: AddSharedSecretKeySubscriptionVariables; skip?: boolean; } | { skip: boolean; }) ) {
+export function useAddSessionSharedSecretKeySubscription(baseOptions: Apollo.SubscriptionHookOptions<AddSessionSharedSecretKeySubscription, AddSessionSharedSecretKeySubscriptionVariables> & ({ variables: AddSessionSharedSecretKeySubscriptionVariables; skip?: boolean; } | { skip: boolean; }) ) {
         const options = {...defaultOptions, ...baseOptions}
-        return Apollo.useSubscription<AddSharedSecretKeySubscription, AddSharedSecretKeySubscriptionVariables>(AddSharedSecretKeyDocument, options);
+        return Apollo.useSubscription<AddSessionSharedSecretKeySubscription, AddSessionSharedSecretKeySubscriptionVariables>(AddSessionSharedSecretKeyDocument, options);
       }
-export type AddSharedSecretKeySubscriptionHookResult = ReturnType<typeof useAddSharedSecretKeySubscription>;
-export type AddSharedSecretKeySubscriptionResult = Apollo.SubscriptionResult<AddSharedSecretKeySubscription>;
+export type AddSessionSharedSecretKeySubscriptionHookResult = ReturnType<typeof useAddSessionSharedSecretKeySubscription>;
+export type AddSessionSharedSecretKeySubscriptionResult = Apollo.SubscriptionResult<AddSessionSharedSecretKeySubscription>;
 export const SecretKeyRotationDocument = gql`
     subscription SecretKeyRotation($userId: String!) {
   secretKeyRotation(userId: $userId) {

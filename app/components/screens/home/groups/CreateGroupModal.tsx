@@ -12,7 +12,6 @@ import {
 	TouchableOpacity,
 	View,
 	Animated,
-	Dimensions,
 	Pressable
 } from 'react-native'
 import Toast from 'react-native-toast-message'
@@ -44,20 +43,22 @@ interface CreateGroupModalProps {
 	onClose: () => void
 }
 
-const SCREEN_HEIGHT = Dimensions.get('window').height
-
 const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
-	const { containerPaddingBottom, sheetMaxHeight, sheetPaddingBottom } =
-		useBottomSheetModalLayout(0.8)
+	const {
+		containerPaddingBottom,
+		windowHeight,
+		sheetMaxHeight,
+		sheetPaddingBottom
+	} = useBottomSheetModalLayout(0.8)
 	const { userId } = useUser()
 	const [selectedAvatar, setSelectedAvatar] = useState<ImagePickerAsset | null>(
 		null
 	)
 	const [isPickingAvatar, setIsPickingAvatar] = useState(false)
 
-	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+	const slideAnim = useRef(new Animated.Value(windowHeight)).current
 
 	const resetState = () => {
 		form.reset({ groupName: '', userIds: [] })
@@ -66,7 +67,7 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 
 	const closeSheet = (cb?: () => void) => {
 		Animated.timing(slideAnim, {
-			toValue: SCREEN_HEIGHT,
+			toValue: windowHeight,
 			duration: 200,
 			useNativeDriver: true
 		}).start(() => {
@@ -124,7 +125,8 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 
 	useEffect(() => {
 		if (isOpen) {
-			refetchFriends()
+			void refetchFriends()
+			slideAnim.setValue(windowHeight)
 			Animated.spring(slideAnim, {
 				toValue: 0,
 				useNativeDriver: true,
@@ -132,7 +134,7 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 				friction: 11
 			}).start()
 		}
-	}, [isOpen])
+	}, [isOpen, refetchFriends, slideAnim, windowHeight])
 
 	const selectedUserIds = form.watch('userIds')
 	const isBusy = isCreating || isPickingAvatar || isUploadingAvatar
@@ -217,11 +219,22 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 						borderTopRightRadius: 24,
 						borderTopWidth: 1,
 						borderColor: colors.border,
-						maxHeight: sheetMaxHeight,
+						height: sheetMaxHeight,
 						paddingBottom: sheetPaddingBottom,
 						overflow: 'hidden'
 					}}
 				>
+					<View className='items-center pt-2 pb-1'>
+						<View
+							style={{
+								width: 36,
+								height: 4,
+								borderRadius: 2,
+								backgroundColor: colors.textMuted
+							}}
+						/>
+					</View>
+
 					<View
 						className='flex-row items-center justify-between px-5 pt-4 pb-3'
 						style={{
@@ -245,24 +258,25 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 						</TouchableOpacity>
 					</View>
 
-					<ScrollView
-						style={{ flex: 1 }}
-						contentContainerStyle={{
-							paddingHorizontal: 20,
-							paddingTop: 16,
-							paddingBottom: 24
-						}}
-						showsVerticalScrollIndicator={false}
-						keyboardShouldPersistTaps='handled'
-					>
-						<View
-							className='rounded-2xl px-4 py-4 mb-4'
-							style={{
-								backgroundColor: colors.cardHover,
-								borderWidth: 1,
-								borderColor: colors.borderLight
+					<View style={{ flex: 1, minHeight: 0 }}>
+						<ScrollView
+							style={{ flex: 1 }}
+							contentContainerStyle={{
+								paddingHorizontal: 20,
+								paddingTop: 16,
+								paddingBottom: 24
 							}}
+							showsVerticalScrollIndicator={false}
+							keyboardShouldPersistTaps='handled'
 						>
+							<View
+								className='rounded-2xl px-4 py-4 mb-4'
+								style={{
+									backgroundColor: colors.cardHover,
+									borderWidth: 1,
+									borderColor: colors.borderLight
+								}}
+							>
 							<View className='flex-row items-center'>
 								<View
 									style={{
@@ -362,102 +376,69 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 							</View>
 						</View>
 
-						<Controller
-							control={form.control}
-							name='groupName'
-							render={({ field }) => (
-								<TextInput
-									className='rounded-xl px-4 py-3 mb-4'
-									style={{
-										borderWidth: 1,
-										borderColor: colors.borderLight,
-										backgroundColor: colors.cardHover,
-										color: colors.text,
-										fontSize: 15
-									}}
-									placeholder={t('groupNamePlaceholder')}
-									placeholderTextColor={colors.textMuted}
-									editable={!isCreating}
-									value={field.value}
-									onChangeText={field.onChange}
-								/>
-							)}
-						/>
-
-						<Text
-							className='text-xs font-semibold uppercase tracking-wider mb-2 ml-1'
-							style={{ color: colors.textMuted }}
-						>
-							{t('members')}{' '}
-							{selectedUserIds.length > 0 && (
-								<Text style={{ color: colors.accent }}>
-									({selectedUserIds.length})
-								</Text>
-							)}
-						</Text>
-
-						{isLoadingUsers ? (
-							<ActivityIndicator
-								size='small'
-								color={colors.accent}
-								className='my-4'
+							<Controller
+								control={form.control}
+								name='groupName'
+								render={({ field }) => (
+									<TextInput
+										className='rounded-xl px-4 py-3 mb-4'
+										style={{
+											borderWidth: 1,
+											borderColor: colors.borderLight,
+											backgroundColor: colors.cardHover,
+											color: colors.text,
+											fontSize: 15
+										}}
+										placeholder={t('groupNamePlaceholder')}
+										placeholderTextColor={colors.textMuted}
+										editable={!isCreating}
+										value={field.value}
+										onChangeText={field.onChange}
+									/>
+								)}
 							/>
-						) : friends.length === 0 ? (
+
 							<Text
-								className='text-sm text-center my-4'
+								className='text-xs font-semibold uppercase tracking-wider mb-2 ml-1'
 								style={{ color: colors.textMuted }}
 							>
-								{t('noFriendsForGroup')}
+								{t('members')}{' '}
+								{selectedUserIds.length > 0 && (
+									<Text style={{ color: colors.accent }}>
+										({selectedUserIds.length})
+									</Text>
+								)}
 							</Text>
-						) : (
-							<View>
-								{friends.map(u => (
-									<Controller
-										key={u.id}
-										control={form.control}
-										name='userIds'
-										render={({ field }) => {
-											const checked =
-												field.value.includes(u.id)
-											return (
-												<TouchableOpacity
-													activeOpacity={0.7}
-													onPress={() =>
-														checked
-															? field.onChange(
-																	field.value.filter(
-																		(
-																			id: string
-																		) =>
-																			id !==
-																			u.id
-																	)
-																)
-															: field.onChange([
-																	...field.value,
-																	u.id
-																])
-													}
-													className='flex-row items-center rounded-xl px-3 py-2.5 mb-1'
-													style={{
-														backgroundColor: checked
-															? colors.accentMuted
-															: 'transparent'
-													}}
-												>
-													<Checkbox
-														checked={checked}
-														onCheckedChange={(
-															c: boolean
-														) =>
-															c
+
+							{isLoadingUsers ? (
+								<ActivityIndicator
+									size='small'
+									color={colors.accent}
+									className='my-4'
+								/>
+							) : friends.length === 0 ? (
+								<Text
+									className='text-sm text-center my-4'
+									style={{ color: colors.textMuted }}
+								>
+									{t('noFriendsForGroup')}
+								</Text>
+							) : (
+								<View>
+									{friends.map(u => (
+										<Controller
+											key={u.id}
+											control={form.control}
+											name='userIds'
+											render={({ field }) => {
+												const checked =
+													field.value.includes(u.id)
+												return (
+													<TouchableOpacity
+														activeOpacity={0.7}
+														onPress={() =>
+															checked
 																? field.onChange(
-																		[
-																			...field.value,
-																			u.id
-																		]
-																	)
-																: field.onChange(
 																		field.value.filter(
 																			(
 																				id: string
@@ -466,57 +447,91 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 																				u.id
 																		)
 																	)
+																: field.onChange([
+																		...field.value,
+																		u.id
+																	])
 														}
-													/>
-													<EntityAvatar
-														name={u.username}
-														avatarUrl={u.avatarUrl}
-														size='sm'
-													/>
-													<Text
-														className='ml-2 text-sm'
+														className='flex-row items-center rounded-xl px-3 py-2.5 mb-1'
 														style={{
-															color: colors.text
+															backgroundColor: checked
+																? colors.accentMuted
+																: 'transparent'
 														}}
 													>
-														{u.username}
-													</Text>
-												</TouchableOpacity>
-											)
-										}}
-									/>
-								))}
-							</View>
-						)}
-
-						<TouchableOpacity
-							disabled={!form.formState.isValid || isBusy}
-							onPress={form.handleSubmit(handleSubmit)}
-							activeOpacity={0.8}
-							className='rounded-xl py-3.5 items-center mt-4'
-							style={{
-								backgroundColor:
-									!form.formState.isValid || isBusy
-										? 'hsl(260, 30%, 30%)'
-										: colors.accent,
-								opacity:
-									!form.formState.isValid || isBusy
-										? 0.5
-										: 1
-							}}
-						>
-							{isCreating || isUploadingAvatar ? (
-								<ActivityIndicator size='small' color='#fff' />
-							) : (
-								<Text
-									className='text-base font-semibold'
-									style={{ color: '#fff' }}
-								>
-									{t('createGroup')}
-								</Text>
+														<Checkbox
+															checked={checked}
+															onCheckedChange={(
+																c: boolean
+															) =>
+																c
+																	? field.onChange(
+																			[
+																				...field.value,
+																				u.id
+																			]
+																		)
+																	: field.onChange(
+																			field.value.filter(
+																				(
+																					id: string
+																				) =>
+																					id !==
+																					u.id
+																			)
+																		)
+															}
+														/>
+														<EntityAvatar
+															name={u.username}
+															avatarUrl={u.avatarUrl}
+															size='sm'
+														/>
+														<Text
+															className='ml-2 text-sm'
+															style={{
+																color: colors.text
+															}}
+														>
+															{u.username}
+														</Text>
+													</TouchableOpacity>
+												)
+											}}
+										/>
+									))}
+								</View>
 							)}
-						</TouchableOpacity>
-					</ScrollView>
+
+							<TouchableOpacity
+								disabled={!form.formState.isValid || isBusy}
+								onPress={form.handleSubmit(handleSubmit)}
+								activeOpacity={0.8}
+								className='rounded-xl py-3.5 items-center mt-4'
+								style={{
+									backgroundColor:
+										!form.formState.isValid || isBusy
+											? 'hsl(260, 30%, 30%)'
+											: colors.accent,
+									opacity:
+										!form.formState.isValid || isBusy
+											? 0.5
+											: 1
+								}}
+							>
+								{isCreating || isUploadingAvatar ? (
+									<ActivityIndicator size='small' color='#fff' />
+								) : (
+									<Text
+										className='text-base font-semibold'
+										style={{ color: '#fff' }}
+									>
+										{t('createGroup')}
+									</Text>
+								)}
+							</TouchableOpacity>
+						</ScrollView>
+					</View>
 				</Animated.View>
 			</View>
 		</AppModal>

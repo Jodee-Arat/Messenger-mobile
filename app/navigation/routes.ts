@@ -3,6 +3,7 @@ import ChatSettings from '@/components/screens/chat-settings/ChatSettings'
 import Chat from '@/components/screens/chat/Chat'
 import ChatsList from '@/components/screens/chats-list/ChatsList'
 import DirectMessages from '@/components/screens/direct-messages/DirectMessages'
+import Favorites from '@/components/screens/favorites/Favorites'
 import GroupSettings from '@/components/screens/group-settings/GroupSettings'
 import Home from '@/components/screens/home/Home'
 import FriendProfile from '@/components/screens/home/friend/FriendProfile'
@@ -29,6 +30,10 @@ export const routes: IRoute[] = [
 	{
 		name: 'DirectMessages',
 		component: DirectMessages
+	},
+	{
+		name: 'Favorites',
+		component: Favorites
 	},
 
 	{ name: 'Chat', component: Chat },

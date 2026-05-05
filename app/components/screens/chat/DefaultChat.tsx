@@ -121,9 +121,16 @@ const DefaultChat: FC<DefaultChatProps> = ({
 
 	const isGroup = !!(chat as any)?.isGroup
 	const effectiveGroupId = groupId ?? chat?.groupId ?? undefined
-	const resolvedChatName =
-		isGroup && chat?.chatName ? chat.chatName : chatName
-	const resolvedAvatarUrl = isGroup && chat?.avatarUrl ? chat.avatarUrl : null
+	const members = (chat as any)?.members ?? []
+	const directCounterpart = !isGroup
+		? members.find((member: any) => member.user?.id !== user?.id)?.user ?? null
+		: null
+	const resolvedChatName = isGroup
+		? chat?.chatName || chatName
+		: directCounterpart?.username || chatName
+	const resolvedAvatarUrl = isGroup
+		? chat?.avatarUrl || null
+		: directCounterpart?.avatarUrl || null
 	const isCheckingAccess = isLoadingFindChat || isLoadingProfile
 	const isBlockedChatAccess =
 		!isLoadingFindChat &&
@@ -136,6 +143,7 @@ const DefaultChat: FC<DefaultChatProps> = ({
 		!isLoadingFindChat &&
 		!isBlockedChatAccess &&
 		isChatMembershipRevokedError(findChatError)
+	const shouldShowBlockedInlineState = isBlockedChatAccess && !chat
 
 	const handleAccessLoss = useCallback(
 		(scope: 'chat' | 'group') => {
@@ -278,77 +286,46 @@ const DefaultChat: FC<DefaultChatProps> = ({
 				ChatPermissionEnum.InviteMembers
 			))
 
-	const members = (chat as any)?.members ?? []
-
-	const renderBlockedState = () => (
+	const renderBlockedInlineState = () => (
 		<View
 			style={{
 				flex: 1,
-				backgroundColor: colors.background,
-				paddingTop: top + 8,
+				alignItems: 'center',
+				justifyContent: 'center',
 				paddingHorizontal: 20,
-				paddingBottom: 24
+				paddingVertical: 24
 			}}
 		>
 			<View
 				style={{
-					flexDirection: 'row',
-					alignItems: 'center',
-					marginBottom: 24
-				}}
-			>
-				<TouchableOpacity
-					onPress={() => navigation.goBack()}
-					activeOpacity={0.7}
-					style={{
-						width: 40,
-						height: 40,
-						borderRadius: 20,
-						backgroundColor: colors.backgroundSecondary,
-						alignItems: 'center',
-						justifyContent: 'center',
-						marginRight: 12
-					}}
-				>
-					<ArrowLeft size={20} color={colors.text} />
-				</TouchableOpacity>
-				<Text
-					numberOfLines={1}
-					style={{
-						flex: 1,
-						fontSize: 17,
-						fontWeight: '700',
-						color: colors.text
-					}}
-				>
-					{chatName}
-				</Text>
-			</View>
-
-			<View
-				style={{
-					flex: 1,
-					alignItems: 'center',
-					justifyContent: 'center'
+					width: '100%',
+					maxWidth: 420,
+					borderRadius: 20,
+					paddingHorizontal: 20,
+					paddingVertical: 22,
+					backgroundColor: colors.card,
+					borderWidth: 1,
+					borderColor: colors.borderLight,
+					alignItems: 'center'
 				}}
 			>
 				<View
 					style={{
-						width: 72,
-						height: 72,
-						borderRadius: 36,
-						backgroundColor: colors.backgroundSecondary,
+						width: 56,
+						height: 56,
+						borderRadius: 28,
+						backgroundColor: colors.destructiveMuted,
 						alignItems: 'center',
 						justifyContent: 'center'
 					}}
 				>
-					<Shield size={30} color={colors.destructive} />
+					<Shield size={24} color={colors.destructive} />
 				</View>
 
 				<Text
 					style={{
-						marginTop: 20,
-						fontSize: 20,
+						marginTop: 16,
+						fontSize: 18,
 						fontWeight: '700',
 						color: colors.text,
 						textAlign: 'center'
@@ -358,7 +335,7 @@ const DefaultChat: FC<DefaultChatProps> = ({
 				</Text>
 				<Text
 					style={{
-						marginTop: 10,
+						marginTop: 8,
 						fontSize: 14,
 						lineHeight: 20,
 						color: colors.textMuted,
@@ -372,7 +349,7 @@ const DefaultChat: FC<DefaultChatProps> = ({
 					onPress={() => navigation.navigate('BlockedUsers')}
 					activeOpacity={0.7}
 					style={{
-						marginTop: 20,
+						marginTop: 18,
 						paddingHorizontal: 18,
 						paddingVertical: 12,
 						borderRadius: 12,
@@ -387,28 +364,6 @@ const DefaultChat: FC<DefaultChatProps> = ({
 						}}
 					>
 						{t('manageBlockedUsers')}
-					</Text>
-				</TouchableOpacity>
-
-				<TouchableOpacity
-					onPress={() => navigation.goBack()}
-					activeOpacity={0.7}
-					style={{
-						marginTop: 12,
-						paddingHorizontal: 18,
-						paddingVertical: 12,
-						borderRadius: 12,
-						backgroundColor: colors.backgroundSecondary
-					}}
-				>
-					<Text
-						style={{
-							color: colors.text,
-							fontWeight: '700',
-							fontSize: 14
-						}}
-					>
-						{t('back')}
 					</Text>
 				</TouchableOpacity>
 			</View>
@@ -462,10 +417,6 @@ const DefaultChat: FC<DefaultChatProps> = ({
 		return <ChatSkeleton />
 	}
 
-	if (user && isBlockedChatAccess) {
-		return renderBlockedState()
-	}
-
 	if (isAccessDenied) {
 		return (
 			<ProtectedScreenState
@@ -479,7 +430,13 @@ const DefaultChat: FC<DefaultChatProps> = ({
 		)
 	}
 
-	if (!isLoadingFindChat && !isLoadingProfile && !chat && findChatError) {
+	if (
+		!isLoadingFindChat &&
+		!isLoadingProfile &&
+		!chat &&
+		findChatError &&
+		!isBlockedChatAccess
+	) {
 		return (
 			<ProtectedScreenState
 				variant='error'
@@ -496,7 +453,13 @@ const DefaultChat: FC<DefaultChatProps> = ({
 		)
 	}
 
-	if (!isLoadingFindChat && !isLoadingProfile && user && !chat) {
+	if (
+		!isLoadingFindChat &&
+		!isLoadingProfile &&
+		user &&
+		!chat &&
+		!isBlockedChatAccess
+	) {
 		return (
 			<ProtectedScreenState
 				variant='error'
@@ -510,7 +473,7 @@ const DefaultChat: FC<DefaultChatProps> = ({
 		)
 	}
 
-	if (!user || !chat) {
+	if (!user || (!chat && !isBlockedChatAccess)) {
 		return <ChatSkeleton />
 	}
 
@@ -521,6 +484,8 @@ const DefaultChat: FC<DefaultChatProps> = ({
 	const goBack = () => {
 		navigation.goBack()
 	}
+
+	const canOpenSettings = !!chat && !isBlockedChatAccess
 
 	return (
 		<View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -550,9 +515,10 @@ const DefaultChat: FC<DefaultChatProps> = ({
 					</TouchableOpacity>
 
 					<TouchableOpacity
-						onPress={goToSettings}
+						onPress={canOpenSettings ? goToSettings : undefined}
+						disabled={!canOpenSettings}
 						className='flex-row items-center flex-1 mx-3'
-						activeOpacity={0.7}
+						activeOpacity={canOpenSettings ? 0.7 : 1}
 					>
 						<EntityAvatar
 							size='default'
@@ -609,24 +575,35 @@ const DefaultChat: FC<DefaultChatProps> = ({
 					enabled={Platform.OS === 'ios' || isKeyboardVisible}
 				>
 					<View className='flex-1 px-2 pb-2 justify-end'>
-						<ChatMessageList
-							pinnedMessage={pinnedMessage}
-							setPinnedMessage={setPinnedMessage}
-							chatId={chatId}
-							startEdit={startEdit}
-							userId={user!.id}
-							handleAddForwardedMessage={
-								handleAddForwardedMessage
-							}
-							canSendMessages={messagePermissions.canSendMessages}
-							canEditMessages={messagePermissions.canEditMessages}
-							canDeleteMessages={
-								messagePermissions.canDeleteMessages
-							}
-							canPinMessages={messagePermissions.canPinMessages}
-							groupId={isGroup ? (chat.groupId ?? null) : null}
-							onRefresh={handleRefresh}
-						/>
+						{shouldShowBlockedInlineState ? (
+							renderBlockedInlineState()
+						) : (
+							<ChatMessageList
+								pinnedMessage={pinnedMessage}
+								setPinnedMessage={setPinnedMessage}
+								chatId={chatId}
+								startEdit={startEdit}
+								userId={user!.id}
+								handleAddForwardedMessage={
+									handleAddForwardedMessage
+								}
+								canSendMessages={
+									messagePermissions.canSendMessages
+								}
+								canEditMessages={
+									messagePermissions.canEditMessages
+								}
+								canDeleteMessages={
+									messagePermissions.canDeleteMessages
+								}
+								canPinMessages={
+									messagePermissions.canPinMessages
+								}
+								groupId={isGroup ? (chat?.groupId ?? null) : null}
+								showSenderName={isGroup}
+								onRefresh={handleRefresh}
+							/>
+						)}
 
 						<SendMessageForm
 							pickAndSendFile={pickAndSendFile}
@@ -647,8 +624,8 @@ const DefaultChat: FC<DefaultChatProps> = ({
 							setFilesEdited={setFilesEdited}
 							canSendMessages={messagePermissions.canSendMessages}
 							blockedStateMessage={
-								hasBlockedRuntimeError
-									? t('directChatBlockedDescription')
+								isBlockedChatAccess
+									? t('directChatBlockedComposer')
 									: null
 							}
 							onBlockedError={() => {

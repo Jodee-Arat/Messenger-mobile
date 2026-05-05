@@ -23,6 +23,7 @@ interface MessageFormProp {
 	isSelected: boolean
 	isFirstInGroup?: boolean
 	isLastInGroup?: boolean
+	showSenderName?: boolean
 	createdAt?: string
 }
 
@@ -36,6 +37,7 @@ const MessageForm: FC<MessageFormProp> = ({
 	isEdited,
 	isFirstInGroup = true,
 	isLastInGroup = true,
+	showSenderName = true,
 	createdAt
 }) => {
 	const { colors } = useTheme()
@@ -98,7 +100,7 @@ const MessageForm: FC<MessageFormProp> = ({
 					maxWidth: '100%'
 				}}
 			>
-				{isFirstInGroup && !isOwnMessage && (
+				{showSenderName && isFirstInGroup && !isOwnMessage && (
 					<Text
 						style={{
 							fontSize: 12,
@@ -133,7 +135,9 @@ const MessageForm: FC<MessageFormProp> = ({
 				<View
 					style={{
 						flexDirection: 'row',
+						flexWrap: 'wrap',
 						justifyContent: 'flex-end',
+						alignItems: 'center',
 						marginTop: 4
 					}}
 				>

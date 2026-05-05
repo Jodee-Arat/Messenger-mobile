@@ -20,7 +20,7 @@ export default {
 		android: {
 			adaptiveIcon: {
 				foregroundImage: './app/assets/adaptive-icon.png',
-				backgroundColor: '#161320'
+				backgroundColor: '#00000000'
 			},
 			softwareKeyboardLayoutMode: 'resize',
 			package: 'com.vadim_teacoder.client'
@@ -37,7 +37,16 @@ export default {
 			bundler: 'metro',
 			favicon: './app/assets/favicon.png'
 		},
-		plugins: ['expo-secure-store'],
+		plugins: [
+			'expo-secure-store',
+			[
+				'expo-camera',
+				{
+					cameraPermission:
+						'Разрешите приложению сканировать QR-код для привязки браузера к секретному Избранному.'
+				}
+			]
+		],
 		extra: {
 			API_URL: `http://${process.env.BASE_URL}:4000`,
 			GRAPHQL_URL: `http://${process.env.BASE_URL}:4000/graphql`,

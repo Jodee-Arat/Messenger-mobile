@@ -2,10 +2,10 @@ import { Pin, PinOff, Trash2 } from 'lucide-react-native'
 import React, { FC, useEffect, useRef, useState } from 'react'
 import {
 	Animated,
-	Dimensions,
 	Pressable,
 	Text,
 	TouchableOpacity,
+	useWindowDimensions,
 	View
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -33,8 +33,6 @@ interface ChatDropdownTrigger {
 	isActive?: boolean
 }
 
-const SCREEN_HEIGHT = Dimensions.get('window').height
-
 const ChatDropdownTrigger: FC<ChatDropdownTrigger> = ({
 	deleteChat,
 	chat,
@@ -46,7 +44,8 @@ const ChatDropdownTrigger: FC<ChatDropdownTrigger> = ({
 	isActive
 }) => {
 	const [modalVisible, setModalVisible] = useState(false)
-	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+	const { height: windowHeight } = useWindowDimensions()
+	const slideAnim = useRef(new Animated.Value(windowHeight)).current
 
 	useEffect(() => {
 		return () => {
@@ -71,6 +70,7 @@ const ChatDropdownTrigger: FC<ChatDropdownTrigger> = ({
 
 	const openSheet = () => {
 		if (disabled) return
+		slideAnim.setValue(windowHeight)
 		setModalVisible(true)
 		Animated.spring(slideAnim, {
 			toValue: 0,
@@ -82,7 +82,7 @@ const ChatDropdownTrigger: FC<ChatDropdownTrigger> = ({
 
 	const closeSheet = (cb?: () => void) => {
 		Animated.timing(slideAnim, {
-			toValue: SCREEN_HEIGHT,
+			toValue: windowHeight,
 			duration: 200,
 			useNativeDriver: true
 		}).start(() => {

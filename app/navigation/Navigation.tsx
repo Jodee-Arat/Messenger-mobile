@@ -6,8 +6,11 @@ import {
 } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { FC, useEffect, useState } from 'react'
+import { View } from 'react-native'
 
 import BottomMenu from '@/components/layout/bottom-menu/BottomMenu'
+import Auth from '@/components/screens/auth/Auth'
+import Loader from '@/components/ui/Loader'
 
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
@@ -24,7 +27,7 @@ const Stack = createNativeStackNavigator<TypeRootStackParamList>()
 
 const Navigation: FC = () => {
 	const { colors, isDark } = useTheme()
-	const { isAuthenticated } = useAuth()
+	const { hasHydrated, isAuthChecked, isAuthenticated } = useAuth()
 	const [currentRoute, setCurrentRoute] = useState<string | undefined>(
 		undefined
 	)
@@ -60,13 +63,27 @@ const Navigation: FC = () => {
 		'ChatSettings',
 		'GroupSettings'
 	]
+	const isAuthReady = hasHydrated && isAuthChecked
+	const privateRoutes = routes.filter(route => route.name !== 'Auth')
+
+	if (!isAuthReady) {
+		return (
+			<View
+				style={{
+					flex: 1,
+					alignItems: 'center',
+					justifyContent: 'center',
+					backgroundColor
+				}}
+			>
+				<Loader />
+			</View>
+		)
+	}
 
 	return (
 		<>
-			<NavigationContainer
-				ref={navigationRef}
-				theme={navigationTheme}
-			>
+			<NavigationContainer ref={navigationRef} theme={navigationTheme}>
 				<AppModalProvider>
 					<Stack.Navigator
 						screenOptions={{
@@ -74,9 +91,13 @@ const Navigation: FC = () => {
 							contentStyle: { backgroundColor }
 						}}
 					>
-						{routes.map(route => (
-							<Stack.Screen key={route.name} {...route} />
-						))}
+						{isAuthenticated ? (
+							privateRoutes.map(route => (
+								<Stack.Screen key={route.name} {...route} />
+							))
+						) : (
+							<Stack.Screen name='Auth' component={Auth} />
+						)}
 					</Stack.Navigator>
 				</AppModalProvider>
 			</NavigationContainer>

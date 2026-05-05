@@ -1,5 +1,5 @@
-import { MessageCircle, UserPlus } from 'lucide-react-native'
-import { FC, useMemo, useState } from 'react'
+import { Heart, MessageCircle, UserPlus } from 'lucide-react-native'
+import { FC, useEffect, useMemo, useState } from 'react'
 import {
 	Keyboard,
 	Pressable,
@@ -11,6 +11,7 @@ import {
 import { getGraphQLErrorMessage } from '@/hooks/useBlockedUsers'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
+import { useMobileSecretSessionBootstrap } from '@/hooks/useMobileSecretSessionBootstrap'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 
@@ -29,6 +30,7 @@ import { useFindAllUsersQuery } from '@/graphql/generated/output'
 const Home: FC = () => {
 	const navigation = useTypedNavigation()
 	const { isLoadingProfile, user } = useCurrentUser()
+	const { ensureSecretSession } = useMobileSecretSessionBootstrap()
 	const [sidebarVisible, setSidebarVisible] = useState(false)
 	const [isFindPeopleVisible, setIsFindPeopleVisible] = useState(false)
 	const [findPeopleQuery, setFindPeopleQuery] = useState('')
@@ -58,8 +60,13 @@ const Home: FC = () => {
 		},
 		{
 			icon: <MessageCircle size={20} color={colors.accent} />,
-			label: t('newMessage'),
+			label: t('directMessages'),
 			onPress: () => navigation.navigate('DirectMessages')
+		},
+		{
+			icon: <Heart size={20} color={colors.accent} />,
+			label: t('favorites'),
+			onPress: () => navigation.navigate('Favorites')
 		}
 	]
 
@@ -95,6 +102,14 @@ const Home: FC = () => {
 
 	const discoverableUsers =
 		usersData?.findAllUsers ?? previousUsersData?.findAllUsers ?? []
+
+	useEffect(() => {
+		if (!user?.id) return
+
+		void ensureSecretSession().catch(error =>
+			console.warn('[SecretSession] App launch bootstrap failed', error)
+		)
+	}, [ensureSecretSession, user?.id])
 
 	const normalizedSearchQuery = searchQuery.trim().toLowerCase()
 	const isSearching = normalizedSearchQuery.length > 0

@@ -31,6 +31,12 @@ type AppModalContextValue = {
 
 const AppModalContext = createContext<AppModalContextValue | null>(null)
 
+const MODAL_HOST_STYLE = {
+	...StyleSheet.absoluteFillObject,
+	zIndex: 9999,
+	elevation: 9999
+} as const
+
 export const AppModalProvider: FC<PropsWithChildren> = ({ children }) => {
 	const [entries, setEntries] = useState<ModalEntry[]>([])
 
@@ -73,16 +79,16 @@ export const AppModalProvider: FC<PropsWithChildren> = ({ children }) => {
 	return (
 		<AppModalContext.Provider value={value}>
 			{children}
-			{Platform.OS === 'android' && entries.length > 0 && (
+			{entries.length > 0 && (
 				<View
 					pointerEvents='box-none'
-					style={StyleSheet.absoluteFill}
+					style={MODAL_HOST_STYLE}
 				>
 					{entries.map(entry => (
 						<View
 							key={entry.id}
 							pointerEvents='box-none'
-							style={StyleSheet.absoluteFill}
+							style={MODAL_HOST_STYLE}
 							{...entry.wrapperProps}
 						>
 							{entry.node}

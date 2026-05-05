@@ -1,12 +1,20 @@
-import { Globe, MapPin, Monitor, Smartphone } from 'lucide-react-native'
-import { FC, useEffect } from 'react'
-import { ActivityIndicator, Text, View } from 'react-native'
+import { Globe, LogOut, MapPin, Monitor, Smartphone } from 'lucide-react-native'
+import { FC, useEffect, useState } from 'react'
+import {
+	ActivityIndicator,
+	Alert,
+	Text,
+	TouchableOpacity,
+	View
+} from 'react-native'
 
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
 import {
+	FindSessionsByUserDocument,
 	useFindCurrentSessionQuery,
-	useFindSessionsByUserQuery
+	useFindSessionsByUserQuery,
+	useRemoveSessionMutation
 } from '@/graphql/generated/output'
 
 function formatDate(dateStr: string, language: string) {
@@ -36,6 +44,8 @@ interface SessionRowProps {
 	colors: ReturnType<typeof useTheme>['colors']
 	t: (key: string) => string
 	language: string
+	onRemove?: () => void
+	isRemoving?: boolean
 }
 
 const SessionRow: FC<SessionRowProps> = ({
@@ -43,7 +53,9 @@ const SessionRow: FC<SessionRowProps> = ({
 	isCurrent,
 	colors,
 	t,
-	language
+	language,
+	onRemove,
+	isRemoving
 }) => {
 	const { metadata } = session
 	const isMobile = metadata.device.type?.toLowerCase().includes('mobile')
@@ -183,6 +195,39 @@ const SessionRow: FC<SessionRowProps> = ({
 					{formatDate(session.createdAt, language)}
 				</Text>
 			</View>
+
+			{!isCurrent && onRemove && (
+				<TouchableOpacity
+					onPress={onRemove}
+					disabled={isRemoving}
+					style={{
+						marginTop: 6,
+						flexDirection: 'row',
+						alignItems: 'center',
+						gap: 4,
+						paddingHorizontal: 10,
+						paddingVertical: 6,
+						borderRadius: 8,
+						backgroundColor: 'hsla(0, 84%, 60%, 0.1)'
+					}}
+					activeOpacity={0.7}
+				>
+					{isRemoving ? (
+						<ActivityIndicator size='small' color={colors.destructive} />
+					) : (
+						<LogOut size={14} color={colors.destructive} />
+					)}
+					<Text
+						style={{
+							fontSize: 12,
+							fontWeight: '600',
+							color: colors.destructive
+						}}
+					>
+						{t('sessionTerminate')}
+					</Text>
+				</TouchableOpacity>
+			)}
 		</View>
 	)
 }
@@ -206,6 +251,12 @@ const SessionsList: FC<SessionsListProps> = ({ refreshSignal = 0 }) => {
 		refetch: refetchCurrentSession
 	} = useFindCurrentSessionQuery()
 
+	const [removeSession] = useRemoveSessionMutation({
+		refetchQueries: [{ query: FindSessionsByUserDocument }]
+	})
+
+	const [removingId, setRemovingId] = useState<string | null>(null)
+
 	useEffect(() => {
 		void Promise.allSettled([refetchSessions(), refetchCurrentSession()])
 	}, [refreshSignal, refetchCurrentSession, refetchSessions])
@@ -214,6 +265,35 @@ const SessionsList: FC<SessionsListProps> = ({ refreshSignal = 0 }) => {
 	const currentSession = currentData?.findCurrentSession as
 		| SessionData
 		| undefined
+
+	const handleRemoveSession = (sessionId: string) => {
+		Alert.alert(
+			t('sessionTerminate'),
+			t('sessionTerminateConfirm'),
+			[
+				{ text: t('back'), style: 'cancel' },
+				{
+					text: t('sessionTerminate'),
+					style: 'destructive',
+					onPress: async () => {
+						setRemovingId(sessionId)
+						try {
+							await removeSession({
+								variables: { id: sessionId }
+							})
+						} catch (error) {
+							console.error(
+								'Failed to remove session:',
+								error
+							)
+						} finally {
+							setRemovingId(null)
+						}
+					}
+				}
+			]
+		)
+	}
 
 	if (loadingSessions || loadingCurrent) {
 		return (
@@ -337,6 +417,10 @@ const SessionsList: FC<SessionsListProps> = ({ refreshSignal = 0 }) => {
 									colors={colors}
 									t={t}
 									language={language}
+									onRemove={() =>
+										handleRemoveSession(session.id)
+									}
+									isRemoving={removingId === session.id}
 								/>
 							</View>
 						))}

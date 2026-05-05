@@ -1,8 +1,16 @@
-﻿import React, { FC, useCallback, useState } from 'react'
-import { ActivityIndicator, FlatList, Text, View } from 'react-native'
+﻿import React, { FC, useCallback, useMemo, useRef, useState } from 'react'
+import {
+	ActivityIndicator,
+	FlatList,
+	InteractionManager,
+	Text,
+	View
+} from 'react-native'
 import Toast from 'react-native-toast-message'
 import { useEffect } from 'react'
+import { MessageSquare } from 'lucide-react-native'
 
+import EmptyStateCard from '@/components/ui/EmptyStateCard'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
 import { ForwardedMessageType } from '@/types/forward/forwarded-message.type'
@@ -24,6 +32,8 @@ interface SecretChatMessageListProp {
 		forwardedMessages?: ForwardedMessageType[]
 	) => void
 	handleAddForwardedMessage?: (messages: MessageType[]) => void
+	showSenderName?: boolean
+	isUnifiedThread?: boolean
 }
 
 const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
@@ -34,13 +44,35 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 	onRefresh,
 	chatId,
 	startEdit = () => {},
-	handleAddForwardedMessage = () => {}
+	handleAddForwardedMessage = () => {},
+	showSenderName = true,
+	isUnifiedThread = false
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
 	const [messageIds, setMessageIds] = useState<string[]>([])
 	const [isDeleting, setIsDeleting] = useState(false)
 	const [isRefreshing, setIsRefreshing] = useState(false)
+	const listRef = useRef<FlatList<MessageType>>(null)
+	const didInitialScrollRef = useRef(false)
+	const initialScrollTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>(
+		[]
+	)
+	const sortedMessages = useMemo(
+		() =>
+			[...messages].sort((left, right) => {
+				const leftTime = new Date(left.createdAt).getTime()
+				const rightTime = new Date(right.createdAt).getTime()
+				const timeDiff =
+					(Number.isFinite(leftTime) ? leftTime : 0) -
+					(Number.isFinite(rightTime) ? rightTime : 0)
+
+				if (timeDiff !== 0) return timeDiff
+
+				return left.id.localeCompare(right.id)
+			}),
+		[messages]
+	)
 
 	/** Удаление сообщений */
 	const handleRemoveMessages = useCallback(async () => {
@@ -81,11 +113,11 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 	/** Добавление пересланных сообщений */
 	const handleAddForwarded = useCallback(
 		(ids: string[]) => {
-			const selectedMessages = messages.filter(m => ids.includes(m.id))
+			const selectedMessages = sortedMessages.filter(m => ids.includes(m.id))
 			handleAddForwardedMessage(selectedMessages)
 			setMessageIds([])
 		},
-		[messages, handleAddForwardedMessage]
+		[sortedMessages, handleAddForwardedMessage]
 	)
 
 	const handleRefresh = useCallback(async () => {
@@ -103,6 +135,47 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 		}
 	}, [canDeleteMessages, messageIds.length])
 
+	useEffect(() => {
+		didInitialScrollRef.current = false
+		initialScrollTimeoutsRef.current.forEach(clearTimeout)
+		initialScrollTimeoutsRef.current = []
+		setMessageIds([])
+	}, [chatId])
+
+	useEffect(
+		() => () => {
+			initialScrollTimeoutsRef.current.forEach(clearTimeout)
+		},
+		[]
+	)
+
+	const runInitialScrollToEnd = useCallback(() => {
+		const scroll = () => {
+			listRef.current?.scrollToEnd({ animated: false })
+		}
+
+		requestAnimationFrame(scroll)
+		InteractionManager.runAfterInteractions(scroll)
+
+		initialScrollTimeoutsRef.current.forEach(clearTimeout)
+		initialScrollTimeoutsRef.current = [
+			setTimeout(scroll, 50),
+			setTimeout(scroll, 150),
+			setTimeout(scroll, 350)
+		]
+	}, [])
+
+	const scrollToEndOnOpen = useCallback(() => {
+		if (didInitialScrollRef.current || sortedMessages.length === 0) return
+
+		didInitialScrollRef.current = true
+		runInitialScrollToEnd()
+	}, [runInitialScrollToEnd, sortedMessages.length])
+
+	useEffect(() => {
+		scrollToEndOnOpen()
+	}, [scrollToEndOnOpen, sortedMessages.length])
+
 	if (isDeleting) {
 		return (
 			<View className='flex-1 justify-center items-center'>
@@ -117,22 +190,27 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 		<View className='flex-1'>
 			{/* Список сообщений */}
 			<FlatList
-				data={messages}
+				ref={listRef}
+				data={sortedMessages}
 				keyExtractor={item => item.id}
 				contentContainerStyle={{ paddingTop: 8, paddingBottom: 8 }}
+				onLayout={scrollToEndOnOpen}
+				onContentSizeChange={scrollToEndOnOpen}
 				refreshing={isRefreshing}
 				onRefresh={handleRefresh}
 				ListEmptyComponent={() => (
-					<View className='py-4 items-center'>
-						<Text style={{ color: colors.textSecondary }}>
-							{t('empty')}
-						</Text>
+					<View className='px-4 py-6'>
+						<EmptyStateCard
+							icon={MessageSquare}
+							title={t('emptyMessagesTitle')}
+							description={t('emptyMessagesDescription')}
+						/>
 					</View>
 				)}
 				renderItem={({ item, index }) => {
 					const isSelected = messageIds.includes(item.id)
-					const prevItem = messages[index - 1] ?? null
-					const nextItem = messages[index + 1] ?? null
+					const prevItem = sortedMessages[index - 1] ?? null
+					const nextItem = sortedMessages[index + 1] ?? null
 					const isFirstInGroup =
 						!prevItem || prevItem.user.id !== item.user.id
 					const isLastInGroup =
@@ -194,6 +272,8 @@ const SecretChatMessageList: FC<SecretChatMessageListProp> = ({
 								isSelected={isSelected}
 								isFirstInGroup={isFirstInGroup}
 								isLastInGroup={isLastInGroup}
+								showSenderName={showSenderName}
+								isUnifiedThread={isUnifiedThread}
 								canDeleteMessages={
 									canDeleteMessages
 								}

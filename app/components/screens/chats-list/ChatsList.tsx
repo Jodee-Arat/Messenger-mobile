@@ -1,9 +1,11 @@
 import { useFocusEffect, useRoute } from '@react-navigation/native'
+import { MessageSquare, Search } from 'lucide-react-native'
 import { FC, useCallback, useEffect, useRef, useState } from 'react'
-import { RefreshControl, Text, View } from 'react-native'
+import { RefreshControl, View } from 'react-native'
 import DraggableFlatList from 'react-native-draggable-flatlist'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import EmptyStateCard from '@/components/ui/EmptyStateCard'
 import ProtectedScreenState from '@/components/ui/ProtectedScreenState'
 
 import {
@@ -255,14 +257,19 @@ const ChatsList: FC = () => {
 					}
 				}}
 				ListEmptyComponent={
-					<View className='py-16 items-center'>
-						<Text
-							className='text-base'
-							style={{ color: colors.textMuted }}
-						>
-							{t('noChats')}
-						</Text>
-					</View>
+					<EmptyStateCard
+						icon={debouncedSearch.trim().length > 0 ? Search : MessageSquare}
+						title={
+							debouncedSearch.trim().length > 0
+								? t('noSearchResults')
+								: t('noChats')
+						}
+						description={
+							debouncedSearch.trim().length > 0
+								? t('tryDifferentQuery')
+								: t('emptyChatsDescription')
+						}
+					/>
 				}
 				renderItem={({ item, drag, isActive }) => (
 					<ChatDropdownTrigger

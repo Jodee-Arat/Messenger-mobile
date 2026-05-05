@@ -7,17 +7,18 @@ import {
 	ScrollView,
 	Text,
 	TouchableOpacity,
+	useWindowDimensions,
 	View,
-	Animated,
-	Dimensions
+	Animated
 } from 'react-native'
 
 import AppModal from '@/components/ui/AppModal'
 import EntityAvatar from '@/components/ui/EntityAvatar'
 
+import { useBottomSheetModalLayout } from '@/hooks/useModalLayout'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 
-import { GetPreKeysQuery } from '@/graphql/generated/output'
+import { GetSecretSessionPreKeysQuery } from '@/graphql/generated/output'
 import { getFingerprint } from '@/libs/e2ee/gost'
 
 type Member = {
@@ -32,7 +33,7 @@ interface FingerprintVerificationModalProps {
 	visible: boolean
 	onClose: () => void
 	members: Member[]
-	preKeysPub: GetPreKeysQuery['getPreKeys']
+	preKeysPub: GetSecretSessionPreKeysQuery['getSecretSessionPreKeys']
 	currentUserId: string
 }
 
@@ -45,8 +46,6 @@ const formatFingerprint = (hex: string): string => {
 	return blocks.join(' ')
 }
 
-const SCREEN_HEIGHT = Dimensions.get('window').height
-
 const FingerprintVerificationModal: FC<FingerprintVerificationModalProps> = ({
 	visible,
 	onClose,
@@ -56,6 +55,8 @@ const FingerprintVerificationModal: FC<FingerprintVerificationModalProps> = ({
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
+	const { height: windowHeight } = useWindowDimensions()
+	const { sheetMaxHeight, sheetPaddingBottom } = useBottomSheetModalLayout(0.85)
 	const [fingerprints, setFingerprints] = useState<Map<string, string>>(
 		new Map()
 	)
@@ -63,11 +64,11 @@ const FingerprintVerificationModal: FC<FingerprintVerificationModalProps> = ({
 	const [copiedId, setCopiedId] = useState<string | null>(null)
 	const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
 
-	const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+	const slideAnim = useRef(new Animated.Value(windowHeight)).current
 
 	const closeSheet = (cb?: () => void) => {
 		Animated.timing(slideAnim, {
-			toValue: SCREEN_HEIGHT,
+			toValue: windowHeight,
 			duration: 200,
 			useNativeDriver: true
 		}).start(() => {
@@ -84,6 +85,9 @@ const FingerprintVerificationModal: FC<FingerprintVerificationModalProps> = ({
 			const map = new Map<string, string>()
 
 			for (const pk of preKeysPub) {
+				if (map.has(pk.userId)) {
+					continue
+				}
 				try {
 					const fp = await getFingerprint(pk.ikPub, pk.spkPub)
 					map.set(pk.userId, fp)
@@ -105,6 +109,7 @@ const FingerprintVerificationModal: FC<FingerprintVerificationModalProps> = ({
 
 	useEffect(() => {
 		if (visible) {
+			slideAnim.setValue(windowHeight)
 			Animated.spring(slideAnim, {
 				toValue: 0,
 				useNativeDriver: true,
@@ -112,7 +117,7 @@ const FingerprintVerificationModal: FC<FingerprintVerificationModalProps> = ({
 				friction: 11
 			}).start()
 		}
-	}, [visible])
+	}, [slideAnim, visible, windowHeight])
 
 	const handleCopy = async (userId: string, fp: string) => {
 		await Clipboard.setStringAsync(formatFingerprint(fp))
@@ -149,7 +154,8 @@ const FingerprintVerificationModal: FC<FingerprintVerificationModalProps> = ({
 					style={{
 						transform: [{ translateY: slideAnim }],
 						backgroundColor: colors.background,
-						maxHeight: '85%'
+						maxHeight: sheetMaxHeight,
+						paddingBottom: sheetPaddingBottom
 					}}
 				>
 					{/* Header */}

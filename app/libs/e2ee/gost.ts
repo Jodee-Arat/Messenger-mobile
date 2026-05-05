@@ -1,8 +1,6 @@
 // Утилиты E2EE на ГОСТ, адаптированные под React Native (Expo)
 // Веб-ориентированный код переработан: безопасные для рантайма импорты, UTF-8 помощники, экспортируемые хелперы
 // Важно: это демо-код; не используйте digest как MAC в продакшене.
-import { GetPreKeysQuery } from '@/graphql/generated/output'
-
 const safeSetGlobal = (key: string, value: unknown) => {
 	try {
 		;(globalThis as any)[key] = value
@@ -1381,7 +1379,10 @@ export const getFingerprint = async (ikPub: string, spkPub: string) => {
 // функция проверки ключей которые хранятся локально и на сервере через хэш
 export async function checkMyPreKeys(
 	myPreKeyFromJSON: PreKeyBundleServer,
-	myPreKeyFromServer: GetPreKeysQuery['getPreKeys'][0]
+	myPreKeyFromServer: {
+		ikPub: string
+		spkPub: string
+	}
 ) {
 	const hashFromJSON = await getFingerprint(
 		myPreKeyFromJSON.ikPub,

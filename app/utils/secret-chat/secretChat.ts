@@ -3,6 +3,7 @@ import { Directory, File, Paths } from 'expo-file-system'
 import { SecretChatData } from '@/hooks/useSecretChat'
 
 import { MessageType } from '@/types/message.type'
+
 import { notifySecretChatReady } from '@/utils/secret-chat/secretChatBootstrap'
 
 import {
@@ -20,6 +21,12 @@ export const FILE = {
 }
 
 const BASE_DIRECTORY = Paths.document
+const INTERNAL_DOCUMENT_DIRS_TO_KEEP = new Set(['downloads'])
+const SECRET_CACHE_DIRS = [
+	'secret-attachments',
+	'secret-attachments-cache',
+	'secret-download'
+]
 
 export type PreKeyBundle = {
 	toServer: PreKeyBundleServer
@@ -70,6 +77,35 @@ export async function upsertMyPreKeyJSON(preKey: PreKeyBundle) {
 
 export async function loadMyPreKeyJSON(): Promise<PreKeyBundle | null> {
 	return readJson<PreKeyBundle>(getRootFile(FILE.PRE_KEYS))
+}
+
+export async function clearLocalSecretChatData() {
+	try {
+		for (const fileName of [FILE.PRE_KEYS, FILE.MY_KEYS, FILE.KEYS]) {
+			const file = getRootFile(fileName)
+			if (file.exists) {
+				file.delete()
+			}
+		}
+
+		for (const entry of BASE_DIRECTORY.list()) {
+			if (
+				entry instanceof Directory &&
+				!INTERNAL_DOCUMENT_DIRS_TO_KEEP.has(entry.name)
+			) {
+				entry.delete()
+			}
+		}
+
+		for (const directoryName of SECRET_CACHE_DIRS) {
+			const directory = new Directory(Paths.cache, directoryName)
+			if (directory.exists) {
+				directory.delete()
+			}
+		}
+	} catch (error) {
+		console.warn('[SecretChat] Failed to clear local secret data', error)
+	}
 }
 
 /**
@@ -248,7 +284,9 @@ export async function loadMyKeys(
 	chatId: string,
 	groupId: string
 ): Promise<MyKeys | null> {
-	const parsed = await readJson<any>(getChatFile(groupId, chatId, FILE.MY_KEYS))
+	const parsed = await readJson<any>(
+		getChatFile(groupId, chatId, FILE.MY_KEYS)
+	)
 	if (!parsed) {
 		return null
 	}
@@ -313,8 +351,21 @@ export async function addMessages(
 	})
 	const updatedMessages = [...existingMessages, ...uniqueIncoming]
 
-	writeJson(file, updatedMessages)
+	writeJson(file, sortMessagesByCreatedAt(updatedMessages))
 }
+
+const getMessageTime = (message: MessageType) => {
+	const timestamp = new Date(message.createdAt).getTime()
+	return Number.isFinite(timestamp) ? timestamp : 0
+}
+
+const sortMessagesByCreatedAt = (messages: MessageType[]) =>
+	[...messages].sort((left, right) => {
+		const timeDiff = getMessageTime(left) - getMessageTime(right)
+		if (timeDiff !== 0) return timeDiff
+
+		return left.id.localeCompare(right.id)
+	})
 
 /**
  *  Загрузка сообщений чата из локального файла
@@ -331,7 +382,7 @@ export async function loadMessages(
 
 	try {
 		const messages = await readJson<MessageType[]>(file)
-		return Array.isArray(messages) ? messages : []
+		return Array.isArray(messages) ? sortMessagesByCreatedAt(messages) : []
 	} catch (e) {
 		console.warn('Не удалось прочитать сообщения из файла:', e)
 		return []
@@ -347,5 +398,8 @@ export async function saveMessages(
 	groupId: string
 ) {
 	ensureDirectory(getChatDirectory(groupId, chatId))
-	writeJson(getChatFile(groupId, chatId, FILE.MESSAGES), messages)
+	writeJson(
+		getChatFile(groupId, chatId, FILE.MESSAGES),
+		sortMessagesByCreatedAt(messages)
+	)
 }
