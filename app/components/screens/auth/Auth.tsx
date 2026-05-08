@@ -114,7 +114,10 @@ const Auth = () => {
 			try {
 				await ensureSecretSession(true)
 			} catch (error) {
-				console.warn('[SecretSession] Mobile secret session bootstrap failed', error)
+				console.warn(
+					'[SecretSession] Mobile secret session bootstrap failed',
+					error
+				)
 				Toast.show({
 					type: 'error',
 					text1: 'Secret chats setup failed',
@@ -299,7 +302,7 @@ const Auth = () => {
 										onPress={onSubmitTotp}
 										loading={isLoadingLogin}
 									>
-										Verify
+										{t('totpVerify')}
 									</Button>
 								</View>
 								<Pressable

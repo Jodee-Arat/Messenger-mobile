@@ -8,6 +8,8 @@ import EntityAvatar from '@/components/ui/EntityAvatar'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 
+import { goBackOrHome } from '@/navigation/navigate'
+
 interface ChatsListHeaderProps {
 	groupId: string
 	groupName: string
@@ -48,7 +50,7 @@ const ChatsListHeader: FC<ChatsListHeaderProps> = ({
 			<View className='flex-row items-center justify-between'>
 				<View className='flex-row items-center flex-1'>
 					<TouchableOpacity
-						onPress={() => navigation.goBack()}
+						onPress={() => goBackOrHome(navigation)}
 						activeOpacity={0.7}
 						className='w-10 h-10 rounded-full items-center justify-center mr-3'
 						style={{

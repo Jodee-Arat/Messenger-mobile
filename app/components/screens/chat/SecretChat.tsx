@@ -50,7 +50,7 @@ import { useUser } from '@/hooks/useUser'
 import { chatEvents } from '@/utils/chatEvents'
 import { deleteSecretChat } from '@/utils/secret-chat/secretChat'
 
-import { resetToAuth, resetToHome } from '@/navigation/navigate'
+import { goBackOrHome, resetToAuth, resetToHome } from '@/navigation/navigate'
 
 import ChatInviteMemberModal from '../chat-settings/ChatInviteMemberModal'
 
@@ -218,7 +218,6 @@ const SecretChat: FC<SecretChatProps> = ({
 		chatAccessError,
 		setDraftText,
 		preKeysPub,
-		sendKeyToNewMember,
 		isKeyReady
 	} = useSecretChat(chatId, userId, groupId, { isSaved })
 
@@ -433,7 +432,7 @@ const SecretChat: FC<SecretChatProps> = ({
 						if (groupId) {
 							await deleteSecretChat(groupId, chatId)
 						}
-						navigation.goBack()
+						goBackOrHome(navigation)
 					} catch {
 						Alert.alert(t('error') || 'Ошибка', t('leaveChatError'))
 					}
@@ -447,7 +446,6 @@ const SecretChat: FC<SecretChatProps> = ({
 			await inviteMemberMutation({
 				variables: { chatId, targetUserId }
 			})
-			await sendKeyToNewMember(targetUserId)
 		} catch {
 			Alert.alert(t('error') || 'Ошибка', t('leaveChatError'))
 		}
@@ -651,7 +649,7 @@ const SecretChat: FC<SecretChatProps> = ({
 						)}
 					</TouchableOpacity>
 					<TouchableOpacity
-						onPress={() => navigation.goBack()}
+						onPress={() => goBackOrHome(navigation)}
 						className='mt-4'
 						activeOpacity={0.7}
 					>
@@ -669,7 +667,7 @@ const SecretChat: FC<SecretChatProps> = ({
 	}
 
 	const goBack = () => {
-		navigation.goBack()
+		goBackOrHome(navigation)
 	}
 
 	const handleSend = async (text?: string) => {

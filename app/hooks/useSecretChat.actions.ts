@@ -15,8 +15,11 @@ import {
 	FILE,
 	fileExist,
 	loadAllSecretChats,
+	loadGroupSenderKeys,
 	loadMyKeys,
-	loadMyPreKeyJSON
+	loadMyPreKeyJSON,
+	resetLegacyGroupSecretState,
+	saveGroupSenderKeys
 } from '@/utils/secret-chat/secretChat'
 import { loadSavedSecretLinkedWebSessionId } from '@/services/secret/saved-secret-link.service'
 
@@ -39,10 +42,19 @@ import {
 } from '@/graphql/generated/output'
 import {
 	PreKeyBundleClient,
+	SESSION_SHARED_KEY_KIND,
+	GROUP_SENDER_KEY_KIND,
+	GroupSenderKeysState,
+	acceptGroupSenderKeyDistribution,
+	buildGroupSenderKeyDistribution,
 	buildSessionMsgEnvelope,
 	checkMyPreKeys,
+	createGroupSenderKeyState,
+	decodeUtf8,
+	decryptGroupSenderMessage,
 	decryptKuz,
 	decryptSessionMsgEnvelope,
+	encryptGroupSenderMessage,
 	encryptKuz,
 	establishSessionX3DH,
 	exportPublicRaw,
@@ -81,6 +93,9 @@ type SendSessionSharedSecretKeyMutationFn =
 const SECRET_MESSAGE_PAYLOAD_KIND = 'secret-message-v2'
 const SAVED_LOCAL_ATTACHMENT_PREFIX = 'local-mobile:'
 let lastLocalSecretMessageTimestamp = 0
+
+// Client-visible attachment metadata. It is serialized only into the
+// plaintext that is encrypted as encryptedMessage, never into upload metadata.
 type SecretAttachmentPayload = {
 	attachmentId: string
 	fileName: string
@@ -631,79 +646,49 @@ export const loadChatAction = async (params: {
 	const { chatId, groupId, secretSessionId, getPreKeys } = params
 	try {
 		const haveMyKeys = await fileExist(chatId, groupId, FILE.MY_KEYS)
-		if (!haveMyKeys) {
-			const preKeysResponse = await getPreKeys({ variables: { chatId } })
-			if (preKeysResponse.error) {
-				console.error(
-					'Ошибка при получении PreKeys:',
-					preKeysResponse.error
-				)
-				return {
-					chat: null,
-					errorMessage: 'Ошибка при получении PreKeys'
-				}
-			}
-			const preKeys = preKeysResponse.data?.getSecretSessionPreKeys
-			if (!preKeys || preKeys.length === 0) {
-				console.error('PreKeys не найдены')
-				return { chat: null, errorMessage: 'PreKeys не найдены' }
-			}
+		if (haveMyKeys) {
+			await resetLegacyGroupSecretState(chatId, groupId)
+		}
 
-			const myPreKeys = await loadMyPreKeyJSON()
-			if (!myPreKeys) {
-				console.error('Мои PreKeys не найдены')
-				return { chat: null, errorMessage: 'Мои PreKeys не найдены' }
-			}
-
-			const mySessionBundle = getMySessionBundle(preKeys, secretSessionId)
-			const isMyPreKeys = mySessionBundle
-				? await checkMyPreKeys(myPreKeys.toServer, mySessionBundle)
-				: false
-			if (!isMyPreKeys) {
-				console.error('Мои PreKeys не совпадают с серверными')
-				return {
-					chat: null,
-					errorMessage: 'Мои PreKeys не совпадают с серверными'
-				}
-			}
-
-			const chatsData = await loadAllSecretChats(groupId)
-			const currentChat = chatsData.find(c => c.id === chatId) || null
+		const preKeysResponse = await getPreKeys({ variables: { chatId } })
+		if (preKeysResponse.error) {
+			console.error('Ошибка при получении PreKeys:', preKeysResponse.error)
 			return {
-				chat: currentChat,
-				mySecretPreKey: myPreKeys.toStore,
-				preKeysPub: preKeys,
-				sessionKey: null
+				chat: null,
+				errorMessage: 'Ошибка при получении PreKeys'
 			}
-		} else {
-			const mySessionKeys = await loadMyKeys(chatId, groupId)
+		}
+		const preKeys = preKeysResponse.data?.getSecretSessionPreKeys
+		if (!preKeys || preKeys.length === 0) {
+			console.error('PreKeys не найдены')
+			return { chat: null, errorMessage: 'PreKeys не найдены' }
+		}
 
-			if (!mySessionKeys) {
-				console.error('Мои ключи сессии не найдены')
-				return {
-					chat: null,
-					errorMessage: 'Мои ключи сессии не найдены'
-				}
-			}
-			const myPreKeys = await loadMyPreKeyJSON()
-			let preKeysPub: SecretSessionPreKeyRecord[] | undefined
-			try {
-				const preKeysResponse = await getPreKeys({
-					variables: { chatId }
-				})
-				if (preKeysResponse.data?.getSecretSessionPreKeys) {
-					preKeysPub = preKeysResponse.data.getSecretSessionPreKeys
-				}
-			} catch {}
+		const myPreKeys = await loadMyPreKeyJSON()
+		if (!myPreKeys) {
+			console.error('Мои PreKeys не найдены')
+			return { chat: null, errorMessage: 'Мои PreKeys не найдены' }
+		}
 
-			const chatsData = await loadAllSecretChats(groupId)
-			const currentChat = chatsData.find(c => c.id === chatId) || null
+		const mySessionBundle = getMySessionBundle(preKeys, secretSessionId)
+		const isMyPreKeys = mySessionBundle
+			? await checkMyPreKeys(myPreKeys.toServer, mySessionBundle)
+			: false
+		if (!isMyPreKeys) {
+			console.error('Мои PreKeys не совпадают с серверными')
 			return {
-				chat: currentChat,
-				mySecretPreKey: myPreKeys?.toStore ?? null,
-				preKeysPub,
-				sessionKey: mySessionKeys.sessionKeyHex
+				chat: null,
+				errorMessage: 'Мои PreKeys не совпадают с серверными'
 			}
+		}
+
+		const chatsData = await loadAllSecretChats(groupId)
+		const currentChat = chatsData.find(c => c.id === chatId) || null
+		return {
+			chat: currentChat,
+			mySecretPreKey: myPreKeys.toStore,
+			preKeysPub: preKeys,
+			sessionKey: null
 		}
 	} catch (e) {
 		console.error('Ошибка загрузки чата:', e)
@@ -894,6 +879,333 @@ const recoverSessionKeyFromSharedPacketsAction = async (params: {
 	return { packets, usedPacketIds: [] }
 }
 
+const shareGroupSenderKeyWithBundlesAction = async (params: {
+	chatId: string
+	groupId: string
+	userId: string
+	fromSessionId: string
+	state: GroupSenderKeysState
+	mySecretPreKey: PreKeyBundleClient
+	preKeysPub: SecretSessionPreKeyRecord[]
+	targetBundles: SecretSessionPreKeyRecord[]
+	getPreKeys?: SecretSessionPreKeysQueryFn
+	sendSharedSecretKey: SendSessionSharedSecretKeyMutationFn
+}): Promise<{
+	success: boolean
+	state: GroupSenderKeysState
+	errorMessage?: string
+}> => {
+	const own = params.state.own
+	if (!own) {
+		return {
+			success: false,
+			state: params.state,
+			errorMessage: 'Sender key не создан'
+		}
+	}
+
+	const alreadyDistributed = new Set(own.distributedToSessionIds)
+	const uniqueTargetBundles = Array.from(
+		new Map(
+			params.targetBundles
+				.filter(bundle => !alreadyDistributed.has(bundle.secretSessionId))
+				.map(bundle => [bundle.secretSessionId, bundle])
+		).values()
+	)
+
+	if (uniqueTargetBundles.length === 0) {
+		return { success: true, state: params.state }
+	}
+
+	let allBundles = params.preKeysPub
+	let myBundle = getMySessionBundle(allBundles, params.fromSessionId)
+
+	if (!myBundle && params.getPreKeys) {
+		try {
+			const preKeysResponse = await params.getPreKeys({
+				variables: { chatId: params.chatId }
+			})
+			allBundles = preKeysResponse.data?.getSecretSessionPreKeys ?? allBundles
+			myBundle = getMySessionBundle(allBundles, params.fromSessionId)
+		} catch {}
+	}
+
+	if (!myBundle) {
+		return {
+			success: false,
+			state: params.state,
+			errorMessage: 'Мой session prekey не найден'
+		}
+	}
+
+	const ikPrivRaw = fromHex(params.mySecretPreKey.ikPriv)
+	const ikPubRaw = fromHex(myBundle.ikPub)
+	const IK = {
+		privateKey: await importPrivateRaw(ikPrivRaw),
+		publicKey: await importPublicRaw(ikPubRaw)
+	} as const
+
+	const nextDistributed = new Set(own.distributedToSessionIds)
+
+	for (const recipientBundle of uniqueTargetBundles) {
+		const aliceEK = await generateEphemeralKeyPair()
+		const {
+			sessionKey: pairSessionKey,
+			ukm,
+			verifiedSpk
+		} = await establishSessionX3DH({
+			IK,
+			aliceEK,
+			bobBundle: {
+				ikPub: recipientBundle.ikPub,
+				spkPub: recipientBundle.spkPub,
+				spkSig: recipientBundle.spkSig,
+				opk:
+					recipientBundle.opkPubs[recipientBundle.indexOpkPub] ?? null
+			}
+		})
+
+		if (!verifiedSpk) {
+			console.warn(
+				`[SecretChat][SenderKey] SPK signature did not verify for session ${recipientBundle.secretSessionId}`
+			)
+			continue
+		}
+
+		const payload = buildGroupSenderKeyDistribution({
+			chatId: params.chatId,
+			groupId: params.groupId,
+			senderUserId: params.userId,
+			senderSessionId: params.fromSessionId,
+			own
+		})
+		const payloadBytes = new TextEncoder().encode(JSON.stringify(payload))
+		const enc = await encryptKuz(pairSessionKey, payloadBytes)
+		const ekAPubRaw = await exportPublicRaw(aliceEK.publicKey)
+		const aad = new Uint8Array([
+			...new TextEncoder().encode('GROUPSENDERKEYv1'),
+			...ikPubRaw,
+			...ekAPubRaw
+		])
+		const signature = await signBytes(
+			IK.privateKey,
+			new Uint8Array([...aad, ...enc.iv, ...enc.ciphertext])
+		)
+
+		await params.sendSharedSecretKey({
+			variables: {
+				data: {
+					chatId: params.chatId,
+					groupId: params.groupId,
+					fromSessionId: params.fromSessionId,
+					toUserId: recipientBundle.userId,
+					toSessionId: recipientBundle.secretSessionId,
+					keyKind: GROUP_SENDER_KEY_KIND,
+					senderKeyId: own.senderKeyId,
+					senderKeyEpoch: own.epoch,
+					ikPub: myBundle.ikPub,
+					ekPub: toHex(ekAPubRaw),
+					usedOpk:
+						recipientBundle.opkPubs[recipientBundle.indexOpkPub] ??
+						null,
+					ukm: toHex(ukm),
+					iv: toHex(enc.iv),
+					encryptedKey: toHex(enc.ciphertext),
+					sig: toHex(signature)
+				} as any
+			}
+		})
+
+		nextDistributed.add(recipientBundle.secretSessionId)
+	}
+
+	return {
+		success: true,
+		state: {
+			...params.state,
+			own: {
+				...own,
+				distributedToSessionIds: Array.from(nextDistributed)
+			}
+		}
+	}
+}
+
+const acceptGroupSenderKeyPacketsAction = async (params: {
+	chatId: string
+	groupId: string
+	secretSessionId: string
+	mySecretPreKey: PreKeyBundleClient
+	preKeysPub: SecretSessionPreKeyRecord[]
+	getSharedSecretKey: SessionSharedSecretKeysQueryFn
+	getPreKeys?: SecretSessionPreKeysQueryFn
+	state?: GroupSenderKeysState | null
+}): Promise<{
+	state: GroupSenderKeysState | null
+	ackSharedKeyIds: string[]
+}> => {
+	const response = await params.getSharedSecretKey({
+		variables: {
+			chatId: params.chatId,
+			secretSessionId: params.secretSessionId
+		},
+		fetchPolicy: 'network-only'
+	})
+	const packets =
+		response.data?.getSessionSharedSecretKeys.filter(
+			packet => (packet as any).keyKind === GROUP_SENDER_KEY_KIND
+		) ?? []
+
+	if (packets.length === 0) {
+		return { state: params.state ?? null, ackSharedKeyIds: [] }
+	}
+
+	const ikPrivHex = params.mySecretPreKey.ikPriv || ''
+	const spkPrivHex = params.mySecretPreKey.spkPriv || ''
+	if (!ikPrivHex || !spkPrivHex) {
+		return { state: params.state ?? null, ackSharedKeyIds: [] }
+	}
+
+	const ikPriv = await importPrivateRaw(fromHex(ikPrivHex))
+	const spkPriv = await importPrivateRaw(fromHex(spkPrivHex))
+	let nextState = params.state ?? null
+	const ackSharedKeyIds: string[] = []
+
+	for (const packet of packets) {
+		try {
+			const opkPriv = await resolveMyUsedOpkPrivateKey({
+				chatId: params.chatId,
+				secretSessionId: params.secretSessionId,
+				usedOpk: packet.usedOpk ?? null,
+				mySecretPreKey: params.mySecretPreKey,
+				preKeysPub: params.preKeysPub,
+				getPreKeys: params.getPreKeys
+			})
+
+			const { sessionKey: pairSessionKey } = await finalizeSessionX3DH({
+				bobIKPriv: ikPriv,
+				bobSPKPriv: spkPriv,
+				opkPriv,
+				envelope: {
+					ikAPub: packet.ikPub,
+					ekAPub: packet.ekPub,
+					usedOpk: packet.usedOpk ?? null,
+					ukm: packet.ukm
+				}
+			})
+
+			const senderIkPub =
+				packet.ikPub ||
+				params.preKeysPub.find(
+					bundle => bundle.secretSessionId === packet.fromSessionId
+				)?.ikPub ||
+				params.preKeysPub.find(bundle => bundle.userId === packet.fromUserId)
+					?.ikPub
+			if (!senderIkPub) continue
+
+			const pubKey = await importPublicRaw(fromHex(senderIkPub))
+			const ekAPubRaw = fromHex(packet.ekPub)
+			const ikAPubRaw = fromHex(packet.ikPub)
+			const aad = new Uint8Array([
+				...new TextEncoder().encode('GROUPSENDERKEYv1'),
+				...ikAPubRaw,
+				...ekAPubRaw
+			])
+			const sigOk = await verifyBytes(
+				pubKey,
+				new Uint8Array([
+					...aad,
+					...fromHex(packet.iv),
+					...fromHex(packet.encryptedKey)
+				]),
+				fromHex(packet.sig)
+			)
+			if (!sigOk) continue
+
+			const decrypted = await decryptKuz(
+				pairSessionKey,
+				fromHex(packet.iv),
+				fromHex(packet.encryptedKey)
+			)
+			const payload = JSON.parse(decodeUtf8(decrypted) || '{}')
+			nextState = acceptGroupSenderKeyDistribution({
+				state: nextState,
+				payload
+			})
+			ackSharedKeyIds.push(packet.id)
+		} catch (error) {
+			console.warn(
+				`[SecretChat][SenderKey] Packet ${packet.id} failed:`,
+				error
+			)
+		}
+	}
+
+	if (nextState) {
+		await saveGroupSenderKeys(params.chatId, params.groupId, nextState)
+	}
+
+	return { state: nextState, ackSharedKeyIds }
+}
+
+const decryptGroupSenderQueuedMessageAction = async (params: {
+	msg: SessionSecretMessageRecord
+	chat: any
+	chatId: string
+	state: GroupSenderKeysState
+}): Promise<{
+	state: GroupSenderKeysState
+	message?: MessageType
+}> => {
+	const senderKeyId = (params.msg as any).senderKeyId as string | null
+	const senderKeyEpoch = (params.msg as any).senderKeyEpoch as number | null
+	const senderKeyIteration = (params.msg as any)
+		.senderKeyIteration as number | null
+	if (!senderKeyId || senderKeyEpoch == null || senderKeyIteration == null) {
+		return { state: params.state }
+	}
+
+	const receivedState = params.state.received[senderKeyId]
+	if (!receivedState) {
+		return { state: params.state }
+	}
+
+	const decrypted = await decryptGroupSenderMessage({
+		chatId: params.chatId,
+		state: receivedState,
+		envelope: {
+			iv: params.msg.iv,
+			ct: params.msg.encryptedMessage,
+			sig: params.msg.sig,
+			senderKeyId,
+			senderKeyEpoch,
+			senderKeyIteration
+		}
+	})
+	const nextState: GroupSenderKeysState = {
+		...params.state,
+		received: {
+			...params.state.received,
+			[senderKeyId]: decrypted.nextState
+		}
+	}
+	const sender = params.chat.members.find(
+		(member: any) => member.user.id === params.msg.fromUserId
+	)?.user
+
+	return {
+		state: nextState,
+		message: createLocalSecretMessage({
+			plaintext: decrypted.decrypted,
+			senderId: params.msg.fromUserId,
+			senderUsername: sender?.username || 'user',
+			chatName: params.chat.chatName,
+			messageId: params.msg.id,
+			createdAt: params.msg.createdAt
+		})
+	}
+}
+
 /**
  * Обработка сообщения из подписки
  */
@@ -939,6 +1251,53 @@ export const processSecretSubscriptionAction = async (params: {
 			return {}
 		}
 	} catch {}
+
+	if (chat.isGroup) {
+		const senderKeyId = (msg as any).senderKeyId as string | null
+		if (!senderKeyId) {
+			return { ackMessageIds: msg.id ? [msg.id] : [] }
+		}
+
+		let senderState = await loadGroupSenderKeys(chatId, groupId)
+		let ackSharedKeyIds: string[] = []
+		if (!senderState?.received?.[senderKeyId]) {
+			const accepted = await acceptGroupSenderKeyPacketsAction({
+				chatId,
+				groupId,
+				secretSessionId,
+				mySecretPreKey,
+				preKeysPub,
+				getPreKeys,
+				getSharedSecretKey,
+				state: senderState
+			})
+			senderState = accepted.state
+			ackSharedKeyIds = accepted.ackSharedKeyIds
+		}
+
+		if (!senderState?.received?.[senderKeyId]) {
+			return { ackSharedKeyIds }
+		}
+
+		try {
+			const decrypted = await decryptGroupSenderQueuedMessageAction({
+				msg,
+				chat,
+				chatId,
+				state: senderState
+			})
+			await saveGroupSenderKeys(chatId, groupId, decrypted.state)
+			processedRef?.current?.add(`${msg.iv}.${msg.sig}`)
+			return {
+				newMessage: decrypted.message,
+				ackMessageIds: decrypted.message && msg.id ? [msg.id] : [],
+				ackSharedKeyIds
+			}
+		} catch (error) {
+			console.warn('[SecretChat][SenderKey][Sub] decrypt failed:', error)
+			return { ackSharedKeyIds }
+		}
+	}
 
 	let currentSession = sessionKey
 	let ackSharedKeyIds: string[] = []
@@ -1056,6 +1415,89 @@ export const pullSecretMessagesAction = async (params: {
 
 	if (!chat || preKeysPub.length === 0 || !mySecretPreKey || !chatId)
 		return { newMessages: [] }
+
+	if (chat.isGroup) {
+		const unreadMessagesResponse = await getSecretMessages({
+			variables: { chatId, secretSessionId },
+			fetchPolicy: 'network-only'
+		})
+		const unreadMessages =
+			unreadMessagesResponse.data?.getSessionSecretMessages ?? []
+
+		let senderState = await loadGroupSenderKeys(chatId, groupId)
+		const accepted = await acceptGroupSenderKeyPacketsAction({
+			chatId,
+			groupId,
+			secretSessionId,
+			mySecretPreKey,
+			preKeysPub,
+			getPreKeys,
+			getSharedSecretKey: getSharedSecretKey!,
+			state: senderState
+		})
+		senderState = accepted.state
+		const ackSharedKeyIds = [...accepted.ackSharedKeyIds]
+
+		const collected: MessageType[] = []
+		const ackMessageIds: string[] = []
+
+		for (const msg of unreadMessages) {
+			const key = `${msg.iv}.${msg.sig}`
+			if (processedRef?.current?.has(key)) continue
+
+			const senderKeyId = (msg as any).senderKeyId as string | null
+			if (!senderKeyId) {
+				ackMessageIds.push(msg.id)
+				continue
+			}
+
+			if (!senderState?.received?.[senderKeyId]) {
+				const retryAccepted = await acceptGroupSenderKeyPacketsAction({
+					chatId,
+					groupId,
+					secretSessionId,
+					mySecretPreKey,
+					preKeysPub,
+					getPreKeys,
+					getSharedSecretKey: getSharedSecretKey!,
+					state: senderState
+				})
+				senderState = retryAccepted.state
+				ackSharedKeyIds.push(...retryAccepted.ackSharedKeyIds)
+			}
+
+			if (!senderState?.received?.[senderKeyId]) {
+				continue
+			}
+
+			try {
+				const decrypted = await decryptGroupSenderQueuedMessageAction({
+					msg,
+					chat,
+					chatId,
+					state: senderState
+				})
+				senderState = decrypted.state
+				if (decrypted.message) {
+					collected.push(decrypted.message)
+					ackMessageIds.push(msg.id)
+					processedRef?.current?.add(key)
+				}
+			} catch (error) {
+				console.warn('[SecretChat][SenderKey][Pull] decrypt failed:', error)
+			}
+		}
+
+		if (senderState) {
+			await saveGroupSenderKeys(chatId, groupId, senderState)
+		}
+
+		return {
+			newMessages: collected,
+			ackMessageIds,
+			ackSharedKeyIds
+		}
+	}
 
 	let currentSession = sessionKey
 	let needPersistKey = false
@@ -1357,6 +1799,152 @@ export const sendSecretMessageAction = async (params: {
 				}
 			}
 			mySecretPreKeyLocal = mk.toStore
+		}
+
+		if (chat.isGroup && !isSaved) {
+			const groupRecipientUserIds: string[] = Array.from(
+				new Set(
+					(chat.members || [])
+						.map((member: any) => member.user.id)
+						.filter((id: unknown): id is string => typeof id === 'string')
+				)
+			)
+
+			try {
+				const preKeysResponse = await getPreKeys({
+					variables: { chatId }
+				})
+				currentPreKeys =
+					preKeysResponse.data?.getSecretSessionPreKeys ?? currentPreKeys
+			} catch {}
+
+			let groupTargetBundles = getTargetBundles(
+				currentPreKeys,
+				groupRecipientUserIds,
+				secretSessionId
+			)
+			if (groupTargetBundles.length === 0) {
+				try {
+					const preKeysResponse = await getPreKeys({
+						variables: { chatId }
+					})
+					currentPreKeys =
+						preKeysResponse.data?.getSecretSessionPreKeys ??
+						currentPreKeys
+					groupTargetBundles = getTargetBundles(
+						currentPreKeys,
+						groupRecipientUserIds,
+						secretSessionId
+					)
+				} catch {}
+			}
+
+			if (groupTargetBundles.length === 0) {
+				return {
+					newMessage,
+					errorMessage: 'Session prekeys участников не найдены'
+				}
+			}
+
+			let senderState =
+				(await loadGroupSenderKeys(chatId, groupId)) ??
+				(await createGroupSenderKeyState({
+					chatId,
+					groupId,
+					epoch: 1
+				}))
+
+			if (!senderState.own) {
+				const created = await createGroupSenderKeyState({
+					chatId,
+					groupId,
+					epoch: senderState.activeEpoch
+				})
+				senderState = {
+					...created,
+					received: senderState.received
+				}
+			}
+
+			const shared = await shareGroupSenderKeyWithBundlesAction({
+				chatId,
+				groupId,
+				userId,
+				fromSessionId: secretSessionId,
+				state: senderState,
+				mySecretPreKey: mySecretPreKeyLocal,
+				preKeysPub: currentPreKeys,
+				targetBundles: groupTargetBundles,
+				getPreKeys,
+				sendSharedSecretKey
+			})
+			if (!shared.success) {
+				return {
+					newMessage,
+					errorMessage: shared.errorMessage
+				}
+			}
+			senderState = shared.state
+
+			const own = senderState.own
+			if (!own) {
+				return {
+					newMessage,
+					errorMessage: 'Sender key не подготовлен'
+				}
+			}
+
+			const encrypted = await encryptGroupSenderMessage({
+				chatId,
+				own,
+				plaintext
+			})
+			senderState = {
+				...senderState,
+				own: encrypted.nextOwn
+			}
+			await saveGroupSenderKeys(chatId, groupId, senderState)
+
+			const targetSessionIds = Array.from(
+				new Set(groupTargetBundles.map(bundle => bundle.secretSessionId))
+			)
+			const targetUserIds = Array.from(
+				new Set(groupTargetBundles.map(bundle => bundle.userId))
+			)
+
+			const sentMessage = await sendMessageToClients({
+				variables: {
+					data: {
+						chatId,
+						encryptedMessage: encrypted.envelope.ct,
+						groupId,
+						fromSessionId: secretSessionId,
+						iv: encrypted.envelope.iv,
+						ukm: null,
+						sig: encrypted.envelope.sig,
+						senderKeyId: encrypted.envelope.senderKeyId,
+						senderKeyEpoch: encrypted.envelope.senderKeyEpoch,
+						senderKeyIteration:
+							encrypted.envelope.senderKeyIteration,
+						toUserIds: targetUserIds,
+						toSessionIds: targetSessionIds,
+						secretAttachmentIds: uploadedAttachmentIds
+					} as any
+				}
+			})
+			const serverMessage = sentMessage.data?.sendSessionSecretMessage
+
+			return {
+				newMessage: serverMessage
+					? {
+							...newMessage,
+							id: serverMessage.id,
+							createdAt: serverMessage.createdAt
+					  }
+					: newMessage,
+				sessionKey: null,
+				needPersistKey: false
+			}
 		}
 
 		let activeSessionKey = sessionKey
@@ -1671,6 +2259,7 @@ export const shareSessionKeyWithBundlesAction = async (params: {
 					fromSessionId,
 					toUserId: recipientBundle.userId,
 					toSessionId: recipientBundle.secretSessionId,
+					keyKind: SESSION_SHARED_KEY_KIND,
 					ikPub: myBundle.ikPub,
 					ekPub: toHex(ekAPubRaw),
 					usedOpk:

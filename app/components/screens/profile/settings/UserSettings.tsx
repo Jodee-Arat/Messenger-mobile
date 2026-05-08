@@ -1,7 +1,7 @@
 import {
 	ArrowLeft,
-	ChevronRight,
 	Check,
+	ChevronRight,
 	Globe,
 	Monitor,
 	Moon,
@@ -23,13 +23,14 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { useCurrentUser } from '@/hooks/useCurrentUser'
+import ProtectedScreenState from '@/components/ui/ProtectedScreenState'
+
 import { useAuth } from '@/hooks/useAuth'
+import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
-import { resetToAuth } from '@/navigation/navigate'
 
-import ProtectedScreenState from '@/components/ui/ProtectedScreenState'
+import { goBackOrHome, resetToAuth } from '@/navigation/navigate'
 
 import ChangeAvatarForm from './ChangeAvatarForm'
 import ChangeInfoForm from './ChangeInfoForm'
@@ -101,7 +102,7 @@ const UserSettings = () => {
 		},
 		{
 			key: 'security',
-			label: 'Security',
+			label: t('securityTab'),
 			icon: (
 				<Shield
 					size={16}
@@ -166,7 +167,7 @@ const UserSettings = () => {
 					}}
 				>
 					<TouchableOpacity
-						onPress={() => navigation.goBack()}
+						onPress={() => goBackOrHome(navigation)}
 						activeOpacity={0.7}
 						style={{
 							width: 40,
@@ -613,7 +614,9 @@ const UserSettings = () => {
 						<View style={{ paddingHorizontal: 16, marginTop: 8 }}>
 							<TouchableOpacity
 								activeOpacity={0.7}
-								onPress={() => navigation.navigate('BlockedUsers')}
+								onPress={() =>
+									navigation.navigate('BlockedUsers')
+								}
 								style={{
 									backgroundColor: colors.card,
 									borderRadius: 16,

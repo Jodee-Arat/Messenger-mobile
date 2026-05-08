@@ -9,7 +9,6 @@ import { chatEvents } from '@/utils/chatEvents'
 import {
 	createSecretChat,
 	deleteSecretChat,
-	loadMyKeys,
 	updateSecretChatUpdatedAt
 } from '@/utils/secret-chat/secretChat'
 import {
@@ -26,7 +25,6 @@ import {
 	useChatUpdatedSubscription,
 	useDeleteChatMutation,
 	useFindAllChatsByGroupQuery,
-	useGetSessionSharedSecretKeysLazyQuery,
 	usePinChatMutation,
 	useUnPinChatMutation,
 	useUpdatePinnedChatsOrderMutation
@@ -123,9 +121,6 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 			secretSessionId: secretSessionId ?? ''
 		},
 		skip: !userId || !secretSessionId
-	})
-	const [getSessionSharedSecretKeys] = useGetSessionSharedSecretKeysLazyQuery({
-		fetchPolicy: 'network-only'
 	})
 
 	const [deleteChat, { loading: isLoadingDeleteChat }] =
@@ -253,27 +248,11 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 					continue
 				}
 
-				const localKeys = await loadMyKeys(chat.id, chat.groupId)
-				if (
-					localKeys?.sessionKeyHex?.length ||
-					readySecretChatIdsRef.current.has(chat.id)
-				) {
+				if (readySecretChatIdsRef.current.has(chat.id)) {
 					continue
 				}
 
-				const queuedSharedKeys =
-					(
-						await getSessionSharedSecretKeys({
-							variables: {
-								chatId: chat.id,
-								secretSessionId
-							},
-							fetchPolicy: 'network-only'
-						})
-					).data?.getSessionSharedSecretKeys ?? []
-				const hasQueuedSharedKey = queuedSharedKeys.length > 0
-
-				if (hasQueuedSharedKey) {
+				if (chat.isGroup) {
 					readySecretChatIdsRef.current.add(chat.id)
 					continue
 				}
@@ -288,7 +267,7 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 		}
 
 		setDisabledChatIds(nextDisabledIds)
-	}, [allChatsRaw, getSessionSharedSecretKeys, groupId, secretSessionId])
+	}, [allChatsRaw, groupId, secretSessionId])
 
 	useEffect(() => {
 		if (!allChatsData?.findAllChatsByGroup) return

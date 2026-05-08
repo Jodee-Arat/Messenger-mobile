@@ -937,6 +937,9 @@ export type QueueSecretMessageModel = {
   isKey: Scalars['Boolean']['output'];
   iv: Scalars['String']['output'];
   secretAttachmentIds: Array<Scalars['String']['output']>;
+  senderKeyEpoch?: Maybe<Scalars['Int']['output']>;
+  senderKeyId?: Maybe<Scalars['String']['output']>;
+  senderKeyIteration?: Maybe<Scalars['Int']['output']>;
   sig: Scalars['String']['output'];
   toSessionIds: Array<Scalars['String']['output']>;
   toUserIds: Array<Scalars['String']['output']>;
@@ -958,6 +961,9 @@ export type QueueSharedSecretKeyModel = {
   id: Scalars['ID']['output'];
   ikPub: Scalars['String']['output'];
   iv: Scalars['String']['output'];
+  keyKind: Scalars['String']['output'];
+  senderKeyEpoch?: Maybe<Scalars['Int']['output']>;
+  senderKeyId?: Maybe<Scalars['String']['output']>;
   sig: Scalars['String']['output'];
   toSessionId?: Maybe<Scalars['String']['output']>;
   toUserId: Scalars['String']['output'];
@@ -1086,6 +1092,9 @@ export type SessionSecretMessageInput = {
   isKey?: InputMaybe<Scalars['Boolean']['input']>;
   iv: Scalars['String']['input'];
   secretAttachmentIds?: InputMaybe<Array<Scalars['String']['input']>>;
+  senderKeyEpoch?: InputMaybe<Scalars['Int']['input']>;
+  senderKeyId?: InputMaybe<Scalars['String']['input']>;
+  senderKeyIteration?: InputMaybe<Scalars['Int']['input']>;
   sig: Scalars['String']['input'];
   toSessionIds: Array<Scalars['String']['input']>;
   toUserIds: Array<Scalars['String']['input']>;
@@ -1100,6 +1109,9 @@ export type SessionSharedSecretKeyInput = {
   groupId?: InputMaybe<Scalars['String']['input']>;
   ikPub: Scalars['String']['input'];
   iv: Scalars['String']['input'];
+  keyKind?: InputMaybe<Scalars['String']['input']>;
+  senderKeyEpoch?: InputMaybe<Scalars['Int']['input']>;
+  senderKeyId?: InputMaybe<Scalars['String']['input']>;
   sig: Scalars['String']['input'];
   toSessionId: Scalars['String']['input'];
   toUserId: Scalars['String']['input'];
@@ -1802,14 +1814,14 @@ export type SendSessionSecretMessageMutationVariables = Exact<{
 }>;
 
 
-export type SendSessionSecretMessageMutation = { __typename?: 'Mutation', sendSessionSecretMessage: { __typename?: 'QueueSecretMessageModel', id: string, groupId: string, isKey: boolean, chatId: string, fromUserId: string, fromSessionId?: string | null, toUserIds: Array<string>, toSessionIds: Array<string>, whoCheckedIds: Array<string>, checkedSessionIds: Array<string>, ukm?: string | null, iv: string, encryptedMessage: string, sig: string, secretAttachmentIds: Array<string>, ikPub?: string | null, ekPub?: string | null, usedOpk?: string | null, createdAt: any, updatedAt: any } };
+export type SendSessionSecretMessageMutation = { __typename?: 'Mutation', sendSessionSecretMessage: { __typename?: 'QueueSecretMessageModel', id: string, groupId: string, isKey: boolean, chatId: string, fromUserId: string, fromSessionId?: string | null, toUserIds: Array<string>, toSessionIds: Array<string>, whoCheckedIds: Array<string>, checkedSessionIds: Array<string>, ukm?: string | null, senderKeyId?: string | null, senderKeyEpoch?: number | null, senderKeyIteration?: number | null, iv: string, encryptedMessage: string, sig: string, secretAttachmentIds: Array<string>, ikPub?: string | null, ekPub?: string | null, usedOpk?: string | null, createdAt: any, updatedAt: any } };
 
 export type SendSessionSharedSecretKeyMutationVariables = Exact<{
   data: SessionSharedSecretKeyInput;
 }>;
 
 
-export type SendSessionSharedSecretKeyMutation = { __typename?: 'Mutation', sendSessionSharedSecretKey: { __typename?: 'QueueSharedSecretKeyModel', id: string, groupId: string, chatId: string, fromUserId: string, toUserId: string, fromSessionId?: string | null, toSessionId?: string | null, ikPub: string, ekPub: string, usedOpk?: string | null, ukm: string, iv: string, encryptedKey: string, sig: string, createdAt: any, updatedAt: any } };
+export type SendSessionSharedSecretKeyMutation = { __typename?: 'Mutation', sendSessionSharedSecretKey: { __typename?: 'QueueSharedSecretKeyModel', id: string, groupId: string, chatId: string, fromUserId: string, toUserId: string, fromSessionId?: string | null, toSessionId?: string | null, keyKind: string, senderKeyId?: string | null, senderKeyEpoch?: number | null, ikPub: string, ekPub: string, usedOpk?: string | null, ukm: string, iv: string, encryptedKey: string, sig: string, createdAt: any, updatedAt: any } };
 
 export type UploadSecretAttachmentMutationVariables = Exact<{
   data: UploadSecretAttachmentInput;
@@ -1964,7 +1976,7 @@ export type GetSessionSecretMessagesQueryVariables = Exact<{
 }>;
 
 
-export type GetSessionSecretMessagesQuery = { __typename?: 'Query', getSessionSecretMessages: Array<{ __typename?: 'QueueSecretMessageModel', id: string, groupId: string, isKey: boolean, chatId: string, fromUserId: string, fromSessionId?: string | null, toUserIds: Array<string>, toSessionIds: Array<string>, whoCheckedIds: Array<string>, checkedSessionIds: Array<string>, ukm?: string | null, iv: string, encryptedMessage: string, sig: string, secretAttachmentIds: Array<string>, ikPub?: string | null, ekPub?: string | null, usedOpk?: string | null, createdAt: any, updatedAt: any }> };
+export type GetSessionSecretMessagesQuery = { __typename?: 'Query', getSessionSecretMessages: Array<{ __typename?: 'QueueSecretMessageModel', id: string, groupId: string, isKey: boolean, chatId: string, fromUserId: string, fromSessionId?: string | null, toUserIds: Array<string>, toSessionIds: Array<string>, whoCheckedIds: Array<string>, checkedSessionIds: Array<string>, ukm?: string | null, senderKeyId?: string | null, senderKeyEpoch?: number | null, senderKeyIteration?: number | null, iv: string, encryptedMessage: string, sig: string, secretAttachmentIds: Array<string>, ikPub?: string | null, ekPub?: string | null, usedOpk?: string | null, createdAt: any, updatedAt: any }> };
 
 export type GetSessionSharedSecretKeysQueryVariables = Exact<{
   chatId: Scalars['String']['input'];
@@ -1972,7 +1984,7 @@ export type GetSessionSharedSecretKeysQueryVariables = Exact<{
 }>;
 
 
-export type GetSessionSharedSecretKeysQuery = { __typename?: 'Query', getSessionSharedSecretKeys: Array<{ __typename?: 'QueueSharedSecretKeyModel', id: string, groupId: string, chatId: string, fromUserId: string, toUserId: string, fromSessionId?: string | null, toSessionId?: string | null, ikPub: string, ekPub: string, usedOpk?: string | null, ukm: string, iv: string, encryptedKey: string, sig: string, createdAt: any, updatedAt: any }> };
+export type GetSessionSharedSecretKeysQuery = { __typename?: 'Query', getSessionSharedSecretKeys: Array<{ __typename?: 'QueueSharedSecretKeyModel', id: string, groupId: string, chatId: string, fromUserId: string, toUserId: string, fromSessionId?: string | null, toSessionId?: string | null, keyKind: string, senderKeyId?: string | null, senderKeyEpoch?: number | null, ikPub: string, ekPub: string, usedOpk?: string | null, ukm: string, iv: string, encryptedKey: string, sig: string, createdAt: any, updatedAt: any }> };
 
 export type FindAllUsersQueryVariables = Exact<{
   filters?: InputMaybe<FiltersInput>;
@@ -2154,7 +2166,7 @@ export type AddSessionSecretMessageSubscriptionVariables = Exact<{
 }>;
 
 
-export type AddSessionSecretMessageSubscription = { __typename?: 'Subscription', addSessionSecretMessage: { __typename?: 'QueueSecretMessageModel', id: string, groupId: string, isKey: boolean, chatId: string, fromUserId: string, fromSessionId?: string | null, toUserIds: Array<string>, toSessionIds: Array<string>, whoCheckedIds: Array<string>, checkedSessionIds: Array<string>, ukm?: string | null, iv: string, encryptedMessage: string, sig: string, secretAttachmentIds: Array<string>, ikPub?: string | null, ekPub?: string | null, usedOpk?: string | null, createdAt: any, updatedAt: any } };
+export type AddSessionSecretMessageSubscription = { __typename?: 'Subscription', addSessionSecretMessage: { __typename?: 'QueueSecretMessageModel', id: string, groupId: string, isKey: boolean, chatId: string, fromUserId: string, fromSessionId?: string | null, toUserIds: Array<string>, toSessionIds: Array<string>, whoCheckedIds: Array<string>, checkedSessionIds: Array<string>, ukm?: string | null, senderKeyId?: string | null, senderKeyEpoch?: number | null, senderKeyIteration?: number | null, iv: string, encryptedMessage: string, sig: string, secretAttachmentIds: Array<string>, ikPub?: string | null, ekPub?: string | null, usedOpk?: string | null, createdAt: any, updatedAt: any } };
 
 export type AddSessionSharedSecretKeySubscriptionVariables = Exact<{
   userId: Scalars['String']['input'];
@@ -2162,7 +2174,7 @@ export type AddSessionSharedSecretKeySubscriptionVariables = Exact<{
 }>;
 
 
-export type AddSessionSharedSecretKeySubscription = { __typename?: 'Subscription', addSessionSharedSecretKey?: { __typename?: 'QueueSharedSecretKeyModel', id: string, groupId: string, chatId: string, fromUserId: string, toUserId: string, fromSessionId?: string | null, toSessionId?: string | null, ikPub: string, ekPub: string, usedOpk?: string | null, ukm: string, iv: string, encryptedKey: string, sig: string, createdAt: any, updatedAt: any } | null };
+export type AddSessionSharedSecretKeySubscription = { __typename?: 'Subscription', addSessionSharedSecretKey?: { __typename?: 'QueueSharedSecretKeyModel', id: string, groupId: string, chatId: string, fromUserId: string, toUserId: string, fromSessionId?: string | null, toSessionId?: string | null, keyKind: string, senderKeyId?: string | null, senderKeyEpoch?: number | null, ikPub: string, ekPub: string, usedOpk?: string | null, ukm: string, iv: string, encryptedKey: string, sig: string, createdAt: any, updatedAt: any } | null };
 
 export type SecretKeyRotationSubscriptionVariables = Exact<{
   userId: Scalars['String']['input'];
@@ -4284,6 +4296,9 @@ export const SendSessionSecretMessageDocument = gql`
     whoCheckedIds
     checkedSessionIds
     ukm
+    senderKeyId
+    senderKeyEpoch
+    senderKeyIteration
     iv
     encryptedMessage
     sig
@@ -4332,6 +4347,9 @@ export const SendSessionSharedSecretKeyDocument = gql`
     toUserId
     fromSessionId
     toSessionId
+    keyKind
+    senderKeyId
+    senderKeyEpoch
     ikPub
     ekPub
     usedOpk
@@ -5575,6 +5593,9 @@ export const GetSessionSecretMessagesDocument = gql`
     whoCheckedIds
     checkedSessionIds
     ukm
+    senderKeyId
+    senderKeyEpoch
+    senderKeyIteration
     iv
     encryptedMessage
     sig
@@ -5631,6 +5652,9 @@ export const GetSessionSharedSecretKeysDocument = gql`
     toUserId
     fromSessionId
     toSessionId
+    keyKind
+    senderKeyId
+    senderKeyEpoch
     ikPub
     ekPub
     usedOpk
@@ -6749,6 +6773,9 @@ export const AddSessionSecretMessageDocument = gql`
     whoCheckedIds
     checkedSessionIds
     ukm
+    senderKeyId
+    senderKeyEpoch
+    senderKeyIteration
     iv
     encryptedMessage
     sig
@@ -6795,6 +6822,9 @@ export const AddSessionSharedSecretKeyDocument = gql`
     toUserId
     fromSessionId
     toSessionId
+    keyKind
+    senderKeyId
+    senderKeyEpoch
     ikPub
     ekPub
     usedOpk

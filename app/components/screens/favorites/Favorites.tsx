@@ -39,6 +39,8 @@ import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 
 import { saveSavedSecretLinkedWebSessionId } from '@/services/secret/saved-secret-link.service'
 
+import { goBackOrHome } from '@/navigation/navigate'
+
 import {
 	createMyKey,
 	loadMyKeys,
@@ -464,7 +466,7 @@ const Favorites: FC = () => {
 				}}
 			>
 				<TouchableOpacity
-					onPress={() => navigation.goBack()}
+					onPress={() => goBackOrHome(navigation)}
 					activeOpacity={0.6}
 					className='h-10 w-10 items-center justify-center rounded-full'
 					style={{ backgroundColor: colors.backgroundTertiary }}

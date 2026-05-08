@@ -23,7 +23,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 import { useUser } from '@/hooks/useUser'
-import { resetToAuth, resetToHome } from '@/navigation/navigate'
+import { goBackOrHome, resetToAuth, resetToHome } from '@/navigation/navigate'
 
 import {
 	type GroupSettingsRouteParams,
@@ -206,7 +206,7 @@ const GroupSettings = () => {
 				onPress: async () => {
 					const success = await handleDeleteGroup()
 					if (success) {
-						navigation.goBack()
+						goBackOrHome(navigation)
 					}
 				}
 			}

@@ -1,4 +1,5 @@
 import { Directory, File, Paths } from 'expo-file-system'
+import * as SecureStore from 'expo-secure-store'
 
 import { SecretChatData } from '@/hooks/useSecretChat'
 
@@ -10,17 +11,24 @@ import {
 	FindAllChatsByGroupQuery,
 	FindChatByChatIdQuery
 } from '@/graphql/generated/output'
-import { PreKeyBundleClient, PreKeyBundleServer } from '@/libs/e2ee/gost'
+import {
+	GroupSenderKeysState,
+	PreKeyBundleClient,
+	PreKeyBundleServer
+} from '@/libs/e2ee/gost'
 
 export const FILE = {
 	MESSAGES: 'messages.json',
 	CHAT: 'chat.json',
 	KEYS: 'keys.json',
 	MY_KEYS: 'my-keys.json',
+	SENDER_KEYS: 'sender-keys.json',
 	PRE_KEYS: 'pre-keys.json'
 }
 
 const BASE_DIRECTORY = Paths.document
+const SECURE_KEY_PRE_KEYS = 'secret.preKeys'
+const SECURE_KEY_INDEX = 'secret.index'
 const INTERNAL_DOCUMENT_DIRS_TO_KEEP = new Set(['downloads'])
 const SECRET_CACHE_DIRS = [
 	'secret-attachments',
@@ -36,6 +44,35 @@ export type MyKeys = {
 	sessionKeyHex: Uint8Array<ArrayBufferLike>
 }
 
+const normalizeMyKeys = (parsed: any): MyKeys | null => {
+	try {
+		let arr: number[] | null = null
+
+		if (Array.isArray(parsed?.sessionKeyHex)) {
+			arr = parsed.sessionKeyHex as number[]
+		} else if (
+			parsed?.sessionKeyHex &&
+			typeof parsed.sessionKeyHex === 'object'
+		) {
+			const keys = Object.keys(parsed.sessionKeyHex)
+				.map(k => Number(k))
+				.sort((a, b) => a - b)
+			arr = keys.map(k => Number(parsed.sessionKeyHex[String(k)]))
+		} else if (Array.isArray(parsed?.sessionKey)) {
+			arr = parsed.sessionKey as number[]
+		}
+
+		if (arr && arr.length > 0) {
+			return { sessionKeyHex: new Uint8Array(arr) }
+		}
+
+		return null
+	} catch (e) {
+		console.warn('Не удалось прочитать ключи:', e)
+		return null
+	}
+}
+
 const getGroupDirectory = (groupId: string) =>
 	new Directory(BASE_DIRECTORY, groupId)
 
@@ -49,6 +86,71 @@ const getChatFile = (groupId: string, chatId: string, fileName: string) =>
 	new File(getChatDirectory(groupId, chatId), fileName)
 
 const getRootFile = (fileName: string) => new File(BASE_DIRECTORY, fileName)
+
+const toSecureStoreKeyPart = (value: string) =>
+	value.replace(/[^A-Za-z0-9._-]/g, '_')
+
+const getSessionKeySecureStoreKey = (groupId: string, chatId: string) =>
+	`secret.sessionKey.${toSecureStoreKeyPart(groupId)}.${toSecureStoreKeyPart(chatId)}`
+
+const getSenderKeysSecureStoreKey = (groupId: string, chatId: string) =>
+	`secret.senderKeys.${toSecureStoreKeyPart(groupId)}.${toSecureStoreKeyPart(chatId)}`
+
+const readSecureIndex = async (): Promise<string[]> => {
+	const raw = await SecureStore.getItemAsync(SECURE_KEY_INDEX)
+	if (!raw) return []
+
+	try {
+		const parsed = JSON.parse(raw)
+		return Array.isArray(parsed)
+			? parsed.filter((key): key is string => typeof key === 'string')
+			: []
+	} catch {
+		return []
+	}
+}
+
+const writeSecureIndex = async (keys: string[]) => {
+	await SecureStore.setItemAsync(
+		SECURE_KEY_INDEX,
+		JSON.stringify(Array.from(new Set(keys)).sort())
+	)
+}
+
+const trackSecureKey = async (key: string) => {
+	const keys = await readSecureIndex()
+	if (keys.includes(key)) return
+	await writeSecureIndex([...keys, key])
+}
+
+const untrackSecureKey = async (key: string) => {
+	const keys = await readSecureIndex()
+	const next = keys.filter(item => item !== key)
+	if (next.length === keys.length) return
+	await writeSecureIndex(next)
+}
+
+const setSecureJson = async (key: string, data: unknown) => {
+	await SecureStore.setItemAsync(key, JSON.stringify(data))
+	await trackSecureKey(key)
+}
+
+const getSecureJson = async <T>(key: string): Promise<T | null> => {
+	const raw = await SecureStore.getItemAsync(key)
+	if (!raw) return null
+	return JSON.parse(raw) as T
+}
+
+const deleteSecureKey = async (key: string) => {
+	await SecureStore.deleteItemAsync(key)
+	await untrackSecureKey(key)
+}
+
+const deleteFileIfExists = (file: File) => {
+	if (file.exists) {
+		file.delete()
+	}
+}
 
 const ensureDirectory = (directory: Directory) => {
 	if (!directory.exists) {
@@ -72,20 +174,53 @@ const readJson = async <T>(file: File): Promise<T | null> => {
 // тут можно продумать еще мб чтобы как-то сохранялись ключи при перезаходе в юзеровский аккаунт
 //  Сохранение моего PreKey в файл JSON
 export async function upsertMyPreKeyJSON(preKey: PreKeyBundle) {
-	writeJson(getRootFile(FILE.PRE_KEYS), preKey)
+	await SecureStore.setItemAsync(SECURE_KEY_PRE_KEYS, JSON.stringify(preKey))
+	deleteFileIfExists(getRootFile(FILE.PRE_KEYS))
 }
 
 export async function loadMyPreKeyJSON(): Promise<PreKeyBundle | null> {
-	return readJson<PreKeyBundle>(getRootFile(FILE.PRE_KEYS))
+	const stored = await getSecureJson<PreKeyBundle>(SECURE_KEY_PRE_KEYS)
+	if (stored) return stored
+
+	const legacyFile = getRootFile(FILE.PRE_KEYS)
+	const legacy = await readJson<PreKeyBundle>(legacyFile)
+	if (!legacy) return null
+
+	await SecureStore.setItemAsync(SECURE_KEY_PRE_KEYS, JSON.stringify(legacy))
+	deleteFileIfExists(legacyFile)
+	return legacy
 }
 
 export async function clearLocalSecretChatData() {
 	try {
-		for (const fileName of [FILE.PRE_KEYS, FILE.MY_KEYS, FILE.KEYS]) {
-			const file = getRootFile(fileName)
-			if (file.exists) {
-				file.delete()
+		const indexedSecureKeys = await readSecureIndex()
+		for (const key of indexedSecureKeys) {
+			await SecureStore.deleteItemAsync(key)
+		}
+		await SecureStore.deleteItemAsync(SECURE_KEY_PRE_KEYS)
+		await SecureStore.deleteItemAsync(SECURE_KEY_INDEX)
+
+		for (const entry of BASE_DIRECTORY.list()) {
+			if (!(entry instanceof Directory)) continue
+			for (const chatEntry of entry.list()) {
+				if (!(chatEntry instanceof Directory)) continue
+				await SecureStore.deleteItemAsync(
+					getSessionKeySecureStoreKey(entry.name, chatEntry.name)
+				)
+				await SecureStore.deleteItemAsync(
+					getSenderKeysSecureStoreKey(entry.name, chatEntry.name)
+				)
 			}
+		}
+
+		for (const fileName of [
+			FILE.PRE_KEYS,
+			FILE.MY_KEYS,
+			FILE.KEYS,
+			FILE.SENDER_KEYS
+		]) {
+			const file = getRootFile(fileName)
+			deleteFileIfExists(file)
 		}
 
 		for (const entry of BASE_DIRECTORY.list()) {
@@ -203,6 +338,7 @@ export async function loadAllSecretChats(
  */
 export async function deleteMyKeys(chatId: string, groupId: string) {
 	try {
+		await deleteSecureKey(getSessionKeySecureStoreKey(groupId, chatId))
 		const file = getChatFile(groupId, chatId, FILE.MY_KEYS)
 		if (file.exists) {
 			file.delete()
@@ -213,11 +349,41 @@ export async function deleteMyKeys(chatId: string, groupId: string) {
 	}
 }
 
+export async function deleteGroupSenderKeys(chatId: string, groupId: string) {
+	try {
+		await deleteSecureKey(getSenderKeysSecureStoreKey(groupId, chatId))
+		const file = getChatFile(groupId, chatId, FILE.SENDER_KEYS)
+		if (file.exists) {
+			file.delete()
+		}
+	} catch (error) {
+		console.error('[SecretChat] Failed to delete sender-keys.json:', error)
+	}
+}
+
+export async function resetLegacyGroupSecretState(
+	chatId: string,
+	groupId: string
+) {
+	await deleteMyKeys(chatId, groupId)
+	try {
+		const messagesFile = getChatFile(groupId, chatId, FILE.MESSAGES)
+		if (messagesFile.exists) {
+			messagesFile.delete()
+		}
+	} catch (error) {
+		console.error('[SecretChat] Failed to reset legacy group history:', error)
+	}
+}
+
 /**
  *  Удаление чата (вместе с его папкой)
  */
 export async function deleteSecretChat(groupId: string, chatId: string) {
 	try {
+		await deleteSecureKey(getSessionKeySecureStoreKey(groupId, chatId))
+		await deleteSecureKey(getSenderKeysSecureStoreKey(groupId, chatId))
+
 		const chatDirectory = getChatDirectory(groupId, chatId)
 
 		if (!chatDirectory.exists) {
@@ -262,6 +428,20 @@ export async function fileExist(
 	groupId: string,
 	fileName: string
 ) {
+	if (fileName === FILE.MY_KEYS) {
+		const secureValue = await SecureStore.getItemAsync(
+			getSessionKeySecureStoreKey(groupId, chatId)
+		)
+		return Boolean(secureValue) || getChatFile(groupId, chatId, fileName).exists
+	}
+
+	if (fileName === FILE.SENDER_KEYS) {
+		const secureValue = await SecureStore.getItemAsync(
+			getSenderKeysSecureStoreKey(groupId, chatId)
+		)
+		return Boolean(secureValue) || getChatFile(groupId, chatId, fileName).exists
+	}
+
 	return getChatFile(groupId, chatId, fileName).exists
 }
 
@@ -273,9 +453,10 @@ export async function createMyKey(
 ) {
 	ensureDirectory(getChatDirectory(groupId, chatId))
 
-	writeJson(getChatFile(groupId, chatId, FILE.MY_KEYS), {
+	await setSecureJson(getSessionKeySecureStoreKey(groupId, chatId), {
 		sessionKeyHex: Array.from(sessionKey as Uint8Array)
 	})
+	deleteFileIfExists(getChatFile(groupId, chatId, FILE.MY_KEYS))
 	notifySecretChatReady(groupId, chatId)
 }
 
@@ -284,11 +465,25 @@ export async function loadMyKeys(
 	chatId: string,
 	groupId: string
 ): Promise<MyKeys | null> {
+	const secureKey = getSessionKeySecureStoreKey(groupId, chatId)
+	const stored = await getSecureJson<any>(secureKey)
+	const normalizedStored = normalizeMyKeys(stored)
+	if (normalizedStored) return normalizedStored
+
 	const parsed = await readJson<any>(
 		getChatFile(groupId, chatId, FILE.MY_KEYS)
 	)
 	if (!parsed) {
 		return null
+	}
+
+	const normalizedLegacy = normalizeMyKeys(parsed)
+	if (normalizedLegacy) {
+		await setSecureJson(secureKey, {
+			sessionKeyHex: Array.from(normalizedLegacy.sessionKeyHex as Uint8Array)
+		})
+		deleteFileIfExists(getChatFile(groupId, chatId, FILE.MY_KEYS))
+		return normalizedLegacy
 	}
 
 	try {
@@ -318,6 +513,55 @@ export async function loadMyKeys(
 	} catch (e) {
 		console.warn('Не удалось прочитать ключи из файла:', e)
 		return null
+	}
+}
+
+export async function saveGroupSenderKeys(
+	chatId: string,
+	groupId: string,
+	state: GroupSenderKeysState
+) {
+	try {
+		await setSecureJson(getSenderKeysSecureStoreKey(groupId, chatId), state)
+		deleteFileIfExists(getChatFile(groupId, chatId, FILE.SENDER_KEYS))
+		notifySecretChatReady(groupId, chatId)
+	} catch (error) {
+		console.error(
+			'[SecretChat] Failed to persist sender keys in SecureStore',
+			error
+		)
+		throw error
+	}
+}
+
+export async function loadGroupSenderKeys(
+	chatId: string,
+	groupId: string
+): Promise<GroupSenderKeysState | null> {
+	const secureKey = getSenderKeysSecureStoreKey(groupId, chatId)
+	const stored = await getSecureJson<GroupSenderKeysState>(secureKey)
+	if (stored?.version === 1 && stored.chatId === chatId) {
+		return {
+			...stored,
+			own: stored.own ?? null,
+			received: stored.received ?? {}
+		}
+	}
+
+	const parsed = await readJson<GroupSenderKeysState>(
+		getChatFile(groupId, chatId, FILE.SENDER_KEYS)
+	)
+	if (!parsed || parsed.version !== 1 || parsed.chatId !== chatId) {
+		return null
+	}
+
+	await setSecureJson(secureKey, parsed)
+	deleteFileIfExists(getChatFile(groupId, chatId, FILE.SENDER_KEYS))
+
+	return {
+		...parsed,
+		own: parsed.own ?? null,
+		received: parsed.received ?? {}
 	}
 }
 

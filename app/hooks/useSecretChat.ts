@@ -10,8 +10,13 @@ import {
 	createMyKey,
 	createSecretChat,
 	deleteMyKeys,
+	fileExist,
+	FILE,
+	loadGroupSenderKeys,
 	loadMessages,
 	loadMyKeys,
+	resetLegacyGroupSecretState,
+	saveGroupSenderKeys,
 	saveMessages
 } from '@/utils/secret-chat/secretChat'
 
@@ -56,7 +61,7 @@ import {
 	useSendSessionSharedSecretKeyMutation,
 	useUploadSecretAttachmentMutation
 } from '@/graphql/generated/output'
-import { PreKeyBundleClient } from '@/libs/e2ee/gost'
+import { PreKeyBundleClient, createGroupSenderKeyState } from '@/libs/e2ee/gost'
 
 const mergeUniqueMessages = (
 	existing: MessageType[],
@@ -134,6 +139,8 @@ const getGroupKeyInitiatorId = (
 
 const hasCreatorMetadata = (chat: GroupChatShape) =>
 	(chat?.members ?? []).some(member => typeof member.isCreator === 'boolean')
+
+const GROUP_COMMON_KEY_FLOW_ENABLED = false
 
 /**
  * hook for secret chats — both group and DM.
@@ -294,7 +301,7 @@ export const useSecretChat = (
 				secretSessionId,
 				chat: currentChat,
 				sessionKey: currentSessionKey,
-				mySecretPreKey,
+				mySecretPreKey: mySecretPreKey!,
 				preKeysPub,
 				getSecretMessages,
 				getSharedSecretKey,
@@ -414,6 +421,11 @@ export const useSecretChat = (
 
 		const bootstrapChatState = async () => {
 			if (isDM) await ensureDirectChatDirectory(chatId)
+			if (!isDM && (await fileExist(chatId, effectiveGroupId, FILE.MY_KEYS))) {
+				await resetLegacyGroupSecretState(chatId, effectiveGroupId)
+				setSessionKey(null)
+				setMessages([])
+			}
 
 			const chatMessagesData = await loadMessages(chatId, effectiveGroupId)
 			if (isCancelled) return
@@ -431,82 +443,10 @@ export const useSecretChat = (
 
 	const receiveAndPersistGroupKey = useCallback(
 		async (reason: 'bootstrap' | 'subscription' | 'poll') => {
-			if (!chat || !mySecretPreKey || preKeysPub.length === 0 || !secretSessionId)
-				return false
-			if (groupKeyReceiveInFlightRef.current) return false
-
-			groupKeyReceiveInFlightRef.current = true
-
-			try {
-				const fromDisk = await loadMyKeys(chatId, effectiveGroupId)
-				if (fromDisk?.sessionKeyHex) {
-					setSessionKey(fromDisk.sessionKeyHex)
-					setLoadingMessage('')
-					return true
-				}
-
-				const initiatorUserId = getGroupKeyInitiatorId(chat, userId)
-				const receiveResult = await receiveGroupKeyAction({
-					chatId,
-					groupId: effectiveGroupId,
-					userId,
-					secretSessionId,
-					preferredFromUserId: initiatorUserId,
-					mySecretPreKey,
-					preKeysPub,
-					getPreKeys,
-					getSharedSecretKey
-				})
-
-				if (!receiveResult.groupKey) return false
-
-				setSessionKey(receiveResult.groupKey)
-				if (receiveResult.needPersistKey) {
-					await createMyKey(
-						chatId,
-						effectiveGroupId,
-						userId,
-						receiveResult.groupKey
-					)
-
-					if (receiveResult.ackSharedKeyIds?.length) {
-						try {
-							await ackSharedSecretKeys({
-								variables: {
-									chatId,
-									secretSessionId,
-									sharedKeyIds: receiveResult.ackSharedKeyIds
-								}
-							})
-						} catch (error) {
-							console.warn(
-								'[SecretChat] Failed to ack group shared secret key:',
-								error
-							)
-						}
-					}
-				}
-
-				setLoadingMessage('')
-				await syncUnreadMessages(chat, receiveResult.groupKey)
-				return true
-			} finally {
-				groupKeyReceiveInFlightRef.current = false
-			}
+			void reason
+			return false
 		},
-		[
-			ackSharedSecretKeys,
-			chat,
-			chatId,
-			effectiveGroupId,
-			getPreKeys,
-			getSharedSecretKey,
-			mySecretPreKey,
-			preKeysPub,
-			secretSessionId,
-			syncUnreadMessages,
-			userId
-		]
+		[]
 	)
 
 	// Подписка на новые секретные сообщения
@@ -524,7 +464,7 @@ export const useSecretChat = (
 				secretSessionId: secretSessionId!,
 				sessionKey,
 				preKeysPub,
-				mySecretPreKey,
+				mySecretPreKey: mySecretPreKey!,
 				getPreKeys,
 				processedRef
 			})
@@ -596,7 +536,7 @@ export const useSecretChat = (
 	// Для DM разрешаем запуск без sessionKey - pullSecretMessagesAction
 	// сам выполнит X3DH-финализацию по первому сообщению в очереди
 	useEffect(() => {
-		if (!sessionKey && !isDM) return
+		if (!sessionKey && !isDM && !chat?.isGroup) return
 		;(async () => {
 			await syncUnreadMessages(chat, sessionKey)
 		})()
@@ -604,7 +544,7 @@ export const useSecretChat = (
 
 	// ─── Group-only: инициализация/получение группового ключа ───────
 	useEffect(() => {
-		if (isDM) return
+		if (isDM || !GROUP_COMMON_KEY_FLOW_ENABLED) return
 		if (sessionKey || !chat || !mySecretPreKey || preKeysPub.length === 0)
 			return
 		if (!hasCreatorMetadata(chat)) return
@@ -630,7 +570,7 @@ export const useSecretChat = (
 				groupId: effectiveGroupId,
 				userId,
 				secretSessionId: secretSessionId!,
-				mySecretPreKey,
+				mySecretPreKey: mySecretPreKey!,
 				preKeysPub,
 				getPreKeys,
 				sendSharedSecretKey
@@ -671,7 +611,7 @@ export const useSecretChat = (
 
 	// ─── Group-only: подписка на получение общего ключа ──────────────
 	useEffect(() => {
-		if (isDM) return
+		if (isDM || !GROUP_COMMON_KEY_FLOW_ENABLED) return
 		const sharedKeyData = subSharedSecretKey?.addSessionSharedSecretKey
 		if (!sharedKeyData || sessionKey || !mySecretPreKey) return
 		;(async () => {
@@ -687,7 +627,7 @@ export const useSecretChat = (
 	])
 
 	useEffect(() => {
-		if (isDM) return
+		if (isDM || !GROUP_COMMON_KEY_FLOW_ENABLED) return
 		if (sessionKey || !chat || !mySecretPreKey || preKeysPub.length === 0)
 			return
 		if (!hasCreatorMetadata(chat)) return
@@ -733,10 +673,45 @@ export const useSecretChat = (
 		const rotationData = subKeyRotation?.secretKeyRotation
 		if (!rotationData || rotationData.chatId !== chatId) return
 		;(async () => {
-			await deleteMyKeys(chatId, effectiveGroupId)
+			try {
+				const [chatResponse, preKeysResponse] = await Promise.all([
+					refetchServerChat(),
+					getPreKeys({
+						variables: { chatId },
+						fetchPolicy: 'network-only'
+					})
+				])
+
+				if (chatResponse.data?.findChatByChatId) {
+					setChat(chatResponse.data.findChatByChatId)
+				}
+
+				if (preKeysResponse.data?.getSecretSessionPreKeys) {
+					setPreKeysPub(preKeysResponse.data.getSecretSessionPreKeys)
+				}
+			} catch (error) {
+				console.warn('[SecretChat] Failed to refresh after key rotation:', error)
+			}
+
+			const current = await loadGroupSenderKeys(chatId, effectiveGroupId)
+			const nextEpoch = (current?.activeEpoch ?? 0) + 1
+			const next = await createGroupSenderKeyState({
+				chatId,
+				groupId: effectiveGroupId,
+				epoch: nextEpoch
+			})
+			await saveGroupSenderKeys(chatId, effectiveGroupId, {
+				...next,
+				received: Object.fromEntries(
+					Object.entries(current?.received ?? {}).map(([key, value]) => [
+						key,
+						{ ...value, readOnly: true }
+					])
+				)
+			})
 			setSessionKey(null)
 		})()
-	}, [subKeyRotation, chatId, effectiveGroupId])
+	}, [subKeyRotation, chatId, effectiveGroupId, getPreKeys, isDM, refetchServerChat])
 
 	// отправка сообщения
 	const sendMessage = async (
@@ -889,6 +864,11 @@ export const useSecretChat = (
 	 * Отправить существующий групповой ключ новому участнику после приглашения.
 	 */
 	const sendKeyToNewMember = async (targetUserId: string) => {
+		void targetUserId
+		console.info(
+			'[SecretChat] Group sender keys are distributed before the next message'
+		)
+		return
 		if (!sessionKey || !mySecretPreKey || !secretSessionId) {
 			console.warn(
 				'[SecretChat] sendKeyToNewMember: нет sessionKey или mySecretPreKey'
@@ -901,8 +881,8 @@ export const useSecretChat = (
 			userId,
 			secretSessionId: secretSessionId!,
 			targetUserId,
-			sessionKey,
-			mySecretPreKey,
+			sessionKey: sessionKey!,
+			mySecretPreKey: mySecretPreKey!,
 			preKeysPub,
 			getPreKeys,
 			sendSharedSecretKey
@@ -934,6 +914,6 @@ export const useSecretChat = (
 		reload,
 		preKeysPub,
 		sendKeyToNewMember,
-		isKeyReady: sessionKey !== null
+		isKeyReady: isDM ? sessionKey !== null : Boolean(secretSessionId)
 	}
 }

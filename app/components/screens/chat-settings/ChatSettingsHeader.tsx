@@ -6,6 +6,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 
+import { goBackOrHome } from '@/navigation/navigate'
+
 interface ChatSettingsHeaderProps {
 	chatName: string
 }
@@ -28,7 +30,7 @@ const ChatSettingsHeader: FC<ChatSettingsHeaderProps> = ({ chatName }) => {
 		>
 			<View className='flex-row items-center'>
 				<TouchableOpacity
-					onPress={() => navigation.goBack()}
+					onPress={() => goBackOrHome(navigation)}
 					activeOpacity={0.7}
 					className='w-10 h-10 rounded-full items-center justify-center mr-3'
 					style={{ backgroundColor: colors.backgroundTertiary }}

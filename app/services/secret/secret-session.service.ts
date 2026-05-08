@@ -65,10 +65,6 @@ export const toSecretSessionPreKeyInput = (
 })
 
 export const persistMobileSecretPreKey = async (preKey: PreKeyBundle) => {
-	await AsyncStorage.setItem(
-		EnumAsyncStorage.MY_PRE_KEYS,
-		JSON.stringify(preKey.toStore)
-	)
 	await upsertMyPreKeyJSON(preKey)
 }
 

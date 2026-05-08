@@ -2,9 +2,6 @@ import { useEffect, useState } from 'react'
 import type { ReactNativeFile } from 'extract-files'
 import { Alert } from 'react-native'
 
-import { useSendSecretKey } from '@/hooks/useSendSecretKey'
-import { useUser } from '@/hooks/useUser'
-
 import '../../../types/chat-role.type'
 import { ChatRoleData } from '../../../types/chat-role.type'
 
@@ -32,8 +29,6 @@ import {
 } from '@/graphql/generated/output'
 
 export function useChatSettings(chatId: string) {
-	const { userId } = useUser()
-
 	const {
 		data: chatData,
 		error: chatError,
@@ -47,13 +42,6 @@ export function useChatSettings(chatId: string) {
 	const chat = chatData?.findChatByChatId
 	const members = chat?.members ?? []
 	const isDM = !!chat && !chat.isGroup
-
-	const { sendKeyToNewMember } = useSendSecretKey(
-		chatId,
-		userId ?? '',
-		(chat as any)?.groupId ?? null,
-		!!chat?.isSecret && !!userId
-	)
 
 	const {
 		data: memberRoleData,
@@ -348,16 +336,6 @@ export function useChatSettings(chatId: string) {
 			await inviteMemberMutation({
 				variables: { chatId, targetUserId }
 			})
-			if (chat?.isSecret) {
-				try {
-					await sendKeyToNewMember(targetUserId)
-				} catch (keyErr) {
-					console.error(
-						'[useChatSettings] sendKeyToNewMember failed:',
-						keyErr
-					)
-				}
-			}
 			refetchChat()
 		} catch (error) {
 			Alert.alert(

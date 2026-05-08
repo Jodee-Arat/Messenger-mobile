@@ -5,7 +5,7 @@ import {
 	NavigationContainer
 } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
-import { FC, useEffect, useState } from 'react'
+import { FC, useState } from 'react'
 import { View } from 'react-native'
 
 import BottomMenu from '@/components/layout/bottom-menu/BottomMenu'
@@ -31,16 +31,6 @@ const Navigation: FC = () => {
 	const [currentRoute, setCurrentRoute] = useState<string | undefined>(
 		undefined
 	)
-
-	useEffect(() => {
-		setCurrentRoute(navigationRef.getCurrentRoute()?.name)
-		const listener = navigationRef.addListener('state', () =>
-			setCurrentRoute(navigationRef.getCurrentRoute()?.name)
-		)
-		return () => {
-			navigationRef.removeListener('state', listener)
-		}
-	}, [])
 
 	const backgroundColor = colors.background
 	const navigationTheme = {
@@ -83,7 +73,16 @@ const Navigation: FC = () => {
 
 	return (
 		<>
-			<NavigationContainer ref={navigationRef} theme={navigationTheme}>
+			<NavigationContainer
+				ref={navigationRef}
+				theme={navigationTheme}
+				onReady={() =>
+					setCurrentRoute(navigationRef.getCurrentRoute()?.name)
+				}
+				onStateChange={() =>
+					setCurrentRoute(navigationRef.getCurrentRoute()?.name)
+				}
+			>
 				<AppModalProvider>
 					<Stack.Navigator
 						screenOptions={{

@@ -27,6 +27,13 @@ const LOGOUT_USER_MUTATION = `
 	}
 `
 
+type LogoutGraphQLError = {
+	message?: string
+	extensions?: {
+		code?: string
+	}
+}
+
 const readAccessToken = async () => {
 	const asyncStorageToken = await AsyncStorage.getItem(
 		EnumAsyncStorage.ACCESS_TOKEN
@@ -39,11 +46,31 @@ const readAccessToken = async () => {
 	return SecureStore.getItemAsync(EnumAsyncStorage.ACCESS_TOKEN)
 }
 
+const isUnauthorizedLogoutResponse = (
+	status: number,
+	errors: unknown[] | undefined
+) => {
+	if (status === 401) {
+		return true
+	}
+
+	return errors?.some(error => {
+		const graphQLError = error as LogoutGraphQLError
+		const message = graphQLError.message ?? ''
+
+		return (
+			graphQLError.extensions?.code === 'UNAUTHENTICATED' ||
+			message === 'Unauthorized' ||
+			message === 'Session not found'
+		)
+	})
+}
+
 const bestEffortLogoutAuthSession = async () => {
 	const accessToken = await readAccessToken()
 	const sessionId = await AsyncStorage.getItem(EnumAsyncStorage.SESSION_ID)
 
-	if (!accessToken && !sessionId) {
+	if (!accessToken) {
 		return false
 	}
 
@@ -79,6 +106,10 @@ const bestEffortLogoutAuthSession = async () => {
 			payload = responseText ? JSON.parse(responseText) : null
 		} catch {
 			payload = null
+		}
+
+		if (isUnauthorizedLogoutResponse(response.status, payload?.errors)) {
+			return false
 		}
 
 		if (!response.ok || payload?.errors?.length) {

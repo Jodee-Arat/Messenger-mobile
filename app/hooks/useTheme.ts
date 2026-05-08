@@ -101,6 +101,80 @@ export function useTheme() {
 type TranslationMap = Record<string, { ru: string; en: string }>
 
 const translations: TranslationMap = {
+	securityTab: { ru: 'Безопасность', en: 'Security' },
+	twoFactorAuthentication: {
+		ru: 'Двухфакторная аутентификация',
+		en: 'Two-Factor Authentication'
+	},
+	twoFactorAuthenticationDescription: {
+		ru: 'Добавьте дополнительный уровень защиты с помощью Google Authenticator или совместимого TOTP-приложения',
+		en: 'Add an extra layer of security using Google Authenticator or a compatible TOTP app'
+	},
+	totpActive: { ru: 'TOTP включен', en: 'TOTP Active' },
+	totpNotConfigured: { ru: 'TOTP не настроен', en: 'TOTP Not Configured' },
+	totpActiveDescription: {
+		ru: 'Аккаунт защищен двухфакторной аутентификацией. При входе потребуется TOTP-код.',
+		en: 'Your account is protected with two-factor authentication. A TOTP code is required when logging in.'
+	},
+	totpNotConfiguredDescription: {
+		ru: 'Включите TOTP, чтобы при входе требовался код из приложения-аутентификатора.',
+		en: 'Enable TOTP to require a code from your authenticator app when logging in.'
+	},
+	setUpTotp: { ru: 'Настроить TOTP', en: 'Set Up TOTP' },
+	totpScanQrOrCopyKey: {
+		ru: 'Отсканируйте QR-код или скопируйте ключ ниже',
+		en: 'Scan QR code or copy the key below'
+	},
+	totpSecretKey: { ru: 'Секретный ключ:', en: 'Secret Key:' },
+	tapToCopy: { ru: 'Нажмите, чтобы скопировать', en: 'Tap to copy' },
+	totpEnterCodeFromApp: {
+		ru: 'Введите 6-значный код из приложения:',
+		en: 'Enter the 6-digit code from your app:'
+	},
+	totpVerifyAndEnable: {
+		ru: 'Проверить и включить',
+		en: 'Verify & Enable'
+	},
+	disableTotp: { ru: 'Отключить TOTP', en: 'Disable TOTP' },
+	totpEnterCurrentCodeToDisableTitle: {
+		ru: 'Введите текущий TOTP-код для отключения',
+		en: 'Enter current TOTP code to disable'
+	},
+	totpDisableConfirmationDescription: {
+		ru: 'Это подтверждает, что пользователь, отключающий двухфакторную аутентификацию, все еще имеет доступ к приложению-аутентификатору.',
+		en: 'This confirms that the person turning off two-factor authentication still has access to the authenticator app.'
+	},
+	totpVerifyAndDisable: {
+		ru: 'Проверить и отключить',
+		en: 'Verify & Disable'
+	},
+	totpEnabledTitle: { ru: 'TOTP включен', en: 'TOTP Enabled' },
+	totpEnabledDescription: {
+		ru: 'Двухфакторная аутентификация активна',
+		en: 'Two-factor authentication is now active'
+	},
+	totpDisabledTitle: { ru: 'TOTP отключен', en: 'TOTP Disabled' },
+	totpDisabledDescription: {
+		ru: 'Двухфакторная аутентификация удалена',
+		en: 'Two-factor authentication has been removed'
+	},
+	totpVerificationFailed: {
+		ru: 'Проверка не пройдена',
+		en: 'Verification Failed'
+	},
+	totpInvalidCodeShort: { ru: 'Неверный код', en: 'Invalid code' },
+	totpEnterSixDigitCode: {
+		ru: 'Введите 6-значный код из приложения-аутентификатора',
+		en: 'Enter the 6-digit code from your authenticator app'
+	},
+	totpEnterCurrentCodeToDisable: {
+		ru: 'Введите текущий 6-значный TOTP-код, чтобы отключить защиту',
+		en: 'Enter your current 6-digit TOTP code to disable protection'
+	},
+	totpSecretCopied: {
+		ru: 'Секретный ключ скопирован в буфер обмена',
+		en: 'Secret key copied to clipboard'
+	},
 	/* ─── Profile ─── */
 	profile: { ru: 'Профиль', en: 'Profile' },
 	editProfile: { ru: 'Редактировать профиль', en: 'Edit Profile' },

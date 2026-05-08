@@ -39,7 +39,7 @@ import { useUser } from '@/hooks/useUser'
 
 import { chatEvents } from '@/utils/chatEvents'
 
-import { resetToAuth, resetToHome } from '@/navigation/navigate'
+import { goBackOrHome, resetToAuth, resetToHome } from '@/navigation/navigate'
 
 import ChatInviteMemberModal from '../chat-settings/ChatInviteMemberModal'
 
@@ -382,7 +382,7 @@ const DefaultChat: FC<DefaultChatProps> = ({
 							variables: { chatId }
 						})
 						chatEvents.emitLeave(chatId)
-						navigation.goBack()
+						goBackOrHome(navigation)
 					} catch {
 						Alert.alert(t('error') || 'Ошибка', t('leaveChatError'))
 					}
@@ -482,7 +482,7 @@ const DefaultChat: FC<DefaultChatProps> = ({
 	}
 
 	const goBack = () => {
-		navigation.goBack()
+		goBackOrHome(navigation)
 	}
 
 	const canOpenSettings = !!chat && !isBlockedChatAccess

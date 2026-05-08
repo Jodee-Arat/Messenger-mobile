@@ -36,6 +36,7 @@ import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 import { markDirectChatStarted } from '@/utils/direct-chat-visibility'
 
 import { TypeRootStackParamList } from '@/navigation/navigation.types'
+import { goBackOrHome } from '@/navigation/navigate'
 
 import FriendProfileSkeleton from './FriendProfileSkeleton'
 import {
@@ -314,7 +315,7 @@ const FriendProfile: FC = () => {
 						await removeFriend({
 							variables: { friendshipId: resolvedFriendshipId }
 						})
-						navigation.goBack()
+						goBackOrHome(navigation)
 					} catch (e: any) {
 						Alert.alert(t('error'), getGraphQLErrorMessage(e))
 					}
@@ -370,7 +371,7 @@ const FriendProfile: FC = () => {
 							],
 							awaitRefetchQueries: true
 						})
-						navigation.goBack()
+						goBackOrHome(navigation)
 					} catch (e: any) {
 						Alert.alert(t('error'), getGraphQLErrorMessage(e))
 					}
@@ -422,7 +423,7 @@ const FriendProfile: FC = () => {
 				}}
 			>
 				<TouchableOpacity
-					onPress={() => navigation.goBack()}
+					onPress={() => goBackOrHome(navigation)}
 					className='p-2 rounded-full mr-3'
 					style={{
 						backgroundColor: colors.backgroundSecondary

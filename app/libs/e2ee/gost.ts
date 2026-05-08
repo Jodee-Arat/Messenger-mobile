@@ -402,6 +402,7 @@ export function toHex(u8: Uint8Array): string {
 export function fromHex(hex: string): Uint8Array {
 	const s = hex.replace(/\s+/g, '').toLowerCase()
 	if (s.length % 2 !== 0) throw new Error('fromHex: invalid length')
+	if (!/^[0-9a-f]*$/.test(s)) throw new Error('fromHex: invalid hex')
 	const out = new Uint8Array(s.length / 2)
 	for (let i = 0; i < out.length; i++) {
 		out[i] = parseInt(s.substr(i * 2, 2), 16)
@@ -555,6 +556,11 @@ export async function exportPublicRaw(pub: CryptoKey): Promise<Raw> {
 	// `[E2EE:key] exportPublicRaw: ${u8.byteLength} байт | hex[0..8]: ${toHex(u8).slice(0, 16)}...`
 	// )
 	return u8
+}
+
+export async function exportPrivateRaw(priv: CryptoKey): Promise<Raw> {
+	const raw = await subtle().exportKey('raw', priv)
+	return new Uint8Array(raw)
 }
 
 export async function importPublicRaw(raw: any): Promise<CryptoKey> {
@@ -1361,6 +1367,324 @@ export async function decryptSessionMsgEnvelope(params: {
 		fromHex(envelope.ct)
 	)
 	return { decrypted: decodeUtf8(pt), sigOk }
+}
+
+export const GROUP_SENDER_KEY_KIND = 'GROUP_SENDER_KEY'
+export const SESSION_SHARED_KEY_KIND = 'SESSION_KEY'
+export const MAX_SENDER_KEY_SKIP = 100
+
+export type GroupSenderOwnState = {
+	senderKeyId: string
+	epoch: number
+	chainKey: string
+	iteration: number
+	signingKeyPriv: string
+	signingKeyPub: string
+	distributedToSessionIds: string[]
+	readOnly?: boolean
+}
+
+export type GroupSenderReceivedState = {
+	senderKeyId: string
+	senderUserId: string
+	senderSessionId: string
+	epoch: number
+	chainKey: string
+	iteration: number
+	signingKeyPub: string
+	skippedMessageKeys?: Record<string, string>
+	readOnly?: boolean
+}
+
+export type GroupSenderKeysState = {
+	version: 1
+	chatId: string
+	groupId: string
+	activeEpoch: number
+	own: GroupSenderOwnState | null
+	received: Record<string, GroupSenderReceivedState>
+}
+
+export type GroupSenderKeyDistributionPayload = {
+	kind: 'GROUP_SENDER_KEY_V1'
+	chatId: string
+	groupId: string
+	senderUserId: string
+	senderSessionId: string
+	senderKeyId: string
+	epoch: number
+	chainKey: string
+	iteration: number
+	signingKeyPub: string
+	createdAt: string
+}
+
+export type GroupSenderMsgEnvelope = SessionMsgEnvelope & {
+	senderKeyId: string
+	senderKeyEpoch: number
+	senderKeyIteration: number
+}
+
+const makeSenderKeyId = () => {
+	const bytes = new Uint8Array(16)
+	fillRandom(bytes)
+	return toHex(bytes)
+}
+
+const deriveGroupSenderMessageKey = async (
+	chainKey: Uint8Array,
+	iteration: number
+) =>
+	kdfStreebog(chainKey, utf8(`GROUP-SENDER-MESSAGE${iteration}`), 32, {
+		label: utf8('GROUP-SENDER')
+	})
+
+const deriveNextGroupSenderChainKey = async (chainKey: Uint8Array) =>
+	kdfStreebog(chainKey, utf8('GROUP-SENDER-CHAIN'), 32, {
+		label: utf8('GROUP-SENDER')
+	})
+
+const groupSenderMessageAad = (params: {
+	chatId: string
+	senderKeyId: string
+	epoch: number
+	iteration: number
+	iv: Uint8Array
+	ciphertext: Uint8Array
+}) =>
+	concatBytes(
+		utf8('GROUPMSGv1'),
+		utf8(params.chatId),
+		utf8(params.senderKeyId),
+		utf8(String(params.epoch)),
+		utf8(String(params.iteration)),
+		params.iv,
+		params.ciphertext
+	)
+
+export async function createGroupSenderKeyState(params: {
+	chatId: string
+	groupId: string
+	epoch?: number
+}): Promise<GroupSenderKeysState> {
+	const chainKey = await generateKuznechikKey()
+	const signingKeyPair = await generateLongTermKeyPair()
+
+	return {
+		version: 1,
+		chatId: params.chatId,
+		groupId: params.groupId,
+		activeEpoch: params.epoch ?? 1,
+		own: {
+			senderKeyId: makeSenderKeyId(),
+			epoch: params.epoch ?? 1,
+			chainKey: chainKey.keyHex,
+			iteration: 0,
+			signingKeyPriv: toHex(
+				await exportPrivateRaw(signingKeyPair.privateKey)
+			),
+			signingKeyPub: toHex(await exportPublicRaw(signingKeyPair.publicKey)),
+			distributedToSessionIds: []
+		},
+		received: {}
+	}
+}
+
+export function buildGroupSenderKeyDistribution(params: {
+	chatId: string
+	groupId: string
+	senderUserId: string
+	senderSessionId: string
+	own: GroupSenderOwnState
+}): GroupSenderKeyDistributionPayload {
+	return {
+		kind: 'GROUP_SENDER_KEY_V1',
+		chatId: params.chatId,
+		groupId: params.groupId,
+		senderUserId: params.senderUserId,
+		senderSessionId: params.senderSessionId,
+		senderKeyId: params.own.senderKeyId,
+		epoch: params.own.epoch,
+		chainKey: params.own.chainKey,
+		iteration: params.own.iteration,
+		signingKeyPub: params.own.signingKeyPub,
+		createdAt: new Date().toISOString()
+	}
+}
+
+export function acceptGroupSenderKeyDistribution(params: {
+	state: GroupSenderKeysState | null
+	payload: GroupSenderKeyDistributionPayload
+}): GroupSenderKeysState {
+	const base =
+		params.state ??
+		({
+			version: 1,
+			chatId: params.payload.chatId,
+			groupId: params.payload.groupId,
+			activeEpoch: params.payload.epoch,
+			own: null,
+			received: {}
+		} satisfies GroupSenderKeysState)
+
+	if (params.payload.kind !== 'GROUP_SENDER_KEY_V1') {
+		throw new Error('Unsupported group sender key payload')
+	}
+	if (params.payload.chatId !== base.chatId) {
+		throw new Error('Group sender key chat mismatch')
+	}
+
+	const existing = base.received[params.payload.senderKeyId]
+	if (existing && existing.epoch > params.payload.epoch) {
+		return base
+	}
+
+	return {
+		...base,
+		activeEpoch: Math.max(base.activeEpoch, params.payload.epoch),
+		received: {
+			...base.received,
+			[params.payload.senderKeyId]: {
+				senderKeyId: params.payload.senderKeyId,
+				senderUserId: params.payload.senderUserId,
+				senderSessionId: params.payload.senderSessionId,
+				epoch: params.payload.epoch,
+				chainKey: params.payload.chainKey,
+				iteration: params.payload.iteration,
+				signingKeyPub: params.payload.signingKeyPub,
+				skippedMessageKeys: existing?.skippedMessageKeys ?? {}
+			}
+		}
+	}
+}
+
+export async function encryptGroupSenderMessage(params: {
+	chatId: string
+	own: GroupSenderOwnState
+	plaintext: string | Uint8Array
+}): Promise<{
+	envelope: GroupSenderMsgEnvelope
+	nextOwn: GroupSenderOwnState
+}> {
+	const plaintextU8 =
+		typeof params.plaintext === 'string'
+			? utf8(params.plaintext)
+			: params.plaintext
+	const chainKey = fromHex(params.own.chainKey)
+	const iteration = params.own.iteration
+	const messageKey = await deriveGroupSenderMessageKey(chainKey, iteration)
+	const enc = await encryptKuz(messageKey, plaintextU8)
+	const signingKey = await importPrivateRaw(fromHex(params.own.signingKeyPriv))
+	const signature = await signBytes(
+		signingKey,
+		groupSenderMessageAad({
+			chatId: params.chatId,
+			senderKeyId: params.own.senderKeyId,
+			epoch: params.own.epoch,
+			iteration,
+			iv: enc.iv,
+			ciphertext: enc.ciphertext
+		})
+	)
+
+	return {
+		envelope: {
+			iv: toHex(enc.iv),
+			ct: toHex(enc.ciphertext),
+			sig: toHex(signature),
+			senderKeyId: params.own.senderKeyId,
+			senderKeyEpoch: params.own.epoch,
+			senderKeyIteration: iteration
+		},
+		nextOwn: {
+			...params.own,
+			chainKey: toHex(await deriveNextGroupSenderChainKey(chainKey)),
+			iteration: iteration + 1
+		}
+	}
+}
+
+export async function decryptGroupSenderMessage(params: {
+	chatId: string
+	state: GroupSenderReceivedState
+	envelope: GroupSenderMsgEnvelope
+}): Promise<{
+	decrypted: string
+	nextState: GroupSenderReceivedState
+}> {
+	const { state, envelope } = params
+	if (state.senderKeyId !== envelope.senderKeyId) {
+		throw new Error('Sender key id mismatch')
+	}
+	if (state.epoch !== envelope.senderKeyEpoch) {
+		throw new Error('Sender key epoch mismatch')
+	}
+
+	const skipped = { ...(state.skippedMessageKeys ?? {}) }
+	let messageKey: Uint8Array | null = null
+	let nextChainKey = fromHex(state.chainKey)
+	let nextIteration = state.iteration
+
+	if (envelope.senderKeyIteration < state.iteration) {
+		const skippedKey = skipped[String(envelope.senderKeyIteration)]
+		if (!skippedKey) {
+			throw new Error('Sender key iteration already consumed')
+		}
+		messageKey = fromHex(skippedKey)
+		delete skipped[String(envelope.senderKeyIteration)]
+	} else {
+		const gap = envelope.senderKeyIteration - state.iteration
+		if (gap > MAX_SENDER_KEY_SKIP) {
+			throw new Error('Sender key iteration gap is too large')
+		}
+
+		while (nextIteration < envelope.senderKeyIteration) {
+			const skippedKey = await deriveGroupSenderMessageKey(
+				nextChainKey,
+				nextIteration
+			)
+			skipped[String(nextIteration)] = toHex(skippedKey)
+			nextChainKey = await deriveNextGroupSenderChainKey(nextChainKey)
+			nextIteration += 1
+		}
+
+		messageKey = await deriveGroupSenderMessageKey(
+			nextChainKey,
+			envelope.senderKeyIteration
+		)
+		nextChainKey = await deriveNextGroupSenderChainKey(nextChainKey)
+		nextIteration = envelope.senderKeyIteration + 1
+	}
+
+	const iv = fromHex(envelope.iv)
+	const ciphertext = fromHex(envelope.ct)
+	const signingPub = await importPublicRaw(fromHex(state.signingKeyPub))
+	const sigOk = await verifyBytes(
+		signingPub,
+		groupSenderMessageAad({
+			chatId: params.chatId,
+			senderKeyId: envelope.senderKeyId,
+			epoch: envelope.senderKeyEpoch,
+			iteration: envelope.senderKeyIteration,
+			iv,
+			ciphertext
+		}),
+		fromHex(envelope.sig)
+	)
+	if (!sigOk) {
+		throw new Error('Sender key signature is invalid')
+	}
+
+	const pt = await decryptKuz(messageKey, iv, ciphertext)
+	return {
+		decrypted: decodeUtf8(pt),
+		nextState: {
+			...state,
+			chainKey: toHex(nextChainKey),
+			iteration: nextIteration,
+			skippedMessageKeys: skipped
+		}
+	}
 }
 
 const makeHash = async (data: Uint8Array) => {

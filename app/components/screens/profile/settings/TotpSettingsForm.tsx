@@ -1,18 +1,12 @@
 import * as Clipboard from 'expo-clipboard'
 import { Shield, ShieldCheck, ShieldOff } from 'lucide-react-native'
 import { useEffect, useState } from 'react'
-import {
-	Image,
-	Text,
-	TextInput,
-	TouchableOpacity,
-	View
-} from 'react-native'
+import { Image, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import Toast from 'react-native-toast-message'
 
 import Loader from '@/components/ui/Loader'
 
-import { useTheme } from '@/hooks/useTheme'
+import { useTheme, useTranslation } from '@/hooks/useTheme'
 
 import {
 	useDisableTotpMutation,
@@ -27,6 +21,7 @@ interface TotpSettingsFormProps {
 
 const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 	const { colors } = useTheme()
+	const { t } = useTranslation()
 
 	const { data: profileData, refetch } = useFindProfileQuery()
 	const isTotpEnabled = profileData?.findProfile?.isTotpEnabled ?? false
@@ -48,7 +43,7 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 			onError(error) {
 				Toast.show({
 					type: 'error',
-					text1: 'Error',
+					text1: t('error'),
 					text2: error.message
 				})
 			}
@@ -58,8 +53,8 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 		onCompleted() {
 			Toast.show({
 				type: 'success',
-				text1: 'TOTP Enabled',
-				text2: 'Two-factor authentication is now active'
+				text1: t('totpEnabledTitle'),
+				text2: t('totpEnabledDescription')
 			})
 			setSetupData(null)
 			setVerifyCode('')
@@ -68,8 +63,8 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 		onError(error) {
 			Toast.show({
 				type: 'error',
-				text1: 'Verification Failed',
-				text2: error.message || 'Invalid code'
+				text1: t('totpVerificationFailed'),
+				text2: error.message || t('totpInvalidCodeShort')
 			})
 		}
 	})
@@ -78,8 +73,8 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 		onCompleted() {
 			Toast.show({
 				type: 'success',
-				text1: 'TOTP Disabled',
-				text2: 'Two-factor authentication has been removed'
+				text1: t('totpDisabledTitle'),
+				text2: t('totpDisabledDescription')
 			})
 			setDisableCode('')
 			setIsDisableMode(false)
@@ -88,7 +83,7 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 		onError(error) {
 			Toast.show({
 				type: 'error',
-				text1: 'Error',
+				text1: t('error'),
 				text2: error.message
 			})
 		}
@@ -109,8 +104,8 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 		await Clipboard.setStringAsync(secret)
 		Toast.show({
 			type: 'success',
-			text1: 'Copied!',
-			text2: 'Secret key copied to clipboard'
+			text1: t('copied'),
+			text2: t('totpSecretCopied')
 		})
 	}
 
@@ -118,8 +113,8 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 		if (verifyCode.length !== 6) {
 			Toast.show({
 				type: 'error',
-				text1: 'Invalid code',
-				text2: 'Enter the 6-digit code from your authenticator app'
+				text1: t('totpInvalidCodeShort'),
+				text2: t('totpEnterSixDigitCode')
 			})
 			return
 		}
@@ -130,8 +125,8 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 		if (disableCode.length !== 6) {
 			Toast.show({
 				type: 'error',
-				text1: 'Invalid code',
-				text2: 'Enter your current 6-digit TOTP code to disable protection'
+				text1: t('totpInvalidCodeShort'),
+				text2: t('totpEnterCurrentCodeToDisable')
 			})
 			return
 		}
@@ -153,7 +148,7 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 					paddingLeft: 4
 				}}
 			>
-				Two-Factor Authentication
+				{t('twoFactorAuthentication')}
 			</Text>
 			<Text
 				style={{
@@ -163,8 +158,7 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 					paddingLeft: 4
 				}}
 			>
-				Add an extra layer of security using Google Authenticator or a
-				compatible TOTP app
+				{t('twoFactorAuthenticationDescription')}
 			</Text>
 
 			{/* Status card */}
@@ -200,7 +194,9 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 							marginLeft: 10
 						}}
 					>
-						{isTotpEnabled ? 'TOTP Active' : 'TOTP Not Configured'}
+						{isTotpEnabled
+							? t('totpActive')
+							: t('totpNotConfigured')}
 					</Text>
 				</View>
 				<Text
@@ -210,8 +206,8 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 					}}
 				>
 					{isTotpEnabled
-						? 'Your account is protected with two-factor authentication. A TOTP code is required each time you log in.'
-						: 'Enable TOTP to require a code from your authenticator app when logging in.'}
+						? t('totpActiveDescription')
+						: t('totpNotConfiguredDescription')}
 				</Text>
 			</View>
 
@@ -238,7 +234,7 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 								color: '#fff'
 							}}
 						>
-							Set Up TOTP
+							{t('setUpTotp')}
 						</Text>
 					)}
 				</TouchableOpacity>
@@ -265,7 +261,7 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 							textAlign: 'center'
 						}}
 					>
-						Scan QR code or copy the key below
+						{t('totpScanQrOrCopyKey')}
 					</Text>
 
 					{/* QR Code */}
@@ -288,7 +284,7 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 							marginBottom: 6
 						}}
 					>
-						Secret Key:
+						{t('totpSecretKey')}
 					</Text>
 					<TouchableOpacity
 						activeOpacity={0.7}
@@ -326,7 +322,7 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 							marginBottom: 16
 						}}
 					>
-						Tap to copy
+						{t('tapToCopy')}
 					</Text>
 
 					{/* Verification input */}
@@ -338,7 +334,7 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 							alignSelf: 'flex-start'
 						}}
 					>
-						Enter the 6-digit code from your app:
+						{t('totpEnterCodeFromApp')}
 					</Text>
 					<TextInput
 						value={verifyCode}
@@ -395,7 +391,7 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 									color: colors.textSecondary
 								}}
 							>
-								Cancel
+								{t('cancel')}
 							</Text>
 						</TouchableOpacity>
 						<TouchableOpacity
@@ -420,7 +416,7 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 										color: '#fff'
 									}}
 								>
-									Verify & Enable
+									{t('totpVerifyAndEnable')}
 								</Text>
 							)}
 						</TouchableOpacity>
@@ -454,7 +450,7 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 							color: 'hsl(0, 70%, 55%)'
 						}}
 					>
-						Disable TOTP
+						{t('disableTotp')}
 					</Text>
 				</TouchableOpacity>
 			)}
@@ -477,7 +473,7 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 							marginBottom: 8
 						}}
 					>
-						Enter current TOTP code to disable
+						{t('totpEnterCurrentCodeToDisableTitle')}
 					</Text>
 					<Text
 						style={{
@@ -486,8 +482,7 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 							marginBottom: 12
 						}}
 					>
-						This confirms that the person turning off two-factor
-						authentication still has access to the authenticator app.
+						{t('totpDisableConfirmationDescription')}
 					</Text>
 					<TextInput
 						value={disableCode}
@@ -543,7 +538,7 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 									color: colors.textSecondary
 								}}
 							>
-								Cancel
+								{t('cancel')}
 							</Text>
 						</TouchableOpacity>
 						<TouchableOpacity
@@ -568,7 +563,7 @@ const TotpSettingsForm = ({ refreshSignal = 0 }: TotpSettingsFormProps) => {
 										color: '#fff'
 									}}
 								>
-									Verify & Disable
+									{t('totpVerifyAndDisable')}
 								</Text>
 							)}
 						</TouchableOpacity>

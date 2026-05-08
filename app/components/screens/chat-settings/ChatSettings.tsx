@@ -23,9 +23,10 @@ import { useAuth } from '@/hooks/useAuth'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 import { useUser } from '@/hooks/useUser'
-import { resetToAuth, resetToHome } from '@/navigation/navigate'
+import { goBackOrHome, resetToAuth, resetToHome } from '@/navigation/navigate'
 
 import { chatEvents } from '@/utils/chatEvents'
+import { deleteSecretChat } from '@/utils/secret-chat/secretChat'
 
 import {
 	type ChatSettingsRouteParams,
@@ -235,7 +236,7 @@ const ChatSettings = () => {
 					onPress: async () => {
 						const success = await handleDeleteChat()
 						if (success) {
-							navigation.goBack()
+							goBackOrHome(navigation)
 						}
 					}
 				}
@@ -255,7 +256,10 @@ const ChatSettings = () => {
 							variables: { chatId }
 						})
 						chatEvents.emitLeave(chatId)
-						navigation.goBack()
+						if (chat?.isSecret && chat.groupId) {
+							await deleteSecretChat(chat.groupId, chatId)
+						}
+						goBackOrHome(navigation)
 					} catch {
 						Alert.alert(t('error') || 'Ошибка', t('leaveChatError'))
 					}

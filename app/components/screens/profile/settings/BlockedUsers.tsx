@@ -21,6 +21,8 @@ import {
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useTypedNavigation } from '@/hooks/useTypedNavigation'
 
+import { goBackOrHome } from '@/navigation/navigate'
+
 import {
 	FindAllChatsByUserDocument,
 	GetBlockedUsersDocument,
@@ -121,7 +123,7 @@ const BlockedUsers: FC = () => {
 			}}
 		>
 			<TouchableOpacity
-				onPress={() => navigation.goBack()}
+				onPress={() => goBackOrHome(navigation)}
 				activeOpacity={0.7}
 				style={{
 					width: 40,

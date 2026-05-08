@@ -1,5 +1,6 @@
 import {
 	CommonActions,
+	NavigationProp,
 	createNavigationContainerRef
 } from '@react-navigation/native'
 
@@ -31,4 +32,17 @@ export function resetToHome() {
 			CommonActions.reset({ index: 0, routes: [{ name: 'Home' }] })
 		)
 	}
+}
+
+export function goBackOrHome(
+	navigation: NavigationProp<TypeRootStackParamList>
+) {
+	if (navigation.canGoBack()) {
+		navigation.goBack()
+		return
+	}
+
+	navigation.dispatch(
+		CommonActions.reset({ index: 0, routes: [{ name: 'Home' }] })
+	)
 }
