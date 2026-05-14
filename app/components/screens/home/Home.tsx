@@ -44,11 +44,18 @@ const Home: FC = () => {
 		trimmedFindPeopleQuery,
 		1500
 	)
+	const isWaitingForFindPeopleSearch =
+		trimmedFindPeopleQuery.length > 0 &&
+		trimmedFindPeopleQuery !== debouncedFindPeopleQuery
+	const hasSettledFindPeopleQuery =
+		trimmedFindPeopleQuery.length > 0 &&
+		!isWaitingForFindPeopleSearch &&
+		Boolean(debouncedFindPeopleQuery)
 	const findPeopleFilters = useMemo(
-		() =>
-			debouncedFindPeopleQuery
-				? { searchTerm: debouncedFindPeopleQuery, take: 10 }
-				: { take: 10 },
+		() => ({
+			searchTerm: debouncedFindPeopleQuery,
+			take: 10
+		}),
 		[debouncedFindPeopleQuery]
 	)
 
@@ -88,20 +95,19 @@ const Home: FC = () => {
 
 	const {
 		data: usersData,
-		previousData: previousUsersData,
 		loading: isLoadingUsers,
 		error: usersError
 	} = useFindAllUsersQuery({
 		variables: {
 			filters: findPeopleFilters
 		},
-		skip: !isFindPeopleVisible,
+		skip: !isFindPeopleVisible || !debouncedFindPeopleQuery,
 		fetchPolicy: 'network-only',
 		notifyOnNetworkStatusChange: true
 	})
 
 	const discoverableUsers =
-		usersData?.findAllUsers ?? previousUsersData?.findAllUsers ?? []
+		hasSettledFindPeopleQuery ? usersData?.findAllUsers ?? [] : []
 
 	useEffect(() => {
 		if (!user?.id) return
@@ -220,8 +226,15 @@ const Home: FC = () => {
 				visible={isFindPeopleVisible}
 				searchQuery={findPeopleQuery}
 				users={discoverableUsers}
-				isLoading={isLoadingUsers}
-				errorMessage={getGraphQLErrorMessage(usersError)}
+				isLoading={
+					isWaitingForFindPeopleSearch ||
+					(hasSettledFindPeopleQuery && isLoadingUsers)
+				}
+				errorMessage={
+					hasSettledFindPeopleQuery
+						? getGraphQLErrorMessage(usersError)
+						: null
+				}
 				onChangeSearchQuery={setFindPeopleQuery}
 				onSelectUser={handleSelectUser}
 				onClose={() => {

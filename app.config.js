@@ -1,5 +1,19 @@
 import 'dotenv/config'
 
+const trimTrailingSlash = value => value?.replace(/\/+$/, '')
+
+const baseUrl = trimTrailingSlash(process.env.BASE_URL)
+const devApiUrl = baseUrl ? `http://${baseUrl}:4000` : undefined
+const apiUrl = trimTrailingSlash(process.env.EXPO_PUBLIC_API_URL) ?? devApiUrl
+const configuredGraphqlUrl =
+	process.env.EXPO_PUBLIC_GRAPHQL_URL ?? process.env.EXPO_PUBLIC_SERVER_URL
+const graphqlUrl =
+	trimTrailingSlash(configuredGraphqlUrl) ??
+	(apiUrl ? `${apiUrl}/graphql` : undefined)
+const websocketUrl =
+	trimTrailingSlash(process.env.EXPO_PUBLIC_WEBSOCKET_URL) ??
+	(baseUrl ? `ws://${baseUrl}:4000/graphql` : undefined)
+
 export default {
 	expo: {
 		name: 'МесАгат',
@@ -48,12 +62,12 @@ export default {
 			]
 		],
 		extra: {
-			API_URL: `http://${process.env.BASE_URL}:4000`,
-			GRAPHQL_URL: `http://${process.env.BASE_URL}:4000/graphql`,
-			SERVER_URL: `http://${process.env.BASE_URL}:4000/graphql`,
+			API_URL: apiUrl,
+			GRAPHQL_URL: graphqlUrl,
+			SERVER_URL: graphqlUrl,
 			MEDIA_URL: process.env.EXPO_PUBLIC_MEDIA_URL,
 			// TELEGRAM_BOT_NAME: process.env.EXPO_PUBLIC_TELEGRAM_BOT_NAME,
-			WEBSOCKET_URL: `ws://${process.env.BASE_URL}:4000/graphql`,
+			WEBSOCKET_URL: websocketUrl,
 			eas: {
 				projectId: 'b89ba73b-ecb4-479a-b3f3-0e5cd33646f1'
 			}
