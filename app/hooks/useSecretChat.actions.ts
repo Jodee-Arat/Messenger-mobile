@@ -15,10 +15,12 @@ import {
 	FILE,
 	fileExist,
 	loadAllSecretChats,
+	loadDmRatchets,
 	loadGroupSenderKeys,
 	loadMyKeys,
 	loadMyPreKeyJSON,
 	resetLegacyGroupSecretState,
+	saveDmRatchets,
 	saveGroupSenderKeys
 } from '@/utils/secret-chat/secretChat'
 import { loadSavedSecretLinkedWebSessionId } from '@/services/secret/saved-secret-link.service'
@@ -32,6 +34,7 @@ import {
 	GetSecretSessionPreKeysQuery,
 	GetSessionSecretMessagesQuery,
 	GetSessionSharedSecretKeysQuery,
+	SessionSharedSecretKeyInput,
 	useDiscardSecretAttachmentMutation,
 	useGetSecretSessionPreKeysLazyQuery,
 	useGetSessionSecretMessagesLazyQuery,
@@ -44,16 +47,21 @@ import {
 	PreKeyBundleClient,
 	SESSION_SHARED_KEY_KIND,
 	GROUP_SENDER_KEY_KIND,
+	DmRatchetsState,
 	GroupSenderKeysState,
 	acceptGroupSenderKeyDistribution,
 	buildGroupSenderKeyDistribution,
 	buildSessionMsgEnvelope,
 	checkMyPreKeys,
+	createDmRatchetReceiverStateFromX3DH,
+	createDmRatchetStateFromX3DH,
 	createGroupSenderKeyState,
 	decodeUtf8,
+	decryptDmRatchetMessage,
 	decryptGroupSenderMessage,
 	decryptKuz,
 	decryptSessionMsgEnvelope,
+	encryptDmRatchetMessage,
 	encryptGroupSenderMessage,
 	encryptKuz,
 	establishSessionX3DH,
@@ -64,6 +72,7 @@ import {
 	generateKuznechikKey,
 	importPrivateRaw,
 	importPublicRaw,
+	parseDmRatchetHeader,
 	signBytes,
 	toHex,
 	verifyBytes
@@ -552,17 +561,55 @@ export const loadDMKeysAction = async (params: {
 	userId: string
 	secretSessionId: string
 	getPreKeys: SecretSessionPreKeysQueryFn
+	isSaved?: boolean
 }): Promise<{
 	mySecretPreKey?: PreKeyBundleClient | null
 	preKeysPub?: SecretSessionPreKeyRecord[]
 	sessionKey?: Uint8Array<ArrayBufferLike> | null
 	errorMessage?: string
 }> => {
-	const { chatId, secretSessionId, getPreKeys } = params
+	const { chatId, secretSessionId, getPreKeys, isSaved } = params
 	const groupId = DM_STORAGE_GROUP_ID
 
 	try {
 		await ensureDirectChatDirectory(chatId)
+
+		if (!isSaved) {
+			const preKeysResponse = await getPreKeys({ variables: { chatId } })
+			if (preKeysResponse.error) {
+				if (isDirectContactBlockedError(preKeysResponse.error)) {
+					return {
+						errorMessage: DIRECT_CONTACT_BLOCKED_BACKEND_MESSAGE
+					}
+				}
+				console.error(
+					'[SecretChat][DM] Ошибка при получении PreKeys:',
+					preKeysResponse.error
+				)
+				return { errorMessage: 'Ошибка при получении PreKeys' }
+			}
+			const preKeys = preKeysResponse.data?.getSecretSessionPreKeys
+			if (!preKeys || preKeys.length === 0) {
+				return { errorMessage: 'PreKeys не найдены' }
+			}
+			const myPreKeys = await loadMyPreKeyJSON()
+			if (!myPreKeys) {
+				return { errorMessage: 'Мои PreKeys не найдены' }
+			}
+			const mySessionBundle = getMySessionBundle(preKeys, secretSessionId)
+			const isMyPreKeys = mySessionBundle
+				? await checkMyPreKeys(myPreKeys.toServer, mySessionBundle)
+				: false
+			if (!isMyPreKeys) {
+				return { errorMessage: 'Мои PreKeys не совпадают с серверными' }
+			}
+
+			return {
+				mySecretPreKey: myPreKeys.toStore,
+				preKeysPub: preKeys,
+				sessionKey: null
+			}
+		}
 
 		const haveMyKeys = await fileExist(chatId, groupId, FILE.MY_KEYS)
 
@@ -1206,6 +1253,379 @@ const decryptGroupSenderQueuedMessageAction = async (params: {
 	}
 }
 
+const createEmptyDmRatchetsState = (params: {
+	chatId: string
+	groupId: string
+	localSessionId: string
+}): DmRatchetsState => ({
+	version: 1,
+	chatId: params.chatId,
+	groupId: params.groupId,
+	localSessionId: params.localSessionId,
+	peers: {}
+})
+
+const getDmRatchetSenderIkPub = async (params: {
+	chatId: string
+	fromUserId: string
+	fromSessionId?: string | null
+	preKeysPub: SecretSessionPreKeyRecord[]
+	getPreKeys?: SecretSessionPreKeysQueryFn
+}) => {
+	let senderIkPub =
+		params.preKeysPub.find(
+			bundle => bundle.secretSessionId === params.fromSessionId
+		)?.ikPub ||
+		params.preKeysPub.find(bundle => bundle.userId === params.fromUserId)
+			?.ikPub
+
+	if (!senderIkPub && params.getPreKeys) {
+		try {
+			const preKeysResponse = await params.getPreKeys({
+				variables: { chatId: params.chatId }
+			})
+			const fresh = preKeysResponse.data?.getSecretSessionPreKeys ?? []
+			senderIkPub =
+				fresh.find(
+					bundle => bundle.secretSessionId === params.fromSessionId
+				)?.ikPub ||
+				fresh.find(bundle => bundle.userId === params.fromUserId)?.ikPub
+		} catch (error) {
+			console.warn('[SecretChat][DMDR] getPreKeys refresh failed:', error)
+		}
+	}
+
+	return senderIkPub ?? null
+}
+
+const createAndShareInitialDmRatchetStateAction = async (params: {
+	chatId: string
+	groupId: string
+	userId: string
+	fromSessionId: string
+	mySecretPreKey: PreKeyBundleClient
+	preKeysPub: SecretSessionPreKeyRecord[]
+	recipientBundle: SecretSessionPreKeyRecord
+	getPreKeys?: SecretSessionPreKeysQueryFn
+	sendSharedSecretKey: SendSessionSharedSecretKeyMutationFn
+}) => {
+	let allBundles = params.preKeysPub
+	let myBundle = getMySessionBundle(allBundles, params.fromSessionId)
+
+	if (!myBundle && params.getPreKeys) {
+		try {
+			const preKeysResponse = await params.getPreKeys({
+				variables: { chatId: params.chatId }
+			})
+			allBundles = preKeysResponse.data?.getSecretSessionPreKeys ?? allBundles
+			myBundle = getMySessionBundle(allBundles, params.fromSessionId)
+		} catch {}
+	}
+
+	if (!myBundle) {
+		throw new Error('Мой session prekey не найден')
+	}
+
+	const ikPrivRaw = fromHex(params.mySecretPreKey.ikPriv)
+	const ikPubRaw = fromHex(myBundle.ikPub)
+	const IK = {
+		privateKey: await importPrivateRaw(ikPrivRaw),
+		publicKey: await importPublicRaw(ikPubRaw)
+	} as const
+	const aliceEK = await generateEphemeralKeyPair()
+	const {
+		sessionKey: rootSeed,
+		ukm,
+		verifiedSpk
+	} = await establishSessionX3DH({
+		IK,
+		aliceEK,
+		bobBundle: {
+			ikPub: params.recipientBundle.ikPub,
+			spkPub: params.recipientBundle.spkPub,
+			spkSig: params.recipientBundle.spkSig,
+			opk:
+				params.recipientBundle.opkPubs[
+					params.recipientBundle.indexOpkPub
+				] ?? null
+		}
+	})
+
+	if (!verifiedSpk) {
+		throw new Error('Recipient SPK signature did not verify')
+	}
+
+	const enc = await encryptKuz(rootSeed, rootSeed)
+	const ekAPubRaw = await exportPublicRaw(aliceEK.publicKey)
+	const aad = new Uint8Array([
+		...new TextEncoder().encode('DMRATCHETROOTv1'),
+		...ikPubRaw,
+		...ekAPubRaw
+	])
+	const signature = await signBytes(
+		IK.privateKey,
+		new Uint8Array([...aad, ...enc.iv, ...enc.ciphertext])
+	)
+
+	const sharedKeyPayload: SessionSharedSecretKeyInput = {
+		chatId: params.chatId,
+		groupId: params.groupId,
+		fromSessionId: params.fromSessionId,
+		toUserId: params.recipientBundle.userId,
+		toSessionId: params.recipientBundle.secretSessionId,
+		keyKind: SESSION_SHARED_KEY_KIND,
+		ikPub: myBundle.ikPub,
+		ekPub: toHex(ekAPubRaw),
+		usedOpk:
+			params.recipientBundle.opkPubs[
+				params.recipientBundle.indexOpkPub
+			] ?? null,
+		ukm: toHex(ukm),
+		iv: toHex(enc.iv),
+		encryptedKey: toHex(enc.ciphertext),
+		sig: toHex(signature)
+	}
+
+	await params.sendSharedSecretKey({
+		variables: {
+			data: sharedKeyPayload
+		}
+	})
+
+	return createDmRatchetStateFromX3DH({
+		peerSessionId: params.recipientBundle.secretSessionId,
+		sessionKey: rootSeed,
+		remoteRatchetPub: params.recipientBundle.spkPub
+	})
+}
+
+const recoverDmRatchetRootFromSharedPacketsAction = async (params: {
+	chatId: string
+	secretSessionId: string
+	fromSessionId: string
+	mySecretPreKey: PreKeyBundleClient
+	preKeysPub: SecretSessionPreKeyRecord[]
+	getSharedSecretKey: SessionSharedSecretKeysQueryFn
+	getPreKeys?: SecretSessionPreKeysQueryFn
+}): Promise<{
+	rootSeed?: Uint8Array
+	usedPacketIds: string[]
+}> => {
+	const response = await params.getSharedSecretKey({
+		variables: {
+			chatId: params.chatId,
+			secretSessionId: params.secretSessionId
+		},
+		fetchPolicy: 'network-only'
+	})
+	const packets =
+		response.data?.getSessionSharedSecretKeys
+			?.filter(packet => packet.fromSessionId === params.fromSessionId)
+			.slice()
+			.sort(
+				(a, b) =>
+					new Date(b.createdAt).getTime() -
+					new Date(a.createdAt).getTime()
+			) ?? []
+
+	if (packets.length === 0) {
+		return { usedPacketIds: [] }
+	}
+
+	const ikPrivHex = params.mySecretPreKey.ikPriv || ''
+	const spkPrivHex = params.mySecretPreKey.spkPriv || ''
+	if (!ikPrivHex || !spkPrivHex) {
+		return { usedPacketIds: [] }
+	}
+
+	const ikPriv = await importPrivateRaw(fromHex(ikPrivHex))
+	const spkPriv = await importPrivateRaw(fromHex(spkPrivHex))
+
+	for (const packet of packets) {
+		try {
+			const opkPriv = await resolveMyUsedOpkPrivateKey({
+				chatId: params.chatId,
+				secretSessionId: params.secretSessionId,
+				usedOpk: packet.usedOpk ?? null,
+				mySecretPreKey: params.mySecretPreKey,
+				preKeysPub: params.preKeysPub,
+				getPreKeys: params.getPreKeys
+			})
+			const { sessionKey: pairSessionKey } = await finalizeSessionX3DH({
+				bobIKPriv: ikPriv,
+				bobSPKPriv: spkPriv,
+				opkPriv,
+				envelope: {
+					ikAPub: packet.ikPub,
+					ekAPub: packet.ekPub,
+					usedOpk: packet.usedOpk ?? null,
+					ukm: packet.ukm
+				}
+			})
+
+			const senderIkPub = await getDmRatchetSenderIkPub({
+				chatId: params.chatId,
+				fromUserId: packet.fromUserId,
+				fromSessionId: packet.fromSessionId,
+				preKeysPub: params.preKeysPub,
+				getPreKeys: params.getPreKeys
+			})
+			if (senderIkPub) {
+				const pubKey = await importPublicRaw(fromHex(senderIkPub))
+				const ekAPubRaw = fromHex(packet.ekPub)
+				const ikAPubRaw = fromHex(packet.ikPub)
+				const aad = new Uint8Array([
+					...new TextEncoder().encode('DMRATCHETROOTv1'),
+					...ikAPubRaw,
+					...ekAPubRaw
+				])
+				const sigOk = await verifyBytes(
+					pubKey,
+					new Uint8Array([
+						...aad,
+						...fromHex(packet.iv),
+						...fromHex(packet.encryptedKey)
+					]),
+					fromHex(packet.sig)
+				)
+				if (!sigOk) continue
+			}
+
+			const rootSeed = await decryptKuz(
+				pairSessionKey,
+				fromHex(packet.iv),
+				fromHex(packet.encryptedKey)
+			)
+			return {
+				rootSeed,
+				usedPacketIds: [packet.id]
+			}
+		} catch (error) {
+			console.warn(
+				`[SecretChat][DMDR] root packet ${packet.id} failed:`,
+				error
+			)
+		}
+	}
+
+	return { usedPacketIds: [] }
+}
+
+const decryptDmRatchetQueuedMessageAction = async (params: {
+	msg: SessionSecretMessageRecord
+	chat: any
+	chatId: string
+	groupId: string
+	secretSessionId: string
+	mySecretPreKey: PreKeyBundleClient
+	preKeysPub: SecretSessionPreKeyRecord[]
+	getSharedSecretKey: SessionSharedSecretKeysQueryFn
+	getPreKeys?: SecretSessionPreKeysQueryFn
+	state: DmRatchetsState
+}): Promise<{
+	state: DmRatchetsState
+	message?: MessageType
+	ackSharedKeyIds: string[]
+	legacyIncompatible?: boolean
+}> => {
+	const header = parseDmRatchetHeader(params.msg.ukm)
+	if (!header || params.msg.fromSessionId === params.secretSessionId) {
+		return {
+			state: params.state,
+			ackSharedKeyIds: [],
+			legacyIncompatible: true
+		}
+	}
+
+	const fromSessionId = params.msg.fromSessionId
+	if (!fromSessionId) {
+		return { state: params.state, ackSharedKeyIds: [] }
+	}
+
+	let peerState = params.state.peers[fromSessionId]
+	let pendingAckSharedKeyIds: string[] = []
+	if (!peerState) {
+		const root = await recoverDmRatchetRootFromSharedPacketsAction({
+			chatId: params.chatId,
+			secretSessionId: params.secretSessionId,
+			fromSessionId,
+			mySecretPreKey: params.mySecretPreKey,
+			preKeysPub: params.preKeysPub,
+			getSharedSecretKey: params.getSharedSecretKey,
+			getPreKeys: params.getPreKeys
+		})
+		pendingAckSharedKeyIds = root.usedPacketIds
+		if (!root.rootSeed) {
+			return { state: params.state, ackSharedKeyIds: [] }
+		}
+
+		const myBundle = getMySessionBundle(
+			params.preKeysPub,
+			params.secretSessionId
+		)
+		if (!myBundle) {
+			return { state: params.state, ackSharedKeyIds: [] }
+		}
+
+		peerState = await createDmRatchetReceiverStateFromX3DH({
+			peerSessionId: fromSessionId,
+			sessionKey: root.rootSeed,
+			ownRatchetPriv: params.mySecretPreKey.spkPriv,
+			ownRatchetPub: myBundle.spkPub,
+			header
+		})
+	}
+
+	const senderIkPub = await getDmRatchetSenderIkPub({
+		chatId: params.chatId,
+		fromUserId: params.msg.fromUserId,
+		fromSessionId,
+		preKeysPub: params.preKeysPub,
+		getPreKeys: params.getPreKeys
+	})
+	if (!senderIkPub) {
+		return { state: params.state, ackSharedKeyIds: [] }
+	}
+
+	const decrypted = await decryptDmRatchetMessage({
+		chatId: params.chatId,
+		fromSessionId,
+		toSessionId: params.secretSessionId,
+		state: peerState,
+		header,
+		envelope: {
+			iv: params.msg.iv,
+			ct: params.msg.encryptedMessage,
+			sig: params.msg.sig
+		},
+		senderIkPub
+	})
+
+	const nextState: DmRatchetsState = {
+		...params.state,
+		peers: {
+			...params.state.peers,
+			[fromSessionId]: decrypted.nextState
+		}
+	}
+	const sender = params.chat.members.find(
+		(member: any) => member.user.id === params.msg.fromUserId
+	)?.user
+
+	return {
+		state: nextState,
+		message: createLocalSecretMessage({
+			plaintext: decrypted.decrypted,
+			senderId: params.msg.fromUserId,
+			senderUsername: sender?.username || 'user',
+			chatName: params.chat.chatName,
+			messageId: params.msg.id,
+			createdAt: params.msg.createdAt
+		}),
+		ackSharedKeyIds: pendingAckSharedKeyIds
+	}
+}
+
 /**
  * Обработка сообщения из подписки
  */
@@ -1296,6 +1716,48 @@ export const processSecretSubscriptionAction = async (params: {
 		} catch (error) {
 			console.warn('[SecretChat][SenderKey][Sub] decrypt failed:', error)
 			return { ackSharedKeyIds }
+		}
+	}
+
+	if (!chat.isGroup && !chat.isSaved) {
+		let dmState =
+			(await loadDmRatchets(chatId, groupId, secretSessionId)) ??
+			createEmptyDmRatchetsState({
+				chatId,
+				groupId,
+				localSessionId: secretSessionId
+			})
+
+		try {
+			const decrypted = await decryptDmRatchetQueuedMessageAction({
+				msg,
+				chat,
+				chatId,
+				groupId,
+				secretSessionId,
+				mySecretPreKey,
+				preKeysPub,
+				getPreKeys,
+				getSharedSecretKey,
+				state: dmState
+			})
+			dmState = decrypted.state
+			await saveDmRatchets(chatId, groupId, dmState)
+			if (decrypted.message) {
+				processedRef?.current?.add(`${msg.iv}.${msg.sig}`)
+			}
+
+			return {
+				newMessage: decrypted.message,
+				ackMessageIds:
+					decrypted.message || decrypted.legacyIncompatible
+						? [msg.id]
+						: [],
+				ackSharedKeyIds: decrypted.ackSharedKeyIds
+			}
+		} catch (error) {
+			console.warn('[SecretChat][DMDR][Sub] decrypt failed:', error)
+			return {}
 		}
 	}
 
@@ -1494,6 +1956,66 @@ export const pullSecretMessagesAction = async (params: {
 
 		return {
 			newMessages: collected,
+			ackMessageIds,
+			ackSharedKeyIds
+		}
+	}
+
+	if (!chat.isGroup && !chat.isSaved) {
+		const unreadMessagesResponse = await getSecretMessages({
+			variables: { chatId, secretSessionId },
+			fetchPolicy: 'network-only'
+		})
+		const unreadMessages =
+			unreadMessagesResponse.data?.getSessionSecretMessages ?? []
+		let dmState =
+			(await loadDmRatchets(chatId, groupId, secretSessionId)) ??
+			createEmptyDmRatchetsState({
+				chatId,
+				groupId,
+				localSessionId: secretSessionId
+			})
+		const collected: MessageType[] = []
+		const ackMessageIds: string[] = []
+		const ackSharedKeyIds: string[] = []
+
+		for (const msg of unreadMessages) {
+			const key = `${msg.iv}.${msg.sig}`
+			if (processedRef?.current?.has(key)) continue
+
+			try {
+				const decrypted = await decryptDmRatchetQueuedMessageAction({
+					msg,
+					chat,
+					chatId,
+					groupId,
+					secretSessionId,
+					mySecretPreKey,
+					preKeysPub,
+					getPreKeys,
+					getSharedSecretKey: getSharedSecretKey!,
+					state: dmState
+				})
+				dmState = decrypted.state
+				ackSharedKeyIds.push(...decrypted.ackSharedKeyIds)
+				if (decrypted.message) {
+					collected.push(decrypted.message)
+					ackMessageIds.push(msg.id)
+					processedRef?.current?.add(key)
+				} else if (decrypted.legacyIncompatible) {
+					ackMessageIds.push(msg.id)
+				}
+			} catch (error) {
+				console.warn('[SecretChat][DMDR][Pull] decrypt failed:', error)
+			}
+		}
+
+		await saveDmRatchets(chatId, groupId, dmState)
+
+		return {
+			sessionKey: null,
+			newMessages: collected,
+			needPersistKey: false,
 			ackMessageIds,
 			ackSharedKeyIds
 		}
@@ -1934,6 +2456,94 @@ export const sendSecretMessageAction = async (params: {
 			})
 			const serverMessage = sentMessage.data?.sendSessionSecretMessage
 
+			return {
+				newMessage: serverMessage
+					? {
+							...newMessage,
+							id: serverMessage.id,
+							createdAt: serverMessage.createdAt
+					  }
+					: newMessage,
+				sessionKey: null,
+				needPersistKey: false
+			}
+		}
+
+		if (!chat.isGroup && !isSaved) {
+			let dmState =
+				(await loadDmRatchets(chatId, groupId, secretSessionId)) ??
+				createEmptyDmRatchetsState({
+					chatId,
+					groupId,
+					localSessionId: secretSessionId
+				})
+			const signerIKPriv = await importPrivateRaw(
+				fromHex(mySecretPreKeyLocal.ikPriv)
+			)
+			let firstServerMessage:
+				| Awaited<ReturnType<SendSessionSecretMessageMutationFn>>['data']
+				| undefined
+			let didCommitAttachments = false
+
+			for (const recipientBundle of targetBundles) {
+				let peerState = dmState.peers[recipientBundle.secretSessionId]
+				if (!peerState) {
+					peerState = await createAndShareInitialDmRatchetStateAction({
+						chatId,
+						groupId,
+						userId,
+						fromSessionId: secretSessionId,
+						mySecretPreKey: mySecretPreKeyLocal,
+						preKeysPub: currentPreKeys,
+						recipientBundle,
+						getPreKeys,
+						sendSharedSecretKey
+					})
+				}
+
+				const encrypted = await encryptDmRatchetMessage({
+					chatId,
+					fromSessionId: secretSessionId,
+					toSessionId: recipientBundle.secretSessionId,
+					state: peerState,
+					plaintext,
+					signerIKPriv
+				})
+				dmState = {
+					...dmState,
+					peers: {
+						...dmState.peers,
+						[recipientBundle.secretSessionId]: encrypted.nextState
+					}
+				}
+
+				const sentMessage = await sendMessageToClients({
+					variables: {
+						data: {
+							chatId,
+							encryptedMessage: encrypted.envelope.ct,
+							groupId,
+							fromSessionId: secretSessionId,
+							iv: encrypted.envelope.iv,
+							ukm: JSON.stringify(encrypted.header),
+							sig: encrypted.envelope.sig,
+							toUserIds: [recipientBundle.userId],
+							toSessionIds: [recipientBundle.secretSessionId],
+							secretAttachmentIds: didCommitAttachments
+								? []
+								: uploadedAttachmentIds
+						}
+					}
+				})
+				if (uploadedAttachmentIds.length > 0) {
+					didCommitAttachments = true
+				}
+				firstServerMessage = firstServerMessage ?? sentMessage.data
+			}
+
+			await saveDmRatchets(chatId, groupId, dmState)
+
+			const serverMessage = firstServerMessage?.sendSessionSecretMessage
 			return {
 				newMessage: serverMessage
 					? {

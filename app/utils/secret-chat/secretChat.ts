@@ -12,6 +12,7 @@ import {
 	FindChatByChatIdQuery
 } from '@/graphql/generated/output'
 import {
+	DmRatchetsState,
 	GroupSenderKeysState,
 	PreKeyBundleClient,
 	PreKeyBundleServer
@@ -22,6 +23,7 @@ export const FILE = {
 	CHAT: 'chat.json',
 	KEYS: 'keys.json',
 	MY_KEYS: 'my-keys.json',
+	DM_RATCHETS: 'dm-ratchets.json',
 	SENDER_KEYS: 'sender-keys.json',
 	PRE_KEYS: 'pre-keys.json'
 }
@@ -95,6 +97,9 @@ const getSessionKeySecureStoreKey = (groupId: string, chatId: string) =>
 
 const getSenderKeysSecureStoreKey = (groupId: string, chatId: string) =>
 	`secret.senderKeys.${toSecureStoreKeyPart(groupId)}.${toSecureStoreKeyPart(chatId)}`
+
+const getDmRatchetsSecureStoreKey = (groupId: string, chatId: string) =>
+	`secret.dmRatchets.${toSecureStoreKeyPart(groupId)}.${toSecureStoreKeyPart(chatId)}`
 
 const readSecureIndex = async (): Promise<string[]> => {
 	const raw = await SecureStore.getItemAsync(SECURE_KEY_INDEX)
@@ -210,6 +215,9 @@ export async function clearLocalSecretChatData() {
 				await SecureStore.deleteItemAsync(
 					getSenderKeysSecureStoreKey(entry.name, chatEntry.name)
 				)
+				await SecureStore.deleteItemAsync(
+					getDmRatchetsSecureStoreKey(entry.name, chatEntry.name)
+				)
 			}
 		}
 
@@ -217,6 +225,7 @@ export async function clearLocalSecretChatData() {
 			FILE.PRE_KEYS,
 			FILE.MY_KEYS,
 			FILE.KEYS,
+			FILE.DM_RATCHETS,
 			FILE.SENDER_KEYS
 		]) {
 			const file = getRootFile(fileName)
@@ -349,6 +358,15 @@ export async function deleteMyKeys(chatId: string, groupId: string) {
 	}
 }
 
+export async function deleteDmRatchets(chatId: string, groupId: string) {
+	try {
+		await deleteSecureKey(getDmRatchetsSecureStoreKey(groupId, chatId))
+		deleteFileIfExists(getChatFile(groupId, chatId, FILE.DM_RATCHETS))
+	} catch (error) {
+		console.error('[SecretChat] Failed to delete dm-ratchets.json:', error)
+	}
+}
+
 export async function deleteGroupSenderKeys(chatId: string, groupId: string) {
 	try {
 		await deleteSecureKey(getSenderKeysSecureStoreKey(groupId, chatId))
@@ -376,6 +394,20 @@ export async function resetLegacyGroupSecretState(
 	}
 }
 
+export async function resetLegacyDmSecretState(
+	chatId: string,
+	groupId: string
+) {
+	await deleteMyKeys(chatId, groupId)
+	await deleteDmRatchets(chatId, groupId)
+	try {
+		const messagesFile = getChatFile(groupId, chatId, FILE.MESSAGES)
+		deleteFileIfExists(messagesFile)
+	} catch (error) {
+		console.error('[SecretChat] Failed to reset legacy DM history:', error)
+	}
+}
+
 /**
  *  Удаление чата (вместе с его папкой)
  */
@@ -383,6 +415,7 @@ export async function deleteSecretChat(groupId: string, chatId: string) {
 	try {
 		await deleteSecureKey(getSessionKeySecureStoreKey(groupId, chatId))
 		await deleteSecureKey(getSenderKeysSecureStoreKey(groupId, chatId))
+		await deleteSecureKey(getDmRatchetsSecureStoreKey(groupId, chatId))
 
 		const chatDirectory = getChatDirectory(groupId, chatId)
 
@@ -438,6 +471,13 @@ export async function fileExist(
 	if (fileName === FILE.SENDER_KEYS) {
 		const secureValue = await SecureStore.getItemAsync(
 			getSenderKeysSecureStoreKey(groupId, chatId)
+		)
+		return Boolean(secureValue) || getChatFile(groupId, chatId, fileName).exists
+	}
+
+	if (fileName === FILE.DM_RATCHETS) {
+		const secureValue = await SecureStore.getItemAsync(
+			getDmRatchetsSecureStoreKey(groupId, chatId)
 		)
 		return Boolean(secureValue) || getChatFile(groupId, chatId, fileName).exists
 	}
@@ -562,6 +602,60 @@ export async function loadGroupSenderKeys(
 		...parsed,
 		own: parsed.own ?? null,
 		received: parsed.received ?? {}
+	}
+}
+
+export async function saveDmRatchets(
+	chatId: string,
+	groupId: string,
+	state: DmRatchetsState
+) {
+	try {
+		await setSecureJson(getDmRatchetsSecureStoreKey(groupId, chatId), state)
+		deleteFileIfExists(getChatFile(groupId, chatId, FILE.DM_RATCHETS))
+		notifySecretChatReady(groupId, chatId)
+	} catch (error) {
+		console.error('[SecretChat] Failed to persist DM ratchets', error)
+		throw error
+	}
+}
+
+export async function loadDmRatchets(
+	chatId: string,
+	groupId: string,
+	localSessionId: string
+): Promise<DmRatchetsState | null> {
+	const secureKey = getDmRatchetsSecureStoreKey(groupId, chatId)
+	const stored = await getSecureJson<DmRatchetsState>(secureKey)
+	if (
+		stored?.version === 1 &&
+		stored.chatId === chatId &&
+		stored.localSessionId === localSessionId
+	) {
+		return {
+			...stored,
+			peers: stored.peers ?? {}
+		}
+	}
+
+	const parsed = await readJson<DmRatchetsState>(
+		getChatFile(groupId, chatId, FILE.DM_RATCHETS)
+	)
+	if (
+		!parsed ||
+		parsed.version !== 1 ||
+		parsed.chatId !== chatId ||
+		parsed.localSessionId !== localSessionId
+	) {
+		return null
+	}
+
+	await setSecureJson(secureKey, parsed)
+	deleteFileIfExists(getChatFile(groupId, chatId, FILE.DM_RATCHETS))
+
+	return {
+		...parsed,
+		peers: parsed.peers ?? {}
 	}
 }
 

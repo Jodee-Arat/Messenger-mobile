@@ -15,6 +15,7 @@ import {
 	loadGroupSenderKeys,
 	loadMessages,
 	loadMyKeys,
+	resetLegacyDmSecretState,
 	resetLegacyGroupSecretState,
 	saveGroupSenderKeys,
 	saveMessages
@@ -386,7 +387,8 @@ export const useSecretChat = (
 				chatId,
 				userId,
 				secretSessionId,
-				getPreKeys
+				getPreKeys,
+				isSaved
 			})
 			if (res.errorMessage) setErrorMessage(res.errorMessage)
 			if (res.mySecretPreKey !== undefined)
@@ -421,6 +423,15 @@ export const useSecretChat = (
 
 		const bootstrapChatState = async () => {
 			if (isDM) await ensureDirectChatDirectory(chatId)
+			if (
+				isDM &&
+				!isSaved &&
+				(await fileExist(chatId, effectiveGroupId, FILE.MY_KEYS))
+			) {
+				await resetLegacyDmSecretState(chatId, effectiveGroupId)
+				setSessionKey(null)
+				setMessages([])
+			}
 			if (!isDM && (await fileExist(chatId, effectiveGroupId, FILE.MY_KEYS))) {
 				await resetLegacyGroupSecretState(chatId, effectiveGroupId)
 				setSessionKey(null)
@@ -439,7 +450,7 @@ export const useSecretChat = (
 		return () => {
 			isCancelled = true
 		}
-	}, [chatId, effectiveGroupId, isDM, loadChat])
+	}, [chatId, effectiveGroupId, isDM, isSaved, loadChat])
 
 	const receiveAndPersistGroupKey = useCallback(
 		async (reason: 'bootstrap' | 'subscription' | 'poll') => {
@@ -914,6 +925,6 @@ export const useSecretChat = (
 		reload,
 		preKeysPub,
 		sendKeyToNewMember,
-		isKeyReady: isDM ? sessionKey !== null : Boolean(secretSessionId)
+		isKeyReady: isDM && isSaved ? sessionKey !== null : Boolean(secretSessionId)
 	}
 }

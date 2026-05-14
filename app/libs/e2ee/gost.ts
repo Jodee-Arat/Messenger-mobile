@@ -1236,6 +1236,9 @@ export async function finalizeFromEnvelope(params: {
 		concatBytes(aadB, fromHex(envelope.iv), fromHex(envelope.ct)),
 		fromHex(envelope.sig)
 	)
+	if (!sigOk) {
+		throw new Error('X3DH init envelope signature is invalid')
+	}
 
 	// Расшифровка
 	// console.log('[E2EE:finalize] Расшифровываю сообщение...')
@@ -1360,6 +1363,9 @@ export async function decryptSessionMsgEnvelope(params: {
 		concatBytes(aad, fromHex(envelope.iv), fromHex(envelope.ct)),
 		fromHex(envelope.sig)
 	)
+	if (!sigOk) {
+		throw new Error('Session message signature is invalid')
+	}
 
 	const pt = await decryptKuz(
 		encKey,
@@ -1372,6 +1378,40 @@ export async function decryptSessionMsgEnvelope(params: {
 export const GROUP_SENDER_KEY_KIND = 'GROUP_SENDER_KEY'
 export const SESSION_SHARED_KEY_KIND = 'SESSION_KEY'
 export const MAX_SENDER_KEY_SKIP = 100
+export const DM_RATCHET_MESSAGE_KIND = 'DM_DR_V1'
+export const MAX_DM_RATCHET_SKIP = 100
+
+export type DmRatchetHeader = {
+	kind: typeof DM_RATCHET_MESSAGE_KIND
+	dhPub: string
+	dhUkm: string
+	pn: number
+	n: number
+}
+
+export type DmRatchetState = {
+	version: 1
+	peerSessionId: string
+	rootKey: string
+	ownRatchetPriv: string
+	ownRatchetPub: string
+	ownRatchetUkm: string
+	remoteRatchetPub: string
+	sendChainKey?: string | null
+	recvChainKey?: string | null
+	sendCount: number
+	recvCount: number
+	previousSendCount: number
+	skippedMessageKeys: Record<string, string>
+}
+
+export type DmRatchetsState = {
+	version: 1
+	chatId: string
+	groupId: string
+	localSessionId: string
+	peers: Record<string, DmRatchetState>
+}
 
 export type GroupSenderOwnState = {
 	senderKeyId: string
@@ -1429,6 +1469,416 @@ const makeSenderKeyId = () => {
 	const bytes = new Uint8Array(16)
 	fillRandom(bytes)
 	return toHex(bytes)
+}
+
+const makeRatchetUkm = () => {
+	const bytes = new Uint8Array(8)
+	fillRandom(bytes)
+	return bytes
+}
+
+const dmRatchetRootKdf = async (
+	rootKey: Uint8Array,
+	dhOut: Uint8Array,
+	dhUkm: Uint8Array
+) => {
+	const material = await kdfStreebog(
+		concatBytes(rootKey, dhOut),
+		utf8('DM-DR-ROOT'),
+		64,
+		{
+			ukm: dhUkm,
+			label: utf8('DM-DOUBLE-RATCHET')
+		}
+	)
+
+	return {
+		rootKey: material.slice(0, 32),
+		chainKey: material.slice(32, 64)
+	}
+}
+
+const deriveDmRatchetMessageKey = async (
+	chainKey: Uint8Array,
+	iteration: number
+) =>
+	kdfStreebog(chainKey, utf8(`DM-DR-MSG:${iteration}`), 32, {
+		label: utf8('DM-DOUBLE-RATCHET')
+	})
+
+const deriveNextDmRatchetChainKey = async (chainKey: Uint8Array) =>
+	kdfStreebog(chainKey, utf8('DM-DR-NEXT'), 32, {
+		label: utf8('DM-DOUBLE-RATCHET')
+	})
+
+const dmRatchetSkippedKeyId = (dhPub: string, n: number) => `${dhPub}:${n}`
+
+const dmRatchetAad = (params: {
+	chatId: string
+	fromSessionId: string
+	toSessionId: string
+	header: DmRatchetHeader
+	iv: Uint8Array
+	ciphertext: Uint8Array
+}) =>
+	concatBytes(
+		utf8('DMDRMSGv1'),
+		utf8(params.chatId),
+		utf8(params.fromSessionId),
+		utf8(params.toSessionId),
+		utf8(params.header.dhPub),
+		utf8(params.header.dhUkm),
+		utf8(String(params.header.pn)),
+		utf8(String(params.header.n)),
+		params.iv,
+		params.ciphertext
+	)
+
+const pruneDmSkippedKeys = (skipped: Record<string, string>) => {
+	const entries = Object.entries(skipped)
+	if (entries.length <= MAX_DM_RATCHET_SKIP) return skipped
+
+	return Object.fromEntries(entries.slice(entries.length - MAX_DM_RATCHET_SKIP))
+}
+
+async function skipDmMessageKeys(
+	state: DmRatchetState,
+	until: number
+): Promise<DmRatchetState> {
+	if (until < state.recvCount) return state
+	if (!state.recvChainKey) return state
+	if (until - state.recvCount > MAX_DM_RATCHET_SKIP) {
+		throw new Error('DM ratchet skipped message gap is too large')
+	}
+
+	let chainKey = fromHex(state.recvChainKey)
+	let recvCount = state.recvCount
+	const skipped = { ...state.skippedMessageKeys }
+
+	while (recvCount < until) {
+		const messageKey = await deriveDmRatchetMessageKey(chainKey, recvCount)
+		skipped[dmRatchetSkippedKeyId(state.remoteRatchetPub, recvCount)] =
+			toHex(messageKey)
+		chainKey = await deriveNextDmRatchetChainKey(chainKey)
+		recvCount += 1
+	}
+
+	return {
+		...state,
+		recvChainKey: toHex(chainKey),
+		recvCount,
+		skippedMessageKeys: pruneDmSkippedKeys(skipped)
+	}
+}
+
+export function parseDmRatchetHeader(raw: string | null | undefined) {
+	if (!raw) return null
+	try {
+		const parsed = JSON.parse(raw) as Partial<DmRatchetHeader>
+		if (
+			parsed.kind !== DM_RATCHET_MESSAGE_KIND ||
+			typeof parsed.dhPub !== 'string' ||
+			typeof parsed.dhUkm !== 'string' ||
+			typeof parsed.pn !== 'number' ||
+			typeof parsed.n !== 'number'
+		) {
+			return null
+		}
+
+		return parsed as DmRatchetHeader
+	} catch {
+		return null
+	}
+}
+
+export async function createDmRatchetStateFromX3DH(params: {
+	peerSessionId: string
+	sessionKey: Uint8Array
+	remoteRatchetPub: string
+}): Promise<DmRatchetState> {
+	const ownRatchet = await generateEphemeralKeyPair()
+	const ownRatchetPub = toHex(await exportPublicRaw(ownRatchet.publicKey))
+	const ownRatchetPriv = toHex(await exportPrivateRaw(ownRatchet.privateKey))
+	const ownRatchetUkm = makeRatchetUkm()
+	const dhOut = await deriveSharedSecret(
+		ownRatchet.privateKey,
+		toExactArrayBuffer(fromHex(params.remoteRatchetPub)),
+		ownRatchetUkm
+	)
+	const next = await dmRatchetRootKdf(params.sessionKey, dhOut, ownRatchetUkm)
+
+	return {
+		version: 1,
+		peerSessionId: params.peerSessionId,
+		rootKey: toHex(next.rootKey),
+		ownRatchetPriv,
+		ownRatchetPub,
+		ownRatchetUkm: toHex(ownRatchetUkm),
+		remoteRatchetPub: params.remoteRatchetPub,
+		sendChainKey: toHex(next.chainKey),
+		recvChainKey: null,
+		sendCount: 0,
+		recvCount: 0,
+		previousSendCount: 0,
+		skippedMessageKeys: {}
+	}
+}
+
+export async function createDmRatchetReceiverStateFromX3DH(params: {
+	peerSessionId: string
+	sessionKey: Uint8Array
+	ownRatchetPriv: string
+	ownRatchetPub: string
+	header: DmRatchetHeader
+}): Promise<DmRatchetState> {
+	const ownPriv = await importPrivateRaw(fromHex(params.ownRatchetPriv))
+	const dhUkm = fromHex(params.header.dhUkm)
+	const dhOut = await deriveSharedSecret(
+		ownPriv,
+		toExactArrayBuffer(fromHex(params.header.dhPub)),
+		dhUkm
+	)
+	const next = await dmRatchetRootKdf(params.sessionKey, dhOut, dhUkm)
+
+	return {
+		version: 1,
+		peerSessionId: params.peerSessionId,
+		rootKey: toHex(next.rootKey),
+		ownRatchetPriv: params.ownRatchetPriv,
+		ownRatchetPub: params.ownRatchetPub,
+		ownRatchetUkm: params.header.dhUkm,
+		remoteRatchetPub: params.header.dhPub,
+		sendChainKey: null,
+		recvChainKey: toHex(next.chainKey),
+		sendCount: 0,
+		recvCount: 0,
+		previousSendCount: 0,
+		skippedMessageKeys: {}
+	}
+}
+
+export async function advanceDmDhRatchet(
+	state: DmRatchetState,
+	header: DmRatchetHeader
+): Promise<DmRatchetState> {
+	let nextState = await skipDmMessageKeys(state, header.pn)
+	const ownPriv = await importPrivateRaw(fromHex(nextState.ownRatchetPriv))
+	const recvDhUkm = fromHex(header.dhUkm)
+	const recvDhOut = await deriveSharedSecret(
+		ownPriv,
+		toExactArrayBuffer(fromHex(header.dhPub)),
+		recvDhUkm
+	)
+	const recvRoot = await dmRatchetRootKdf(
+		fromHex(nextState.rootKey),
+		recvDhOut,
+		recvDhUkm
+	)
+
+	const newOwn = await generateEphemeralKeyPair()
+	const newOwnPub = toHex(await exportPublicRaw(newOwn.publicKey))
+	const newOwnPriv = toHex(await exportPrivateRaw(newOwn.privateKey))
+	const sendDhUkm = makeRatchetUkm()
+	const sendDhOut = await deriveSharedSecret(
+		newOwn.privateKey,
+		toExactArrayBuffer(fromHex(header.dhPub)),
+		sendDhUkm
+	)
+	const sendRoot = await dmRatchetRootKdf(
+		recvRoot.rootKey,
+		sendDhOut,
+		sendDhUkm
+	)
+
+	nextState = {
+		...nextState,
+		rootKey: toHex(sendRoot.rootKey),
+		ownRatchetPriv: newOwnPriv,
+		ownRatchetPub: newOwnPub,
+		ownRatchetUkm: toHex(sendDhUkm),
+		remoteRatchetPub: header.dhPub,
+		sendChainKey: toHex(sendRoot.chainKey),
+		recvChainKey: toHex(recvRoot.chainKey),
+		previousSendCount: nextState.sendCount,
+		sendCount: 0,
+		recvCount: 0
+	}
+
+	return nextState
+}
+
+async function ensureDmSendChain(state: DmRatchetState): Promise<DmRatchetState> {
+	if (state.sendChainKey) return state
+
+	const newOwn = await generateEphemeralKeyPair()
+	const newOwnPub = toHex(await exportPublicRaw(newOwn.publicKey))
+	const newOwnPriv = toHex(await exportPrivateRaw(newOwn.privateKey))
+	const sendDhUkm = makeRatchetUkm()
+	const sendDhOut = await deriveSharedSecret(
+		newOwn.privateKey,
+		toExactArrayBuffer(fromHex(state.remoteRatchetPub)),
+		sendDhUkm
+	)
+	const next = await dmRatchetRootKdf(
+		fromHex(state.rootKey),
+		sendDhOut,
+		sendDhUkm
+	)
+
+	return {
+		...state,
+		rootKey: toHex(next.rootKey),
+		ownRatchetPriv: newOwnPriv,
+		ownRatchetPub: newOwnPub,
+		ownRatchetUkm: toHex(sendDhUkm),
+		sendChainKey: toHex(next.chainKey),
+		previousSendCount: state.sendCount,
+		sendCount: 0
+	}
+}
+
+export async function encryptDmRatchetMessage(params: {
+	chatId: string
+	fromSessionId: string
+	toSessionId: string
+	state: DmRatchetState
+	plaintext: string | Uint8Array
+	signerIKPriv: CryptoKey
+}): Promise<{
+	header: DmRatchetHeader
+	envelope: SessionMsgEnvelope
+	nextState: DmRatchetState
+}> {
+	const readyState = await ensureDmSendChain(params.state)
+	if (!readyState.sendChainKey) {
+		throw new Error('DM ratchet send chain is not initialized')
+	}
+
+	const plaintextU8 =
+		typeof params.plaintext === 'string'
+			? utf8(params.plaintext)
+			: params.plaintext
+	const chainKey = fromHex(readyState.sendChainKey)
+	const messageKey = await deriveDmRatchetMessageKey(
+		chainKey,
+		readyState.sendCount
+	)
+	const enc = await encryptKuz(messageKey, plaintextU8)
+	const header: DmRatchetHeader = {
+		kind: DM_RATCHET_MESSAGE_KIND,
+		dhPub: readyState.ownRatchetPub,
+		dhUkm: readyState.ownRatchetUkm,
+		pn: readyState.previousSendCount,
+		n: readyState.sendCount
+	}
+	const signature = await signBytes(
+		params.signerIKPriv,
+		dmRatchetAad({
+			chatId: params.chatId,
+			fromSessionId: params.fromSessionId,
+			toSessionId: params.toSessionId,
+			header,
+			iv: enc.iv,
+			ciphertext: enc.ciphertext
+		})
+	)
+
+	return {
+		header,
+		envelope: {
+			iv: toHex(enc.iv),
+			ct: toHex(enc.ciphertext),
+			sig: toHex(signature)
+		},
+		nextState: {
+			...readyState,
+			sendChainKey: toHex(await deriveNextDmRatchetChainKey(chainKey)),
+			sendCount: readyState.sendCount + 1
+		}
+	}
+}
+
+export async function decryptDmRatchetMessage(params: {
+	chatId: string
+	fromSessionId: string
+	toSessionId: string
+	state: DmRatchetState
+	header: DmRatchetHeader
+	envelope: SessionMsgEnvelope
+	senderIkPub: string | CryptoKey
+}): Promise<{
+	decrypted: string
+	nextState: DmRatchetState
+}> {
+	let state = params.state
+	const skippedKeyId = dmRatchetSkippedKeyId(
+		params.header.dhPub,
+		params.header.n
+	)
+	const skippedKey = state.skippedMessageKeys[skippedKeyId]
+	let messageKey: Uint8Array | null = skippedKey ? fromHex(skippedKey) : null
+
+	if (!messageKey) {
+		if (params.header.dhPub !== state.remoteRatchetPub) {
+			state = await advanceDmDhRatchet(state, params.header)
+		}
+
+		state = await skipDmMessageKeys(state, params.header.n)
+		if (!state.recvChainKey) {
+			throw new Error('DM ratchet receive chain is not initialized')
+		}
+
+		if (params.header.n < state.recvCount) {
+			throw new Error('DM ratchet message key already consumed')
+		}
+
+		const recvChainKey = fromHex(state.recvChainKey)
+		messageKey = await deriveDmRatchetMessageKey(
+			recvChainKey,
+			params.header.n
+		)
+		state = {
+			...state,
+			recvChainKey: toHex(
+				await deriveNextDmRatchetChainKey(recvChainKey)
+			),
+			recvCount: params.header.n + 1
+		}
+	}
+
+	const iv = fromHex(params.envelope.iv)
+	const ciphertext = fromHex(params.envelope.ct)
+	const senderPub =
+		typeof params.senderIkPub === 'string'
+			? await importPublicRaw(fromHex(params.senderIkPub))
+			: params.senderIkPub
+	const sigOk = await verifyBytes(
+		senderPub,
+		dmRatchetAad({
+			chatId: params.chatId,
+			fromSessionId: params.fromSessionId,
+			toSessionId: params.toSessionId,
+			header: params.header,
+			iv,
+			ciphertext
+		}),
+		fromHex(params.envelope.sig)
+	)
+	if (!sigOk) {
+		throw new Error('DM ratchet signature is invalid')
+	}
+
+	const plaintext = await decryptKuz(messageKey, iv, ciphertext)
+	const skipped = { ...state.skippedMessageKeys }
+	delete skipped[skippedKeyId]
+
+	return {
+		decrypted: decodeUtf8(plaintext),
+		nextState: {
+			...state,
+			skippedMessageKeys: skipped
+		}
+	}
 }
 
 const deriveGroupSenderMessageKey = async (

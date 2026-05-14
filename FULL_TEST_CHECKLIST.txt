@@ -25,74 +25,16 @@
 
 
 
-дабл ретчт наверное нужно будет сделать, forward secrecy(
-Нет, полноценная архитектура Double Ratchet здесь не используется.
-
-Фактически реализована схема:
-
-X3DH-подобный обмен через identity key, signed prekey, optional one-time prekey;
-затем один статичный sessionKey на secret chat;
-сообщения шифруются через KDF(sessionKey, "MSG-KEYS") и Kuznechik;
-ключ не продвигается после каждого сообщения.
-1 на 1
-
-Для DM активный путь такой:
-
-клиент получает prekeys через backend;
-если локального sessionKey нет, генерирует новый symmetric key;
-передает этот sessionKey получателям через QueueSharedSecretKey, зашифрованный попарным X3DH-derived ключом;
-сами сообщения дальше шифруются одним и тем же sessionKey.
-Ключевые места:
-
-apps/mobile/app/hooks/useSecretChat.actions.ts (line 1362) — генерация или загрузка activeSessionKey
-apps/mobile/app/hooks/useSecretChat.actions.ts (line 1382) — DM делится sessionKey
-apps/mobile/app/hooks/useSecretChat.actions.ts (line 1404) — сообщение шифруется через buildSessionMsgEnvelope
-apps/mobile/app/libs/e2ee/gost.ts (line 1290) — прямо описано: после установки сессии используется простая схема без повторного X3DH
-Групповые secret chats
-
-Группа использует один общий групповой symmetric key:
-
-инициатор генерирует groupKey;
-для каждого участника строит попарный X3DH-derived ключ;
-шифрует groupKey отдельно каждому участнику;
-дальше все сообщения группы шифруются тем же общим groupKey.
-Ключевые места:
-
-apps/mobile/app/hooks/useSecretChat.actions.ts (line 1957) — описание групповой инициализации
-apps/mobile/app/hooks/useSecretChat.actions.ts (line 2003) — генерация одного groupKey
-apps/mobile/app/hooks/useSecretChat.actions.ts (line 2026) — рассылка этого ключа участникам
-apps/mobile/app/hooks/useSecretChat.actions.ts (line 1710) — получение и расшифровка группового ключа
-Почему это не Double Ratchet
-
-В Double Ratchet должны быть хотя бы:
-
-root key;
-sending/receiving chain keys;
-message keys;
-счетчики сообщений;
-обработка out-of-order/skipped keys;
-DH-ratchet при смене DH public key.
-В текущем коде этого нет. В Prisma/GraphQL для secret сообщений хранятся только envelope-поля: iv, encryptedMessage, sig, ukm, session ids, recipients. Нет chain/root/message-key state:
-
-backend/prisma/schema.prisma (line 391)
-backend/prisma/schema.prisma (line 446)
-backend/src/core/graphql/schema.gql (line 424)
-Ротация
-
-Ротация есть, но не ratchet-ротация по сообщениям. При leave/remove backend чистит shared keys и шлет событие SECRET_KEY_ROTATION; mobile удаляет локальный my-keys.json, после чего должен получить/создать новый общий ключ:
-
-backend/src/modules/chat/chat.resolver.ts (line 253)
-backend/src/modules/chat/chat.resolver.ts (line 298)
-apps/mobile/app/utils/secret-chat/secretChat.ts (line 168)
-Итог
-
-Архитектура ближе к X3DH/prekey transport + статичный symmetric session/group key, а не к Signal Double Ratchet. Компрометация сохраненного sessionKey/groupKey потенциально раскрывает сообщения этого чата за весь период действия ключа, до ручной/событийной ротации.
-
-)
-
-
 возможно нужно добавить аудит 
 
+backend upload / attachments
+secret attachments
+login/register
+send message
+secret chat send/read
+group chat
+mobile app start
+web app start
 
 Что можно добавить следующим
 
