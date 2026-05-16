@@ -1017,6 +1017,103 @@ const translations: TranslationMap = {
 }
 
 const fallbackTranslations: Record<string, { ru: string; en: string }> = {
+	showPassword: { ru: 'Показать пароль', en: 'Show password' },
+	hidePassword: { ru: 'Скрыть пароль', en: 'Hide password' },
+	usernameMin: {
+		ru: 'Имя пользователя должно быть не короче 5 символов',
+		en: 'Username must be at least 5 characters long'
+	},
+	usernameMax: {
+		ru: 'Имя пользователя должно быть не длиннее 30 символов',
+		en: 'Username must be at most 30 characters long'
+	},
+	usernamePattern: {
+		ru: 'Имя пользователя может содержать только русские/английские буквы, цифры, _ и -',
+		en: 'Username can only contain Russian/English letters, digits, _ and -'
+	},
+	emailMin: {
+		ru: 'Email должен быть не короче 3 символов',
+		en: 'Email must be at least 3 characters long'
+	},
+	groupNameRequired: {
+		ru: 'Введите название группы',
+		en: 'Group name is required'
+	},
+	chatNameRequired: {
+		ru: 'Введите название чата',
+		en: 'Chat name is required'
+	},
+	selectAtLeastOneUser: {
+		ru: 'Выберите хотя бы одного пользователя',
+		en: 'Select at least one user'
+	},
+	messageTextEmpty: {
+		ru: 'Текст сообщения не может быть пустым',
+		en: 'Message text cannot be empty'
+	},
+	nameMax: {
+		ru: 'Название должно быть не длиннее 30 символов',
+		en: 'Name must be at most 30 characters long'
+	},
+	namePattern: {
+		ru: 'Название может содержать только английские буквы, цифры и -',
+		en: 'Name can only contain English letters, digits, and -'
+	},
+	descriptionMax: {
+		ru: 'Описание должно быть не длиннее 300 символов',
+		en: 'Description must be at most 300 characters long'
+	},
+	bioMax: {
+		ru: 'Описание профиля должно быть не длиннее 300 символов',
+		en: 'Bio must be at most 300 characters long'
+	},
+	loginSuccess: { ru: 'Вход выполнен', en: 'Login successful' },
+	welcomeBack: { ru: 'С возвращением!', en: 'Welcome back!' },
+	loginFailed: { ru: 'Не удалось войти', en: 'Login failed' },
+	registrationSuccess: {
+		ru: 'Регистрация завершена',
+		en: 'Registration successful'
+	},
+	canNowLogin: {
+		ru: 'Теперь можно войти в аккаунт',
+		en: 'You can now log in!'
+	},
+	registrationFailed: {
+		ru: 'Не удалось зарегистрироваться',
+		en: 'Registration failed'
+	},
+	secretChatsSetupFailed: {
+		ru: 'Не удалось подготовить секретные чаты',
+		en: 'Secret chats setup failed'
+	},
+	regularChatsStillAvailable: {
+		ru: 'Обычные чаты всё ещё доступны.',
+		en: 'You can still use regular chats.'
+	},
+	pinChatError: {
+		ru: 'Не удалось закрепить чат',
+		en: 'Failed to pin chat'
+	},
+	unpinChatError: {
+		ru: 'Не удалось открепить чат',
+		en: 'Failed to unpin chat'
+	},
+	reorderPinnedChatsError: {
+		ru: 'Не удалось изменить порядок закреплённых чатов',
+		en: 'Failed to reorder pinned chats'
+	},
+	failedCreateChat: {
+		ru: 'Не удалось создать чат',
+		en: 'Failed to create chat'
+	},
+	failedDeleteChat: {
+		ru: 'Не удалось удалить чат',
+		en: 'Failed to delete chat'
+	},
+	failedUpdateChat: {
+		ru: 'Не удалось обновить чат',
+		en: 'Failed to update chat'
+	},
 	searchFriendsPlaceholder: {
 		ru: 'Поиск друзей и заявок...',
 		en: 'Search friends and requests...'

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Toast from 'react-native-toast-message'
 
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
+import { useTranslation } from '@/hooks/useTheme'
 import { useUser } from '@/hooks/useUser'
 
 import { chatEvents } from '@/utils/chatEvents'
@@ -90,6 +91,7 @@ export function useDirectChats(searchQuery = '') {
 		[]
 	)
 	const [isRefreshingChats, setIsRefreshingChats] = useState(false)
+	const { t } = useTranslation()
 	const { userId } = useUser()
 
 	const normalizedSearchTerm = searchQuery.trim()
@@ -126,13 +128,13 @@ export function useDirectChats(searchQuery = '') {
 
 	const [deleteChatMutation] = useDeleteChatMutation({
 		onCompleted() {
-			Toast.show({ type: 'success', text1: 'Chat deleted' })
+			Toast.show({ type: 'success', text1: t('chatDeleted') })
 		},
 		onError(error) {
 			Toast.show({
 				type: 'error',
-				text1: 'Delete error',
-				text2: error.message || 'Something went wrong'
+				text1: t('deleteError'),
+				text2: error.message || t('somethingWentWrong')
 			})
 		}
 	})
@@ -161,8 +163,11 @@ export function useDirectChats(searchQuery = '') {
 		} catch (error) {
 			Toast.show({
 				type: 'error',
-				text1: 'Pin error',
-				text2: String(error) || 'Something went wrong'
+				text1: t('pinChatError'),
+				text2:
+					error instanceof Error && error.message
+						? error.message
+						: t('somethingWentWrong')
 			})
 		}
 	}
@@ -181,8 +186,11 @@ export function useDirectChats(searchQuery = '') {
 		} catch (error) {
 			Toast.show({
 				type: 'error',
-				text1: 'Unpin error',
-				text2: String(error) || 'Something went wrong'
+				text1: t('unpinChatError'),
+				text2:
+					error instanceof Error && error.message
+						? error.message
+						: t('somethingWentWrong')
 			})
 		}
 	}
@@ -204,8 +212,11 @@ export function useDirectChats(searchQuery = '') {
 		} catch (error) {
 			Toast.show({
 				type: 'error',
-				text1: 'Reorder error',
-				text2: String(error) || 'Something went wrong'
+				text1: t('reorderPinnedChatsError'),
+				text2:
+					error instanceof Error && error.message
+						? error.message
+						: t('somethingWentWrong')
 			})
 			refetchChats()
 		}

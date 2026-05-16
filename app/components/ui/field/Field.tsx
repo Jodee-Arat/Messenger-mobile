@@ -1,11 +1,11 @@
-import type { ReactElement } from 'react'
-import { useState } from 'react'
 import cn from 'clsx'
 import { Eye, EyeOff } from 'lucide-react-native'
+import type { ReactElement } from 'react'
+import { useState } from 'react'
 import { Controller } from 'react-hook-form'
 import { Text, TextInput, TouchableOpacity, View } from 'react-native'
 
-import { useTheme } from '@/hooks/useTheme'
+import { useTheme, useTranslation } from '@/hooks/useTheme'
 
 import { IField } from './field.interface'
 
@@ -17,6 +17,7 @@ const Field = <T extends Record<string, any>>({
 	...rest
 }: IField<T>): ReactElement => {
 	const { colors } = useTheme()
+	const { t } = useTranslation()
 	const [isPasswordVisible, setIsPasswordVisible] = useState(false)
 	const isSecureField = !!rest.secureTextEntry
 
@@ -80,6 +81,12 @@ const Field = <T extends Record<string, any>>({
 									left: 8,
 									right: 8
 								}}
+								accessibilityRole='button'
+								accessibilityLabel={
+									isPasswordVisible
+										? t('hidePassword')
+										: t('showPassword')
+								}
 							>
 								{isPasswordVisible ? (
 									<EyeOff

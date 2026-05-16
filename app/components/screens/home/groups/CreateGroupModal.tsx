@@ -1,18 +1,18 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import type { ImagePickerAsset } from 'expo-image-picker'
 import { X } from 'lucide-react-native'
-import { FC, useEffect, useRef, useMemo, useState } from 'react'
+import { FC, useEffect, useMemo, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import {
 	ActivityIndicator,
+	Animated,
 	Image,
+	Pressable,
 	ScrollView,
 	Text,
 	TextInput,
 	TouchableOpacity,
-	View,
-	Animated,
-	Pressable
+	View
 } from 'react-native'
 import Toast from 'react-native-toast-message'
 
@@ -34,7 +34,7 @@ import {
 	useGetFriendsQuery
 } from '@/graphql/generated/output'
 import {
-	createGroupSchema,
+	createGroupSchemaFactory,
 	createGroupSchemaType
 } from '@/schemas/group/create-group.schema'
 
@@ -46,6 +46,7 @@ interface CreateGroupModalProps {
 const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
+	const schema = useMemo(() => createGroupSchemaFactory(t), [t])
 	const {
 		containerPaddingBottom,
 		windowHeight,
@@ -53,9 +54,8 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 		sheetPaddingBottom
 	} = useBottomSheetModalLayout(0.8)
 	const { userId } = useUser()
-	const [selectedAvatar, setSelectedAvatar] = useState<ImagePickerAsset | null>(
-		null
-	)
+	const [selectedAvatar, setSelectedAvatar] =
+		useState<ImagePickerAsset | null>(null)
 	const [isPickingAvatar, setIsPickingAvatar] = useState(false)
 
 	const slideAnim = useRef(new Animated.Value(windowHeight)).current
@@ -106,7 +106,7 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 	}, [friendsData, userId])
 
 	const form = useForm<createGroupSchemaType>({
-		resolver: zodResolver(createGroupSchema),
+		resolver: zodResolver(schema),
 		mode: 'onChange',
 		defaultValues: { groupName: '', userIds: [] }
 	})
@@ -179,10 +179,7 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 				Toast.show({
 					type: 'error',
 					text1: t('errorUpdatingAvatar'),
-					text2:
-						error instanceof Error
-							? error.message
-							: undefined
+					text2: error instanceof Error ? error.message : undefined
 				})
 			}
 		}
@@ -208,7 +205,14 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 			>
 				<Pressable
 					className='flex-1'
-					style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: colors.overlay }}
+					style={{
+						position: 'absolute',
+						top: 0,
+						bottom: 0,
+						left: 0,
+						right: 0,
+						backgroundColor: colors.overlay
+					}}
 					onPress={() => closeSheet()}
 				/>
 				<Animated.View
@@ -277,114 +281,116 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 									borderColor: colors.borderLight
 								}}
 							>
-							<View className='flex-row items-center'>
-								<View
-									style={{
-										width: 72,
-										height: 72,
-										borderRadius: 36,
-										overflow: 'hidden',
-										backgroundColor:
-											colors.backgroundTertiary,
-										alignItems: 'center',
-										justifyContent: 'center',
-										marginRight: 16
-									}}
-								>
-									{selectedAvatar?.uri ? (
-										<Image
-											source={{
-												uri: selectedAvatar.uri
-											}}
-											resizeMode='cover'
-											style={{
-												width: '100%',
-												height: '100%'
-											}}
-										/>
-									) : (
-										<Text
-											style={{
-												fontSize: 28,
-												fontWeight: '700',
-												color: colors.textSecondary
-											}}
-										>
-											{form
-												.watch('groupName')
-												?.[0]
-												?.toUpperCase() ?? 'G'}
-										</Text>
-									)}
-								</View>
-
-								<View style={{ flex: 1 }}>
-									<TouchableOpacity
-										activeOpacity={0.7}
-										onPress={() =>
-											void handlePickAvatar()
-										}
-										disabled={isBusy}
-										className='rounded-xl px-4 py-3'
+								<View className='flex-row items-center'>
+									<View
 										style={{
-											backgroundColor: colors.accent,
-											opacity: isBusy ? 0.5 : 1
+											width: 72,
+											height: 72,
+											borderRadius: 36,
+											overflow: 'hidden',
+											backgroundColor:
+												colors.backgroundTertiary,
+											alignItems: 'center',
+											justifyContent: 'center',
+											marginRight: 16
 										}}
 									>
-										{isPickingAvatar ? (
-											<ActivityIndicator
-												size='small'
-												color='#fff'
+										{selectedAvatar?.uri ? (
+											<Image
+												source={{
+													uri: selectedAvatar.uri
+												}}
+												resizeMode='cover'
+												style={{
+													width: '100%',
+													height: '100%'
+												}}
 											/>
 										) : (
 											<Text
-												className='text-sm font-semibold text-center'
-												style={{ color: '#fff' }}
+												style={{
+													fontSize: 28,
+													fontWeight: '700',
+													color: colors.textSecondary
+												}}
 											>
-												{selectedAvatar
-													? t('changeAvatar')
-													: t('uploadAvatar')}
+												{form
+													.watch('groupName')?.[0]
+													?.toUpperCase() ?? 'G'}
 											</Text>
 										)}
-									</TouchableOpacity>
+									</View>
 
-									{selectedAvatar ? (
+									<View style={{ flex: 1 }}>
 										<TouchableOpacity
 											activeOpacity={0.7}
 											onPress={() =>
-												setSelectedAvatar(null)
+												void handlePickAvatar()
 											}
 											disabled={isBusy}
-											className='rounded-xl px-4 py-3 mt-2'
+											className='rounded-xl px-4 py-3'
 											style={{
-												backgroundColor:
-													colors.destructiveMuted,
+												backgroundColor: colors.accent,
 												opacity: isBusy ? 0.5 : 1
 											}}
 										>
-											<Text
-												className='text-sm font-semibold text-center'
+											{isPickingAvatar ? (
+												<ActivityIndicator
+													size='small'
+													color='#fff'
+												/>
+											) : (
+												<Text
+													className='text-sm font-semibold text-center'
+													style={{ color: '#fff' }}
+												>
+													{selectedAvatar
+														? t('changeAvatar')
+														: t('uploadAvatar')}
+												</Text>
+											)}
+										</TouchableOpacity>
+
+										{selectedAvatar ? (
+											<TouchableOpacity
+												activeOpacity={0.7}
+												onPress={() =>
+													setSelectedAvatar(null)
+												}
+												disabled={isBusy}
+												className='rounded-xl px-4 py-3 mt-2'
 												style={{
-													color: colors.destructive
+													backgroundColor:
+														colors.destructiveMuted,
+													opacity: isBusy ? 0.5 : 1
 												}}
 											>
-												{t('removeAvatar')}
-											</Text>
-										</TouchableOpacity>
-									) : null}
+												<Text
+													className='text-sm font-semibold text-center'
+													style={{
+														color: colors.destructive
+													}}
+												>
+													{t('removeAvatar')}
+												</Text>
+											</TouchableOpacity>
+										) : null}
+									</View>
 								</View>
 							</View>
-						</View>
 
 							<Controller
 								control={form.control}
 								name='groupName'
 								render={({ field }) => (
 									<TextInput
-										className='rounded-xl px-4 py-3 mb-4'
+										className='rounded-xl px-4 py-3 mb-1'
 										style={{
 											borderWidth: 1,
-											borderColor: colors.borderLight,
+											borderColor: form.formState.errors
+												.groupName
+												? colors.destructive
+												: colors.borderLight,
 											backgroundColor: colors.cardHover,
 											color: colors.text,
 											fontSize: 15
@@ -397,6 +403,14 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 									/>
 								)}
 							/>
+							{form.formState.errors.groupName?.message ? (
+								<Text
+									className='text-xs mb-3 ml-1'
+									style={{ color: colors.destructive }}
+								>
+									{form.formState.errors.groupName.message}
+								</Text>
+							) : null}
 
 							<Text
 								className='text-xs font-semibold uppercase tracking-wider mb-2 ml-1'
@@ -447,16 +461,19 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 																				u.id
 																		)
 																	)
-																: field.onChange([
-																		...field.value,
-																		u.id
-																	])
+																: field.onChange(
+																		[
+																			...field.value,
+																			u.id
+																		]
+																	)
 														}
 														className='flex-row items-center rounded-xl px-3 py-2.5 mb-1'
 														style={{
-															backgroundColor: checked
-																? colors.accentMuted
-																: 'transparent'
+															backgroundColor:
+																checked
+																	? colors.accentMuted
+																	: 'transparent'
 														}}
 													>
 														<Checkbox
@@ -484,7 +501,9 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 														/>
 														<EntityAvatar
 															name={u.username}
-															avatarUrl={u.avatarUrl}
+															avatarUrl={
+																u.avatarUrl
+															}
 															size='sm'
 														/>
 														<Text
@@ -502,6 +521,14 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 									))}
 								</View>
 							)}
+							{form.formState.errors.userIds?.message ? (
+								<Text
+									className='text-xs mt-2 ml-1'
+									style={{ color: colors.destructive }}
+								>
+									{form.formState.errors.userIds.message}
+								</Text>
+							) : null}
 
 							<TouchableOpacity
 								disabled={!form.formState.isValid || isBusy}
@@ -520,7 +547,10 @@ const CreateGroupModal: FC<CreateGroupModalProps> = ({ isOpen, onClose }) => {
 								}}
 							>
 								{isCreating || isUploadingAvatar ? (
-									<ActivityIndicator size='small' color='#fff' />
+									<ActivityIndicator
+										size='small'
+										color='#fff'
+									/>
 								) : (
 									<Text
 										className='text-base font-semibold'

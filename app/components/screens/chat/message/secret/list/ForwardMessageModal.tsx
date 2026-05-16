@@ -1,28 +1,29 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import React, { FC, useEffect, useRef, useState } from 'react'
+import React, { FC, useEffect, useMemo, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import {
 	ActivityIndicator,
+	Animated,
 	Image,
+	Pressable,
 	ScrollView,
 	Text,
 	TextInput,
 	TouchableOpacity,
 	View,
-	Animated,
-	Pressable,
 	useWindowDimensions
 } from 'react-native'
 import Toast from 'react-native-toast-message'
 
 import AppModal from '@/components/ui/AppModal'
+import { Button } from '@/components/ui/button/Button'
+import Checkbox from '@/components/ui/checkbox/Checkbox'
+
 import { useCenteredModalLayout } from '@/hooks/useModalLayout'
 import { useTheme, useTranslation } from '@/hooks/useTheme'
 import { useUser } from '@/hooks/useUser'
-import { navigate } from '@/navigation/navigate'
 
-import { Button } from '@/components/ui/button/Button'
-import Checkbox from '@/components/ui/checkbox/Checkbox'
+import { navigate } from '@/navigation/navigate'
 
 import {
 	useFindAllChatsByUserQuery,
@@ -30,7 +31,7 @@ import {
 } from '@/graphql/generated/output'
 import {
 	ForwardMessageSchemaType,
-	forwardMessageSchema
+	forwardMessageSchemaFactory
 } from '@/schemas/chat/forward-message.schema'
 
 interface ForwardMessageModalProp {
@@ -68,6 +69,7 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
+	const schema = useMemo(() => forwardMessageSchemaFactory(t), [t])
 	const { userId } = useUser()
 	const { cardMarginBottom, cardMaxHeight } = useCenteredModalLayout(0.8)
 	const [isOpen, setIsOpen] = useState(false)
@@ -98,7 +100,8 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 	})
 
 	const form = useForm<ForwardMessageSchemaType>({
-		resolver: zodResolver(forwardMessageSchema),
+		resolver: zodResolver(schema),
+		mode: 'onChange',
 		defaultValues: {
 			text: '',
 			targetChatsId: []
@@ -218,13 +221,18 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 				statusBarTranslucent
 				navigationBarTranslucent
 			>
-				<View
-					className='flex-1 justify-center'
-				>
-					<Pressable 
-						className='flex-1' 
-						style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: colors.overlay }} 
-						onPress={() => closeSheet()} 
+				<View className='flex-1 justify-center'>
+					<Pressable
+						className='flex-1'
+						style={{
+							position: 'absolute',
+							top: 0,
+							bottom: 0,
+							left: 0,
+							right: 0,
+							backgroundColor: colors.overlay
+						}}
+						onPress={() => closeSheet()}
 					/>
 					<Animated.View
 						className='mx-4 rounded-2xl p-4 max-h-[80%]'
@@ -241,7 +249,9 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 						<Text
 							className='text-xl font-semibold mb-3 text-center'
 							style={{ color: colors.text }}
-						>{t('forwardMessages')}</Text>
+						>
+							{t('forwardMessages')}
+						</Text>
 
 						{/* Input for text */}
 						<Controller
@@ -249,10 +259,12 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 							name='text'
 							render={({ field }) => (
 								<TextInput
-									className='rounded-lg p-2 mb-3'
+									className='rounded-lg p-2 mb-1'
 									style={{
 										borderWidth: 1,
-										borderColor: colors.borderLight,
+										borderColor: form.formState.errors.text
+											? colors.destructive
+											: colors.borderLight,
 										backgroundColor: colors.inputBg,
 										color: colors.text
 									}}
@@ -263,6 +275,14 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 								/>
 							)}
 						/>
+						{form.formState.errors.text?.message ? (
+							<Text
+								className='text-xs mb-2'
+								style={{ color: colors.destructive }}
+							>
+								{form.formState.errors.text.message}
+							</Text>
+						) : null}
 
 						{/* Chats list */}
 						<View style={{ flex: 1, minHeight: 0 }}>
@@ -343,7 +363,9 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 													<View className='ml-3 flex-1'>
 														<Text
 															className='text-base font-medium'
-															style={{ color: colors.text }}
+															style={{
+																color: colors.text
+															}}
 														>
 															{chat.chatName}
 														</Text>
@@ -353,7 +375,8 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 																color: colors.textSecondary
 															}}
 														>
-															{chat.lastMessage?.text
+															{chat.lastMessage
+																?.text
 																? `${chat.lastMessage.user.username}: ${chat.lastMessage.text}`
 																: t(
 																		'noMessages'
@@ -367,6 +390,14 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 								</ScrollView>
 							)}
 						</View>
+						{form.formState.errors.targetChatsId?.message ? (
+							<Text
+								className='text-xs mt-2'
+								style={{ color: colors.destructive }}
+							>
+								{form.formState.errors.targetChatsId.message}
+							</Text>
+						) : null}
 
 						{/* Submit button */}
 						<Button
@@ -378,7 +409,7 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 							}
 							className='mt-4'
 						>
-							Forward
+							{t('forward')}
 						</Button>
 
 						{/* Cancel */}
@@ -386,7 +417,9 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 							<Text
 								className='text-center mt-3 font-medium'
 								style={{ color: colors.textSecondary }}
-							>{t('cancel')}</Text>
+							>
+								{t('cancel')}
+							</Text>
 						</TouchableOpacity>
 					</Animated.View>
 				</View>

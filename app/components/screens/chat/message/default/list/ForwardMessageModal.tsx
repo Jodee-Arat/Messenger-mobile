@@ -11,8 +11,8 @@ import {
 	Text,
 	TextInput,
 	TouchableOpacity,
-	useWindowDimensions,
-	View
+	View,
+	useWindowDimensions
 } from 'react-native'
 import Toast from 'react-native-toast-message'
 
@@ -31,7 +31,7 @@ import {
 } from '@/graphql/generated/output'
 import {
 	ForwardMessageSchemaType,
-	forwardMessageSchema
+	forwardMessageSchemaFactory
 } from '@/schemas/chat/forward-message.schema'
 
 interface ForwardMessageModalProp {
@@ -69,6 +69,7 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 }) => {
 	const { colors } = useTheme()
 	const { t } = useTranslation()
+	const schema = useMemo(() => forwardMessageSchemaFactory(t), [t])
 	const { userId } = useUser()
 	const { cardMarginBottom, cardMaxHeight } = useCenteredModalLayout(0.8)
 	const [isOpen, setIsOpen] = useState(false)
@@ -107,7 +108,7 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 	}, [dataChats, groupId])
 
 	const form = useForm<ForwardMessageSchemaType>({
-		resolver: zodResolver(forwardMessageSchema),
+		resolver: zodResolver(schema),
 		mode: 'onChange',
 		defaultValues: {
 			text: '',
@@ -224,10 +225,12 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 							name='text'
 							render={({ field }) => (
 								<TextInput
-									className='rounded-lg p-2 mb-3'
+									className='rounded-lg p-2 mb-1'
 									style={{
 										borderWidth: 1,
-										borderColor: colors.borderLight,
+										borderColor: form.formState.errors.text
+											? colors.destructive
+											: colors.borderLight,
 										backgroundColor: colors.inputBg,
 										color: colors.text
 									}}
@@ -238,6 +241,14 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 								/>
 							)}
 						/>
+						{form.formState.errors.text?.message ? (
+							<Text
+								className='text-xs mb-2'
+								style={{ color: colors.destructive }}
+							>
+								{form.formState.errors.text.message}
+							</Text>
+						) : null}
 
 						<Text
 							className='text-xs mb-3'
@@ -269,7 +280,10 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 										</View>
 									)}
 									{chats.map(chat => {
-										const preview = getChatPreview(chat, userId)
+										const preview = getChatPreview(
+											chat,
+											userId
+										)
 
 										return (
 											<Controller
@@ -309,10 +323,12 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 																checked: boolean
 															) => {
 																if (checked) {
-																	field.onChange([
-																		...field.value,
-																		chat.id
-																	])
+																	field.onChange(
+																		[
+																			...field.value,
+																			chat.id
+																		]
+																	)
 																} else {
 																	field.onChange(
 																		field.value.filter(
@@ -338,7 +354,9 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 														<View className='ml-3 flex-1'>
 															<Text
 																className='text-base font-medium'
-																numberOfLines={1}
+																numberOfLines={
+																	1
+																}
 																style={{
 																	color: colors.text
 																}}
@@ -347,12 +365,15 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 															</Text>
 															<Text
 																className='text-xs'
-																numberOfLines={1}
+																numberOfLines={
+																	1
+																}
 																style={{
 																	color: colors.textSecondary
 																}}
 															>
-																{chat.lastMessage
+																{chat
+																	.lastMessage
 																	?.text
 																	? `${chat.lastMessage.user.username}: ${chat.lastMessage.text}`
 																	: t(
@@ -368,6 +389,14 @@ const ForwardMessageModal: FC<ForwardMessageModalProp> = ({
 								</ScrollView>
 							)}
 						</View>
+						{form.formState.errors.targetChatsId?.message ? (
+							<Text
+								className='text-xs mt-2'
+								style={{ color: colors.destructive }}
+							>
+								{form.formState.errors.targetChatsId.message}
+							</Text>
+						) : null}
 
 						<Button
 							onPress={form.handleSubmit(onSubmit)}

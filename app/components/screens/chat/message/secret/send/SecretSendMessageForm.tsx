@@ -113,9 +113,7 @@ const SecretSendMessageForm: FC<SecretSendMessageFormProps> = ({
 							fontSize: 14
 						}}
 					>
-						{blockedStateMessage ||
-							t('noSendPermission') ||
-							'У вас нет разрешения отправлять сообщения'}
+						{blockedStateMessage || t('noSendPermission')}
 					</Text>
 				</View>
 			</View>

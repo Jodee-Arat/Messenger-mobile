@@ -120,8 +120,8 @@ const Auth = () => {
 				)
 				Toast.show({
 					type: 'error',
-					text1: 'Secret chats setup failed',
-					text2: 'You can still use regular chats.'
+					text1: t('secretChatsSetupFailed'),
+					text2: t('regularChatsStillAvailable')
 				})
 			}
 
@@ -130,8 +130,8 @@ const Auth = () => {
 
 			Toast.show({
 				type: 'success',
-				text1: 'Login successful',
-				text2: 'Welcome back!'
+				text1: t('loginSuccess'),
+				text2: t('welcomeBack')
 			})
 		},
 		onError(error) {
@@ -148,8 +148,8 @@ const Auth = () => {
 			}
 			Toast.show({
 				type: 'error',
-				text1: 'Login failed',
-				text2: error.message || 'Something went wrong'
+				text1: t('loginFailed'),
+				text2: error.message || t('somethingWentWrong')
 			})
 		}
 	})
@@ -160,8 +160,8 @@ const Auth = () => {
 				form.reset()
 				Toast.show({
 					type: 'success',
-					text1: 'Registration successful',
-					text2: 'You can now log in!'
+					text1: t('registrationSuccess'),
+					text2: t('canNowLogin')
 				})
 				setIsReg(false)
 			},
@@ -169,8 +169,8 @@ const Auth = () => {
 				console.log(error)
 				Toast.show({
 					type: 'error',
-					text1: 'Registration failed',
-					text2: error.message || 'Something went wrong'
+					text1: t('registrationFailed'),
+					text2: error.message || t('somethingWentWrong')
 				})
 			}
 		})
@@ -202,8 +202,8 @@ const Auth = () => {
 		if (!savedCredentials || totpCode.length !== 6) {
 			Toast.show({
 				type: 'error',
-				text1: 'Invalid code',
-				text2: 'Enter the 6-digit code from your authenticator app'
+				text1: t('totpInvalidCodeShort'),
+				text2: t('totpAuthHint')
 			})
 			return
 		}

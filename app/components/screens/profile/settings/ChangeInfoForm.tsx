@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Save } from 'lucide-react-native'
-import React, { useEffect } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import {
 	ActivityIndicator,
@@ -16,18 +16,19 @@ import { useTheme, useTranslation } from '@/hooks/useTheme'
 
 import { useChangeProfileInfoMutation } from '@/graphql/generated/output'
 import {
-	ChangeInfoProfileSchema,
-	TypeChangeInfoProfileSchema
+	TypeChangeInfoProfileSchema,
+	createChangeInfoProfileSchema
 } from '@/schemas/user/change-info-profile.schema'
 
 const ChangeInfoForm = () => {
 	const { user, isLoadingProfile, refetch } = useCurrentUser()
 	const { colors } = useTheme()
 	const { t } = useTranslation()
+	const schema = useMemo(() => createChangeInfoProfileSchema(t), [t])
 
 	const { control, handleSubmit, formState, reset } =
 		useForm<TypeChangeInfoProfileSchema>({
-			resolver: zodResolver(ChangeInfoProfileSchema),
+			resolver: zodResolver(schema),
 			mode: 'onChange',
 			reValidateMode: 'onChange',
 			defaultValues: {
@@ -141,7 +142,9 @@ const ChangeInfoForm = () => {
 								color: colors.text,
 								fontSize: 15,
 								borderWidth: 1,
-								borderColor: colors.border
+								borderColor: formState.errors.username
+									? colors.destructive
+									: colors.border
 							}}
 							placeholder={t('usernamePlaceholder')}
 							placeholderTextColor={colors.textMuted}
@@ -152,6 +155,17 @@ const ChangeInfoForm = () => {
 						/>
 					)}
 				/>
+				{formState.errors.username?.message ? (
+					<Text
+						style={{
+							color: colors.destructive,
+							fontSize: 12,
+							marginTop: 6
+						}}
+					>
+						{formState.errors.username.message}
+					</Text>
+				) : null}
 			</View>
 
 			{/* Bio */}
@@ -179,7 +193,9 @@ const ChangeInfoForm = () => {
 								color: colors.text,
 								fontSize: 15,
 								borderWidth: 1,
-								borderColor: colors.border,
+								borderColor: formState.errors.bio
+									? colors.destructive
+									: colors.border,
 								height: 90,
 								textAlignVertical: 'top'
 							}}
@@ -193,6 +209,17 @@ const ChangeInfoForm = () => {
 						/>
 					)}
 				/>
+				{formState.errors.bio?.message ? (
+					<Text
+						style={{
+							color: colors.destructive,
+							fontSize: 12,
+							marginTop: 6
+						}}
+					>
+						{formState.errors.bio.message}
+					</Text>
+				) : null}
 			</View>
 
 			{/* Submit */}

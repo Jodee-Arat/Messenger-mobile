@@ -2,7 +2,9 @@ import { useFocusEffect } from '@react-navigation/native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Toast from 'react-native-toast-message'
 
+import { useTranslation } from '@/hooks/useTheme'
 import { useUser } from '@/hooks/useUser'
+
 import { getStoredSecretSessionId } from '@/services/secret/secret-session.service'
 
 import { chatEvents } from '@/utils/chatEvents'
@@ -72,6 +74,7 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 	const [isRefreshingChats, setIsRefreshingChats] = useState(false)
 	const initialLoadDone = useRef(false)
 	const readySecretChatIdsRef = useRef<Set<string>>(new Set())
+	const { t } = useTranslation()
 	const { userId } = useUser()
 	const [secretSessionId, setSecretSessionId] = useState<string | null>(null)
 
@@ -126,13 +129,13 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 	const [deleteChat, { loading: isLoadingDeleteChat }] =
 		useDeleteChatMutation({
 			onCompleted() {
-				Toast.show({ type: 'success', text1: 'Chat deleted' })
+				Toast.show({ type: 'success', text1: t('chatDeleted') })
 			},
 			onError(error) {
 				Toast.show({
 					type: 'error',
-					text1: 'Delete error',
-					text2: error.message || 'Something went wrong'
+					text1: t('deleteError'),
+					text2: error.message || t('somethingWentWrong')
 				})
 			}
 		})
@@ -159,8 +162,11 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 		} catch (error) {
 			Toast.show({
 				type: 'error',
-				text1: 'Pin error',
-				text2: String(error) || 'Something went wrong'
+				text1: t('pinChatError'),
+				text2:
+					error instanceof Error && error.message
+						? error.message
+						: t('somethingWentWrong')
 			})
 		}
 	}
@@ -179,8 +185,11 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 		} catch (error) {
 			Toast.show({
 				type: 'error',
-				text1: 'Unpin error',
-				text2: String(error) || 'Something went wrong'
+				text1: t('unpinChatError'),
+				text2:
+					error instanceof Error && error.message
+						? error.message
+						: t('somethingWentWrong')
 			})
 		}
 	}
@@ -202,8 +211,11 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 		} catch (error) {
 			Toast.show({
 				type: 'error',
-				text1: 'Reorder error',
-				text2: String(error) || 'Something went wrong'
+				text1: t('reorderPinnedChatsError'),
+				text2:
+					error instanceof Error && error.message
+						? error.message
+						: t('somethingWentWrong')
 			})
 			refetchChats()
 		}
@@ -331,8 +343,11 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 			} catch (error) {
 				Toast.show({
 					type: 'error',
-					text1: 'Failed to create chat',
-					text2: String(error || '') || 'Something went wrong'
+					text1: t('failedCreateChat'),
+					text2:
+						error instanceof Error && error.message
+							? error.message
+							: t('somethingWentWrong')
 				})
 			}
 		}
@@ -349,8 +364,11 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 			} catch (error) {
 				Toast.show({
 					type: 'error',
-					text1: 'Failed to delete chat',
-					text2: String(error || '') || 'Something went wrong'
+					text1: t('failedDeleteChat'),
+					text2:
+						error instanceof Error && error.message
+							? error.message
+							: t('somethingWentWrong')
 				})
 			}
 		}
@@ -376,12 +394,18 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 
 		const handleUpdate = async () => {
 			try {
-				await updateSecretChatUpdatedAt(groupId, updateChatData.chatUpdated.id)
+				await updateSecretChatUpdatedAt(
+					groupId,
+					updateChatData.chatUpdated.id
+				)
 			} catch (error) {
 				Toast.show({
 					type: 'error',
-					text1: 'Failed to update chat',
-					text2: String(error || '') || 'Something went wrong'
+					text1: t('failedUpdateChat'),
+					text2:
+						error instanceof Error && error.message
+							? error.message
+							: t('somethingWentWrong')
 				})
 			}
 		}
@@ -400,7 +424,10 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 				return prev
 			}
 
-			const nextChat = mergeUpdatedChat(previousChat, updateChatData.chatUpdated)
+			const nextChat = mergeUpdatedChat(
+				previousChat,
+				updateChatData.chatUpdated
+			)
 
 			return sortChatsWithPinned([
 				cloneChat(nextChat),
@@ -413,7 +440,9 @@ export function useGroupChats(groupId: string, searchTerm?: string) {
 		return chatEvents.onLeave(leftChatId => {
 			setAllChatsRaw(prev => prev.filter(chat => chat.id !== leftChatId))
 			setAllChats(prev => prev.filter(chat => chat.id !== leftChatId))
-			setDisabledChatIds(prev => prev.filter(chatId => chatId !== leftChatId))
+			setDisabledChatIds(prev =>
+				prev.filter(chatId => chatId !== leftChatId)
+			)
 		})
 	}, [])
 
