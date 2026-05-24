@@ -41,6 +41,20 @@ const normalizePinnedMessage = (
 	}
 }
 
+const normalizePickerFileName = (fileName?: string | null) => {
+	const rawName = fileName?.trim() || 'unknown'
+
+	if (!/%[0-9a-fA-F]{2}/.test(rawName)) {
+		return rawName
+	}
+
+	try {
+		return decodeURIComponent(rawName)
+	} catch {
+		return rawName
+	}
+}
+
 export const useChat = (chatId: string, options?: UseChatOptions) => {
 	const { userId } = useUser()
 	const [messageId, setMessageId] = useState<string | null>(null)
@@ -260,8 +274,7 @@ export const useChat = (chatId: string, options?: UseChatOptions) => {
 			}
 
 			// Проверки лимитов/дубликатов
-			const rawName = asset.name ?? 'unknown'
-			const name = decodeURIComponent(rawName)
+			const name = normalizePickerFileName(asset.name)
 			const sizeStr = asset.size ? String(asset.size) : '0'
 			const tempId = `temp:${createId()}`
 			if (files.length >= 7) {
@@ -325,8 +338,9 @@ export const useChat = (chatId: string, options?: UseChatOptions) => {
 			if (result.canceled || !result.assets?.[0]) return
 
 			const asset = result.assets[0]
-			const rawName = asset.fileName ?? `image_${Date.now()}.jpg`
-			const name = decodeURIComponent(rawName)
+			const name = normalizePickerFileName(
+				asset.fileName ?? `image_${Date.now()}.jpg`
+			)
 			const sizeStr = asset.fileSize ? String(asset.fileSize) : '0'
 			const tempId = `temp:${createId()}`
 
